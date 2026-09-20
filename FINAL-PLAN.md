@@ -15,7 +15,7 @@ The system has six distinct responsibilities:
 3. turn repeated visual detections into distinct physical asset copies;
 4. resolve book editions and identifiers without pretending every spine exposes an ISBN;
 5. obtain time- and geography-specific price evidence and calculate a defensible valuation range;
-6. compare the two required model pipelines, route uncertainty through Jev, and learn only from independently verified outcomes.
+6. compare Fable and Astra on the same sealed evidence package, use a separate live-assist path during capture, route uncertainty through Jev, and run a staged RL loop from logged transitions into offline-trained routing and specialist policies.
 
 The governing rule is:
 
@@ -35,49 +35,104 @@ The initial plan has a strong foundation: a common IR, `Asset` versus `Observati
 | Arbitrary weighted deduplication scores are suggested. | Start with constrained rules and calibrated features; learn thresholds from labeled double-pass scans. Never merge solely because ISBNs match. |
 | A single median web price becomes replacement value. | Preserve individual offers, edition/format/condition/geography, shipping/tax, retrieval time, and source. Produce a range plus an insurer-defined valuation basis. |
 | Fixed condition multipliers are shown. | Condition adjustment is policy/configuration data validated by the insurer, not a guessed table embedded in code. Prefer comparable offers of the same condition. |
-| Amazon scraping is treated mainly as an engineering inconvenience. | Put pricing behind a provider contract. Use permitted APIs/search integrations or human-confirmed in-app web evidence. Do not make the demo depend on brittle or unauthorized scraping. |
-| Fable, Astra, and Jev are allowed near factual fields. | Deterministic barcode checks, geometry, counts, currency arithmetic, and fetched prices remain code-owned. Models emit candidates and classifications only. |
+| Amazon scraping is treated mainly as an engineering inconvenience. | **Deliberate refusal of the specified method.** Do not scrape. Discover listings with **Bing search** (ISBN first, else name), then human-confirm. See [§11.2](#112-bing-search-is-the-price-discovery-path). |
+| Fable and Astra are described as two parallel end-to-end pipelines, with Astra also called real-time. | **Deliberate split into two Astra runtimes.** Live assist during capture is not the evaluation pipeline. After seal, Fable and Astra replay the same package so Jev can compare them. See [Section 12](#12-two-model-pipelines-and-jev). |
+| Fable, Astra, and Jev are allowed near factual fields. | Deterministic barcode checks, geometry, counts, currency arithmetic, and fetched prices remain code-owned. Models emit candidates and classifications only. Price and geography are not vision class labels. |
 | Jev is close to being described as ground-truth evaluation. | Jev is a typed decision/router. Evaluation uses manually labeled inventory, independent measurements, and verified price references. |
-| “RL loop” sounds online and immediate. | Begin with immutable feedback logs and a contextual-bandit/routing evaluation. Train offline; deploy shadow → canary → approved version. |
+| “RL loop” sounds online and immediate. | **Deliberate staging, not a downgrade to logs.** Give RL a real state/action/reward home. Log transitions from day one; train offline; never update live weights from one survey. See [Section 13](#13-feedback-and-rl-design). |
 | Capture failure and retry behavior is underspecified. | Every shelf face has explicit coverage, quality, and unresolved-state gates, with targeted recapture instructions. |
 | Simultaneous RoomPlan and high-resolution recording is assumed. | Run a device feasibility spike. Prefer a shared AR session and sampled `ARFrame` evidence; use deliberate high-resolution stills/close shelf passes where required. Do not assume two camera owners can run concurrently. |
 | Security, retention, offline upload, and audit boundaries are thin. | Add resumable capture packages, hashes, encryption, least privilege, retention policy, redaction, and immutable run/version records. |
 
-## 3. Scope and non-goals
+## 3. Scope, requirement map, and deliberate deviations
+
+This section is the alignment contract. Engineering choices that differ from a literal reading of `question.md` are named here so they cannot be read as dropped requirements.
 
 ### MVP scope
 
 - Native iPhone/iPad capture app using RoomPlan/ARKit on a supported LiDAR device.
-- Multiple rooms combined into one structure.
+- IR and merge support for multiple rooms; the first demo is one controlled library zone.
 - Synchronized RGB evidence, pose, audio notes, and written notes.
-- Shelf units, shelf faces, shelf levels, and physical book-copy counting.
+- Shelf units, shelf faces, shelf levels, physical book-copy counting, and shelf **data size** (occupancy + evidence payload).
 - Barcode/EAN and OCR evidence; ISBN-10/ISBN-13 validation and catalog resolution.
 - Multi-copy and repeat-pass deduplication.
 - Books, paintings/portraits, electronics, furniture, shelves, cups, and `other`.
 - Condition/damage evidence with an explicit review state.
-- Geography-aware book price evidence and valuation ranges.
+- Geography-aware book price evidence via Bing search (ISBN first, else name), with **device location** to set the local market.
+- Building **reconstruction** value from measured area × labeled demo local rates (country from location or manual override).
 - 2D plan, 3D RoomPlan model, inventory, review queue, and evidence report.
-- Two isolated model pipelines and a Jev decision layer.
-- A labeled evaluation set and immutable feedback log.
+- Two isolated post-scan model pipelines, a separate live-assist path, and a Jev decision layer.
+- A labeled evaluation set, immutable transition log, and an offline RL / specialist-model loop.
 
-### Explicit non-goals for the first demo
+### Deliberate deviations from the literal ask
+
+These are kept on purpose. They are not missed requirements.
+
+| Literal ask | This plan | Why |
+| --- | --- | --- |
+| One continuous recording of the place, processed by RoomPlan, while the technician speaks. | Three guided passes. RoomPlan owns geometry only. Speech runs on the same clock across all passes. | Room-scale video does not have enough pixels for spines, barcodes, or damage. One walkthrough cannot both map the room and count every book. |
+| Fable and Astra as parallel end-to-end pipelines; Astra also called a real-time model. | **Two Astra runtimes.** Live assist during capture (on-device first). After seal, Pipeline A (Fable) and Pipeline B (Astra replay) score the **same** evidence package so Jev can compare them. | Naive parallel E2E on raw video blows the $50 budget and makes Jev incomparable. “Real-time” is honored as live assist, not by skipping the parallel evaluation the assignment requires. |
+| An RL feedback loop for your own models. | A real MDP with logged transitions from day one; contextual bandit, then offline RL, then specialist models; shadow → canary. **No** per-survey online weight update. | Insurance output must be reproducible. Online learning after each survey is unsafe. Logs without a state/action/reward home are not an RL loop either. |
+| Count every book. | Count every **visible physical copy on covered shelf faces**. Uncovered rows stay `unresolved`, never silently zero. Pass A does not count books. | “Every book in the building” is only true if every face was scanned. The product promise is complete count of covered area plus disclosed gaps. |
+| Put a value on the place. | Ship a **reconstruction** estimate: measured floor/wall area × labeled demo local rates. Not a real-estate market appraisal from RoomPlan. | RoomPlan cannot price a sale. The assignment still gets a building value number, with the basis on the report. |
+| Classifier that labels books by old/new, price, and geography. | Vision/models classify category and condition. **Price** is a Bing lookup. **Geography** comes from device location (country/city) plus manual override, not from a spine class. | Price and country are not visual labels. Location tells the system *which market* to query. |
+| Scrape Amazon; do not use the web API because APIs are expensive. | **Refuse scraping.** Price via **Bing search** by ISBN or name, then human-confirmed listings. Amazon Creators API is optional if access exists; the demo must not depend on it. | Unauthorized scraping is brittle, against typical retailer terms, and a worse $50 risk than cached Bing lookups. The ask for book prices still ships. |
+| “Data size” on the shelves. | Each shelf face reports occupied length, item count, fill ratio, and evidence payload bytes. | The phrase is ambiguous. Occupancy of the contents plus audit payload is the defensible reading. |
+
+### Ask-to-landing map
+
+Every requirement in `question.md` lands somewhere. `Shipped` means the architecture produces it. `Staged` means the demo path is smaller than production. `Refused` means we will not do that method and the replacement is named.
+
+| Ask | Lands | Status |
+| --- | --- | --- |
+| Record video, photos, audio notes, written iPad notes while surveying | Capture package; SwiftUI iPhone/iPad app | Shipped |
+| Speak while scanning (“this portrait is damaged…”) | Continuous audio on the capture clock; Pass C close-up | Shipped |
+| RoomPlan → 2D sketch and 3D model | Pass A + §10 | Shipped. RoomPlan is the geometry processor, not the processor of all media. |
+| Count all books; spines both sides; no double-count of the same face; copies in different areas count | §7.3, demo cases | Shipped |
+| Count every book in the library | Covered-face complete count + unresolved coverage | Shipped with disclosed gaps. Not a silent 100% building count. |
+| ISBN → price; Italy vs Japan local prices | Device location → country/city → Bing `market`; §11 search by ISBN or name | Shipped. GPS proposes the market; technician can override. |
+| Classifier: condition old/new | Condition/damage models + review | Shipped |
+| Classifier: by price and geography | Bing in the location-derived market; survey locale | Split on purpose. Location is the geography signal. |
+| Count everything, including portraits and coffee cups | Closed taxonomy; mug `valuation_required=false` | Shipped |
+| Price only books, valuables, and the place | Policy engine + building reconstruction | Shipped |
+| Zoom in on damage | Pass C close-up queue | Shipped |
+| Surface area of the place | Floor/wall area with interval in geometry IR | Shipped |
+| Value the place | Demo reconstruction table in §10 | Shipped as replacement cost, not market value |
+| Data size on the shelves | `ShelfFaceDataSize` in IR and report | Shipped (interpreted) |
+| Fable / Anthropic pipeline | Pipeline A, post-scan, same package as B | Shipped |
+| Parallel Astra / Astro pipeline | Pipeline B = Astra **replay**; live assist is separate | Shipped with the dual-runtime split |
+| Jev evaluates both pipeline outputs | §12 | Shipped, because A and B now emit comparable assessments |
+| RL feedback loop for your own models | §13 MDP, replay buffer, trainer, specialist heads | Shipped as staged RL. Online per-survey learning refused. |
+| Align on backend architecture, then build systems and app | This document is deliverable 1 | Shipped |
+| $50, run models, scan a local library, show it in a mobile app | §21–§23 | Staged to a 50–100 book zone |
+| Amazon scrape, not API | Refused. Replacement: **Bing search** by ISBN or name (§11.2), then confirmed listing | Refused method, shipped pricing via Bing |
+
+### True non-goals
+
+These were **not** asked for. They stay out of the demo.
 
 - Perfect ISBN recovery from every spine.
 - Fully automatic rare-book or fine-art appraisal.
-- Real-estate market appraisal from RoomPlan alone.
-- Hidden/concealed-damage detection.
+- Real-estate **market/sale** appraisal from RoomPlan.
+- Hidden or concealed-damage detection.
 - Fully autonomous insurance approval.
 - Online reinforcement learning that changes production behavior after each survey.
 - Photorealistic NeRF reconstruction.
-- Reliance on one retailer or on CAPTCHA/anti-bot bypasses.
+- CAPTCHA / anti-bot bypasses or an unauthorized Amazon scraper.
 
 ## 4. Three-pass capture protocol
 
+**Deliberate deviation.** The assignment describes one walkthrough: record the place, speak, and send that through RoomPlan. This plan uses three guided passes instead. Room-scale video cannot support spine reading, barcode capture, or damage close-ups. RoomPlan remains the geometry processor; it is not asked to identify every book.
+
 The capture protocol is the product. Downstream models cannot recover details that were never visible.
+
+On-device **live assist** (quality, coverage, provisional counts) runs during Pass B. Optional sampled Astra-live calls are capture UX only. They are not Pipeline B and are not stored as inventory truth.
 
 ### Pass A — property and room geometry
 
-The technician creates a survey, records country/city/currency and property metadata, then scans each room with RoomPlan. The app preserves the raw room result, processed room result, transforms, and exported USDZ. Multiple room scans are merged into a `CapturedStructure` when supported.
+The technician creates a survey, records country/city/currency and property metadata, then scans each room with RoomPlan. The app requests **When In Use** location on this screen so geography is not typed from memory. A reverse-geocode fills country, region, city, currency suggestion, and Bing market (Italy vs Japan vs India). The technician must see and can override those fields before capture starts — a demo in one city can still be valued as another market, and a denied permission must not block the scan.
+
+The app preserves the raw room result, processed room result, transforms, and exported USDZ. Multiple room scans are merged into a `CapturedStructure` when supported.
 
 This pass collects:
 
@@ -86,7 +141,7 @@ This pass collects:
 - room/floor labels;
 - a coverage indicator and incomplete-scan warnings.
 
-It does **not** claim to identify every book.
+It does **not** count books. Complete book count is Pass B’s job on covered faces.
 
 ### Pass B — guided shelf-face scan
 
@@ -94,13 +149,17 @@ The app asks the technician to scan every shelf face at close range. A freestand
 
 For each face, the user performs a slow sweep with enough overlap. The app gives live warnings for blur, glare, excessive speed, inadequate overlap, text too small, occlusion, and unscanned strips. It saves the video/frames, poses, and a rectified shelf mosaic if quality permits.
 
-The output is a **coverage map**, not merely a “scan complete” flag:
+The output is a **coverage map plus data size**, not merely a “scan complete” flag:
 
 ```text
 shelf_04.face_A
   row_01  covered 96%  readable 88%
   row_02  covered 91%  readable 73%
   row_03  covered 54%  -> recapture requested
+  data_size
+    occupied 3.8 m / 4.6 m  fill 83%
+    items 87 copies  (81 resolved, 6 unresolved)
+    evidence 412 MB
 ```
 
 ### Pass C — exceptions and valuable assets
@@ -126,7 +185,8 @@ sequenceDiagram
   participant V as On-device Vision
   participant Store as Local Capture Store
 
-  T->>App: Create survey and choose locale/currency
+  T->>App: Create survey; allow location; confirm country/city/currency
+  App->>App: Reverse-geocode to Bing market and rebuild-rate country
   T->>App: Start room pass
   App->>RP: Run room scan with shared AR session
   RP-->>Store: Raw/processed rooms, poses, sampled RGB
@@ -168,6 +228,7 @@ survey_<id>/
     annotations.jsonl
   device/
     calibration.json
+    location.json
   checksums.sha256
 ```
 
@@ -175,6 +236,7 @@ survey_<id>/
 
 - schema version, survey/session/device IDs, app/build version;
 - locale, country, currency, timezone, and consent/retention policy;
+- location permission state, reverse-geocoded country/city, Bing market, and whether geography was GPS, manual, or mixed;
 - start/end times and monotonic-clock anchor;
 - files, MIME types, byte sizes, and SHA-256 hashes;
 - capture modes and device capabilities;
@@ -197,6 +259,7 @@ erDiagram
   SPACE ||--o{ SHELF : contains
   SHELF ||--|{ SHELF_FACE : has
   SHELF_FACE ||--o{ SHELF_LEVEL : has
+  SHELF_FACE ||--|| SHELF_FACE_DATA_SIZE : reports
   SURVEY ||--o{ EVIDENCE_BLOB : preserves
   EVIDENCE_BLOB ||--o{ OBSERVATION : yields
   OBSERVATION }o--|| ASSET_COPY : supports
@@ -208,6 +271,9 @@ erDiagram
   ASSET_COPY ||--o{ MODEL_ASSESSMENT : assessed_by
   ASSET_COPY ||--o{ REVIEW_DECISION : reviewed_by
   SURVEY ||--o{ PIPELINE_RUN : processed_by
+  SURVEY ||--o{ RL_TRANSITION : logs
+  SURVEY ||--|| SURVEY_GEOGRAPHY : located_in
+  PROPERTY ||--|| BUILDING_VALUATION : valued_as
 ```
 
 ### The distinctions that prevent silent errors
@@ -220,6 +286,10 @@ erDiagram
 - **Identifier:** ISBN, EAN, internal library barcode, OCLC, LCCN, ISSN, or unknown.
 - **PriceObservation:** one source's observed offer at one time and market.
 - **Valuation:** the policy-driven conclusion from accepted price evidence.
+- **ShelfFaceDataSize:** occupied length, capacity length, fill ratio, physical-copy count, unresolved count, and evidence payload bytes for one face.
+- **BuildingValuation:** reconstruction estimate from measured area × local rate table, with basis and rate version labeled.
+- **SurveyGeography:** country, region, city, currency, Bing market, and location source (`gps` / `manual` / `mixed`). Precise coordinates are optional and separately consented.
+- **RLTransition:** one state/action/reward/next-state record for the routing or recapture policy.
 
 An ISBN is never the primary key of `AssetCopy`.
 
@@ -420,10 +490,62 @@ The shared geometry contract records:
 
 Generate both outputs from the same IR:
 
-- **2D:** vector floor plan with room labels, shelf footprints, asset pins, coverage overlays, and damage markers;
+- **2D:** vector floor plan with room labels, shelf footprints, asset pins, coverage overlays, damage markers, and per-shelf data-size labels;
 - **3D:** RoomPlan/USDZ base with selectable shelves/assets and evidence links.
 
-Building replacement cost is not the real-estate sale price. It requires a separately sourced local reconstruction-rate input, occupancy/construction classification, finish level, age/condition, and insurer policy. The system must label the basis: `replacement_cost`, `market_value`, or `manual_appraisal`; it must never mix them.
+### Shelf data size
+
+The assignment’s “data in the shelves / data size” is interpreted as a first-class shelf-face measurement, not as a throwaway comment.
+
+For each `ShelfFace` the IR stores:
+
+```json
+{
+  "shelf_face_id": "shelf_04.face_A",
+  "capacity_length_m": 4.6,
+  "occupied_length_m": 3.8,
+  "fill_ratio": 0.83,
+  "item_count": { "value": 87, "unresolved": 6, "status": "partial" },
+  "evidence_bytes": 431718400,
+  "method": "rectified-mosaic-occupancy-v1"
+}
+```
+
+`occupied_length_m` is the measured span of detected spines and objects on that face. `capacity_length_m` is the usable shelf-face width from geometry. Uncovered rows make `item_count.status = partial`; they do not write a fake complete count. Evidence bytes are an audit field so a reviewer can see how much media backs the face.
+
+The inventory and report show this per face and as a property total: occupied metres, copy count, unresolved count, evidence size.
+
+### Building value — reconstruction, not a sale price
+
+**Deliberate interpretation of “put a value on the place.”** The system will produce a building number. It will not pretend RoomPlan is a real-estate appraisal.
+
+Building replacement cost is not the market sale price. The formula is:
+
+```text
+ReconstructionValue =
+  floor_area_m2 × local_rate_per_m2[occupancy, finish]
+  + wall_area_m2 × wall_rate_per_m2   (if the insurer basis includes walls)
+  + adjustments[age, condition, fire/electrical notes]
+```
+
+The report must label `basis = replacement_cost`, the rate table version, the area evidence, and that this is **not** `market_value`.
+
+The demo ships this labeled rate table so “value the place” has a number without waiting for an insurer data feed. These figures are **demo scaffolding**, not claimed construction-cost research.
+
+```json
+{
+  "table_id": "demo_rebuild_rates_v1",
+  "unit": "currency_per_m2",
+  "disclaimer": "demo rates for architecture alignment; replace before any real survey",
+  "rates": {
+    "IN": { "currency": "INR", "commercial_library": { "low": 40000, "medium": 65000, "premium": 100000 } },
+    "IT": { "currency": "EUR", "commercial_library": { "low": 1200, "medium": 1800, "premium": 2600 } },
+    "JP": { "currency": "JPY", "commercial_library": { "low": 250000, "medium": 380000, "premium": 520000 } }
+  }
+}
+```
+
+Production replaces this table with the insurer’s reconstruction-rate vendor. The country key is the same `SurveyGeography.country_code` that location access proposed (or the technician’s override). The `ValuationProvider` interface does not change. Who signs off high-value appraisals remains a stakeholder decision; the demo routes those items to `requires_appraisal`.
 
 ## 11. Price search and valuation
 
@@ -437,7 +559,7 @@ For each resolved edition and market, the pricing service gathers normalized `Pr
   "isbn13": "9780132350884",
   "market": "IN",
   "currency": "INR",
-  "source": "provider_name",
+  "source": "bing_search",
   "listing_url": "https://...",
   "listing_id": "...",
   "edition_match": "exact",
@@ -453,48 +575,112 @@ For each resolved edition and market, the pricing service gathers normalized `Pr
 }
 ```
 
-### 11.2 In-app web search
+### 11.2 Bing search is the price-discovery path
 
-The app can include a **Price Evidence** screen:
+The inventory **Search Bing** action is a Bing search, not a retailer scrape and not a generic unspecified web API.
 
-1. expose a **Search Web** action for every detected book in the inventory;
-2. search by a validated ISBN when one is available; otherwise search by the recognized book name, supplemented by author, publisher, edition/format, language, and country when those fields are available;
-3. support running this lookup individually during review or as a queued lookup for every found book, while deduplicating the external search for copies that share the same edition and market;
-4. keep the search query and the identifier/title evidence used to create it, so a reviewer can see whether the result came from an ISBN lookup or a name-based lookup;
-5. call the backend pricing/search provider;
-6. show source links and candidate offers inside the app;
-7. let the technician/reviewer confirm edition and condition comparability;
-8. save the selected offer, retrieval timestamp, visible fields, and evidence reference;
-9. allow manual entry with a reason when automatic extraction is not permitted or not reliable.
+For every detected book, search Bing using a validated ISBN when one exists; otherwise search by the recognized book name (plus author, publisher, edition/format, language, and country when known). Bing results are how we find local listing URLs and candidate prices. A human still confirms edition and condition before a candidate becomes a `PriceObservation`.
 
-The search fallback is therefore:
+The classic Bing Search API v7 was retired on 11 August 2025. The current Bing-backed product is **Grounding with Bing Search** (Azure AI Foundry / Foundry `web_search`). Design against that, not the dead v7 endpoint. It charges per search transaction (listed at $14 per 1,000 as of 2026), supports `market` / `set_lang` / `count`, and requires the UI to show both the Bing query URL and the citation URLs.
+
+#### Query construction
+
+One search per unique `(edition_or_title, market)`, not per physical copy.
 
 ```text
 validated ISBN
-  → exact ISBN web search
-  → if no useful result, ISBN + title/author
+  q = "{isbn13} book price"
+  if still weak: q = "{isbn13} {title} {author} buy {country}"
 
 no validated ISBN
-  → book name + author
-  → add publisher/edition/format/language when known
+  q = "{title} {author} book price {country}"
+  add publisher / edition / format / language when known
 
 insufficient name evidence
   → request a closer spine/title-page scan or leave pricing unresolved
 ```
 
-Name-based results have lower identity confidence than an exact-ISBN result. They must be checked against the captured cover/spine and edition metadata before contributing to valuation.
+Pass Bing `market` from **device location**, not from a typed guess, so Italy and Japan do not share a US result set.
 
-Do not embed an unrestricted scraper in the mobile client. A server-side `BookPriceProvider` owns rate limits, source-specific rules, caching, and credentials. If a site permits only human browsing, open it in an in-app browser and require confirmation rather than pretending a brittle scraper is a production integration.
+The app requests Core Location **When In Use** at survey creation. One reading is enough; do not track the technician for the whole walkthrough. Reverse-geocode to country / admin area / city, then map:
+
+| Survey country | How it is set | Bing `market` | `set_lang` |
+| --- | --- | --- | --- |
+| India | GPS reverse-geocode or manual | `en-IN` | `en` |
+| Italy | GPS reverse-geocode or manual | `it-IT` | `it` |
+| Japan | GPS reverse-geocode or manual | `ja-JP` | `ja` |
+
+Store on the survey:
+
+```json
+{
+  "permission": "when_in_use",
+  "source": "gps",
+  "captured_at": "2026-09-20T10:00:00Z",
+  "country_code": "IT",
+  "admin_area": "Lombardia",
+  "locality": "Milan",
+  "currency": "EUR",
+  "bing_market": "it-IT",
+  "set_lang": "it",
+  "rebuild_rate_key": "IT",
+  "coordinates": { "lat": 45.4642, "lon": 9.1900, "accuracy_m": 12, "stored": false }
+}
+```
+
+Default is **coarse geography** (country, city, market). Precise lat/lon is stored only if the technician consents to pin the property; otherwise keep it on-device for the reverse-geocode and drop it. If location is denied, timed out, or clearly wrong (VPN, indoor GPS jump), the survey still proceeds with a required manual country/city. `source` becomes `manual` or `mixed` when the human overrides GPS.
+
+The same country key selects the building reconstruction-rate row. Bing queries include that country so “local prices of the books” follow where the library actually is.
+
+Keep the exact `q`, `market`, location source, and whether the query was ISBN-based or name-based on the evidence record.
+
+#### What Bing returns, and how a price is taken
+
+```text
+ISBN or name
+  → BookPriceProvider.BingSearch
+  → Grounding with Bing Search (count ≤ 10, market, set_lang)
+  → citations + snippets + bing.com query URL
+  → candidate PriceObservation drafts
+  → filter eBook / rental / bundle / wrong edition
+  → Price Evidence screen
+  → technician confirms comparable offer
+  → saved PriceObservation
+```
+
+The backend may parse obvious prices from titles and snippets (`₹825`, `€31.99`, `¥2,640`) into drafts. That is search-result extraction, not fetching and scraping the retailer HTML. If the snippet is ambiguous, open the Bing result (or the Bing results page) in the in-app browser and let the technician confirm the visible price.
+
+Name-based hits have lower identity confidence than an exact-ISBN hit. They must match the captured spine/cover before they contribute to valuation.
+
+#### App behavior
+
+The **Price Evidence** screen:
+
+1. **Search Bing** on one book, or queue every found book (deduped by edition + market).
+2. Shows the Bing query string, the [bing.com search URL](https://www.bing.com/search?q=), and each citation’s title, URL, snippet, and any parsed price.
+3. Lets the technician confirm edition, format, condition, and landed price.
+4. Saves the selected offer, Bing query, citation URL, retrieval timestamp, and evidence hash.
+5. Allows manual entry with a reason when Bing has no usable listing.
+
+Bing’s use-and-display rules require showing the Bing query URL and the citation URLs in this UI. Do not hide that this was a Bing search.
+
+#### Budget and fallback
+
+Cache Bing responses by `sha256(q + market)` with a short TTL. A 50–100 book demo with ~40–80 unique editions is well under the $5 search line at $14 / 1,000 transactions.
+
+If an Azure Grounding-with-Bing resource cannot be created inside the $50 cap, the same query builder still runs: open `https://www.bing.com/search?q=...` in the in-app browser (`mkt` on the URL), and the technician confirms a listing. That is still Bing search; it is just not an automated transaction.
+
+**Deliberate refusal of “scrape Amazon, don’t use the API.”** The assignment asked for scraping because APIs are expensive. This plan still prices books. Bing is the search layer that finds Amazon and other retailer listings in the local market. The app will not scrape those pages, bypass CAPTCHAs, or depend on the Amazon Creators API.
 
 Provider order for the MVP:
 
-1. catalog metadata: Open Library and/or Google Books;
-2. permitted book/retail price integration or search provider;
-3. Amazon Creators API if account/access and use terms fit the project;
-4. human-confirmed retailer listing;
-5. manual appraisal/unavailable.
+1. catalog metadata: Open Library and/or Google Books (identity, not physical-copy price);
+2. **Bing search by ISBN, else by name**, market-scoped;
+3. technician-confirmed retailer listing opened from a Bing citation;
+4. Amazon Creators API **only if** access already exists — optional, not required;
+5. manual appraisal / unavailable.
 
-Google Books `saleInfo` is country-dependent and often describes an eBook offer, so it must not automatically price a physical copy. Amazon's current official Creators API requires an Associates account/credentials and has usage limits tied to the program. The architecture therefore cannot depend on Amazon access or scraping.
+Google Books `saleInfo` is country-dependent and often describes an eBook offer, so it must not automatically price a physical copy. Amazon's Creators API is optional. Cached Bing lookups are the default paid search spend.
 
 ### 11.3 Estimation rule
 
@@ -523,91 +709,214 @@ With one weak offer, return a low-confidence range or review request—not a pre
 
 ```mermaid
 flowchart TD
-  A["AssetCopy"] --> B{"Edition resolved?"}
+  A["AssetCopy"] --> B{"Edition or usable title?"}
   B -- No --> U["Identity review / unpriced"]
-  B -- Yes --> C["Query provider cache by ISBN + market + basis"]
-  C --> D["Collect raw offers"]
-  D --> E["Filter edition, format, language, condition, availability"]
-  E --> F{"Enough comparable evidence?"}
-  F -- No --> G["In-app web review or manual price"]
-  F -- Yes --> H["Robust range + confidence"]
-  G --> I{"Rare/high-value?"}
-  I -- Yes --> J["Specialist appraisal"]
-  I -- No --> H
-  H --> K["Apply insurer valuation policy"]
-  K --> L["Valuation with evidence and timestamp"]
+  B -- Yes --> C["Cache: ISBN-or-name + Bing market"]
+  C -->|miss| D["Bing search: ISBN first, else name"]
+  C -->|hit| E["Cached Bing citations"]
+  D --> E
+  E --> F["Draft PriceObservations from snippets/citations"]
+  F --> G["Filter edition, format, language, condition, eBook/rental"]
+  G --> H{"Enough comparable evidence?"}
+  H -- No --> I["Open Bing results in-app / manual price"]
+  H -- Yes --> J["Technician confirm + robust range"]
+  I --> K{"Rare/high-value?"}
+  K -- Yes --> L["Specialist appraisal"]
+  K -- No --> J
+  J --> M["Apply insurer valuation policy"]
+  M --> N["Valuation with Bing query URL, citation, timestamp"]
 ```
 
 ## 12. Two model pipelines and Jev
 
-The assignment's names are retained as **Pipeline A (Fable/Anthropic)**, **Pipeline B (Astra/Astro real-time)**, and **Jev** until exact provider model IDs, API access, supported media, regions, and prices are confirmed. Those are deployment configuration, not schema names.
+The assignment's names are retained as **Pipeline A (Fable/Anthropic)**, **Pipeline B (Astra/Astro)**, and **Jev** until exact provider model IDs, API access, supported media, regions, and prices are confirmed. Those are deployment configuration, not schema names.
+
+### Deliberate split: live assist is not the parallel pipeline
+
+The assignment frames Fable and Astra as **parallel** pipelines and also calls Astra a **real-time** model. Jev is then asked to evaluate both outputs. A single “Astra = live observer, Fable = batch reasoner” design would honor the real-time hint and fail the parallel-evaluation contract.
+
+This plan therefore uses **two Astra runtimes** that share one assessment schema:
+
+| Runtime | When | Input | Authority |
+| --- | --- | --- | --- |
+| **Live assist** (on-device first; optional sampled Astra-live) | During Pass B/C | Current frame, coverage, local detections | Capture UX only. Never inventory truth. Never written as a Pipeline B result. |
+| **Pipeline A — Fable** | After seal | The same versioned evidence package as B | Independent assessment A |
+| **Pipeline B — Astra replay** | After seal | The same versioned evidence package as A | Independent assessment B. This is the parallel pipeline Jev scores. |
+| **Jev** | After A and B return | Normalized A, normalized B, deterministic flags | Typed decision: accept, recapture, other resolver, human review |
+
+Live Astra is skipped when the budget or latency cannot support it. Pipeline B still runs once after seal. If Astra-live ran on a frame, that call is logged as assist metadata; it is not reused as Pipeline B’s answer.
+
+Why not two end-to-end pipelines on the raw walkthrough video:
+
+- it duplicates the CV work RoomPlan, tracking, and OCR already do;
+- it exceeds the $50 budget;
+- Jev cannot compare models that saw different, unversioned frame sets.
+
+Fable and Astra still do not write geometry, validate ISBN checksums, perform currency arithmetic, fetch a hidden price, or alter an original observation. Price and geography stay in the pricing service and survey locale. Models classify category, condition, damage type, note meaning, and ambiguous identity candidates.
 
 ### Evidence package
 
-Both model pipelines receive the same versioned, bounded package, independently:
+Both **evaluation** pipelines receive the same versioned, bounded package, independently:
 
 - best asset crops and optional damage close-up;
 - OCR candidates and raw confidence;
 - barcode/catalog candidates;
-- spatial/shelf context;
+- spatial/shelf context including data-size summary;
 - operator note and transcript segment;
 - deterministic flags and allowed taxonomy;
 - requested task only.
 
-They do not receive each other's answer. Both return the same strict schema. Models may classify category, condition, damage type, note meaning, and ambiguous identity candidates. They may not write geometry, validate ISBN checksums, perform currency arithmetic, fetch a hidden price, or alter an original observation.
+They do not receive each other's answer. Both return the same strict schema.
 
 ### Runtime roles
 
-- **Pipeline B / real-time:** gives capture assistance and provisional candidates. It is never the final authoritative inventory during capture.
-- **Pipeline A / batch:** reasons over the completed evidence package after deterministic processing.
+- **Live assist:** quality, coverage, “slow down / recapture this row,” provisional counts.
+- **Pipeline A / Fable batch:** reasons over the completed evidence package after deterministic processing.
+- **Pipeline B / Astra replay:** independent post-scan assessment of that same package.
 - **Jev:** consumes normalized structured state and produces bounded probabilities/actions such as accept, targeted recapture, alternate resolver, or human review.
 - **Policy engine:** validates Jev's proposed action against hard thresholds, value/risk rules, retry budgets, and permissions.
-- **Human reviewer:** resolves uncertainty and supplies labeled feedback.
+- **Human reviewer:** resolves uncertainty and supplies labeled feedback that becomes RL transitions.
 
 ```mermaid
-flowchart LR
-  E["Versioned evidence package"] --> A["Pipeline A: batch"]
-  E --> B["Pipeline B: real-time/final replay"]
-  A --> N["Normalized assessment A"]
-  B --> M["Normalized assessment B"]
-  N --> J["Jev typed decision"]
-  M --> J
+flowchart TB
+  subgraph Capture["During capture — not evaluation"]
+    F["Frames + quality gates"] --> OD["On-device live assist"]
+    OD -->|optional uncertain sample| AL["Astra-live"]
+    OD --> UI["Coverage, recapture, provisional count"]
+    AL --> UI
+  end
+
+  subgraph Eval["After seal — parallel evaluation"]
+    E["Same versioned evidence package"] --> A["Pipeline A: Fable"]
+    E --> B["Pipeline B: Astra replay"]
+    A --> NA["Assessment A"]
+    B --> NB["Assessment B"]
+    NA --> J["Jev typed decision"]
+    NB --> J
+  end
+
+  UI -.->|assist only, not truth| Eval
   E --> R["Deterministic rules"]
   R --> P["Guarded policy engine"]
   J --> P
   P -->|safe and confident| AC["Accept field"]
   P -->|missing evidence| RC["Targeted recapture"]
   P -->|uncertain/material| H["Human review"]
-  H --> L["Immutable correction/outcome log"]
+  H --> L["RL transition log"]
   AC --> L
+  RC --> Capture
 ```
 
 Agreement between two models is not ground truth. A wrong consensus still routes to review when deterministic evidence conflicts or financial impact is high.
 
 ## 13. Feedback and RL design
 
-Start with logged supervision, not online RL.
+**Deliberate staging, not a missing RL loop.** The assignment asks for an RL feedback loop for **your own models**. This plan builds that loop. It does **not** update production weights after each survey.
 
-For every decision, store:
+Logged feedback is stage 0 of RL, not a substitute for it. The first architecture had a state/action/reward record and a cost table; this plan keeps those and gives them a service home.
 
-- compact state and evidence IDs;
-- full model distributions/structured outputs;
-- Jev distribution and proposed action;
-- policy version, executed action, and action reason;
-- human correction and independent truth where available;
-- downstream insurer acceptance/rework outcome, elapsed time, and cost.
+### MDP home
 
-The first learning problem is a contextual bandit/routing policy: given quality, disagreement, confidence, and impact, should the system accept, recapture, use another resolver, or ask a person? Sequential RL is justified only when one action changes later evidence, such as recapture → reprocess → review.
+One **episode** is one survey, including any recapture cycles. Recapture is the sequential case: the action changes the next evidence state.
 
-Rewards must be computed from external outcomes. False merging two physical copies, missing a high-value asset, and assigning a wrong edition should receive materially different costs, but the weights must be agreed with the insurance stakeholder and tested for perverse incentives. “Fewer human reviews” is not a safe reward by itself.
-
-Promotion path:
+**State** (compact, versioned, stored by ID plus hashes — not raw video):
 
 ```text
-immutable logs → offline train/evaluate → temporal/property holdout → shadow → small canary → approved version → rollbackable deployment
+coverage_vector, unreadability, disagreement(A,B),
+jev_entropy, estimated_financial_impact,
+retry_budget_remaining, unresolved_count,
+asset_class, specialist_available
 ```
 
-No single survey updates live model weights or thresholds.
+**Action** (policy engine may veto):
+
+```text
+accept
+recapture(region)
+alternate_resolver
+human_review
+use_specialist_head | use_frontier
+```
+
+**Transition record** (`RLTransition` in Survey IR):
+
+```json
+{
+  "transition_id": "tr_0182",
+  "survey_id": "survey_123",
+  "policy_id": "route_v0_log_only",
+  "state": { "disagreement": 0.41, "impact_band": "high", "coverage": 0.73 },
+  "action": "human_review",
+  "action_source": "jev+policy",
+  "fable": { "condition": "damaged", "confidence": 0.88 },
+  "astra": { "condition": "worn", "confidence": 0.74 },
+  "jev": { "decision": "human_review", "p": { "accept": 0.11, "human_review": 0.79 } },
+  "human_truth": { "condition": "damaged" },
+  "independent_outcome": { "false_merge": false, "missed_high_value": false },
+  "reward": -0.4,
+  "next_state_id": null,
+  "cost_usd": 0.03,
+  "elapsed_ms": 14200
+}
+```
+
+Every Jev/policy decision writes one of these, including accepts. No transition, no learning.
+
+### Proposed reward (policy until insurer sign-off)
+
+These weights are the architecture default so the loop is implementable. They are not claimed to be the insurer’s loss function. “Fewer human reviews” is not a reward.
+
+| Outcome | Reward |
+| --- | ---: |
+| Correct physical-copy keep-or-merge | +1 |
+| False merge of two copies | −5 |
+| False split of one copy | −2 |
+| Correct ISBN / edition | +2 |
+| Wrong ISBN / edition | −3 |
+| Missed high-value asset | −8 |
+| Correct mug exclusion | +0.2 |
+| Valued a mug or used an eBook offer as physical replacement | −4 |
+| Recapture that recovered a missed row | +1.5 |
+| Unnecessary recapture on an already-covered face | −0.5 |
+| Correct specialist-appraisal routing | +1 |
+
+Rewards are computed only from independent labels, measured geometry, or verified price references — never from Jev agreeing with Fable.
+
+### What “your own models” means
+
+Frontier A/B stay on ambiguous, high-value, or novel cases. Once enough labeled transitions exist, train small specialist heads on the same schema:
+
+- book condition;
+- value-eligibility (price vs exclude vs appraisal);
+- damage type;
+- duplicate-pair keep/merge suggestion (features only; hard ISBN/spatial constraints remain code);
+- frame/row quality acceptance.
+
+Those heads are **our models**. The RL loop’s first learned policy is the **router** that chooses accept / recapture / specialist / frontier / human. Specialist heads are trained with ordinary supervised losses on the same logged truth; they are then one of the router’s actions.
+
+### Staged path
+
+```text
+Stage 0  Log-only policy. Every decision writes RLTransition. No learning.
+Stage 1  Offline contextual bandit on the router (accept vs recapture vs human vs specialist).
+Stage 2  Offline sequential RL only where action changes later evidence (recapture → reprocess).
+Stage 3  Distill specialist heads from labeled transitions + review truth.
+Stage 4  Shadow the new policy on holdout surveys. Do not act.
+Stage 5  Small canary, then approved policy_id. Rollback by pinning the previous policy_id.
+```
+
+Promotion gate: temporal and property holdout; no survey used in training; reward and calibration reported with numerator/denominator. **No single survey updates live model weights or thresholds.**
+
+### Service home
+
+The backend owns:
+
+- append-only **replay buffer** of `RLTransition` rows;
+- **offline trainer** (local for the demo; a job in production);
+- **policy registry** (`policy_id`, artifact hashes, stage, approved_at);
+- **specialist model zoo** loaded by the CV worker and router.
+
+The demo trains on the labeled 50–100 book zone plus held-out rescan cases. That is enough to show the loop, not enough to claim a production policy.
 
 ## 14. Backend architecture
 
@@ -619,11 +928,18 @@ flowchart TB
     UI["Guided room/shelf/exception UI"]
     RP["RoomPlan + ARKit"]
     LV["Vision OCR/barcode/quality"]
+    LA["On-device live assist"]
+    CL["Core Location → country/city"]
     LS["Encrypted local package"]
     UI --> RP
     UI --> LV
+    UI --> CL
+    LV --> LA
+    LA --> UI
+    CL --> UI
     RP --> LS
     LV --> LS
+    CL --> LS
   end
 
   LS -->|"resumable signed upload"| OBJ["Object storage: immutable media"]
@@ -640,34 +956,42 @@ flowchart TB
   STT --> IR
 
   IR --> CAT["Catalog identity service"]
-  CAT --> PRICE["Pricing provider service"]
-  IR --> PA["Pipeline A adapter"]
-  IR --> PB["Pipeline B adapter"]
+  CAT --> PRICE["Pricing: Bing search + catalog"]
+  IR --> BVAL["Building valuation: area × rate table"]
+  IR --> PA["Pipeline A Fable adapter"]
+  IR --> PB["Pipeline B Astra replay adapter"]
   PA --> JEV["Jev adapter"]
   PB --> JEV
   JEV --> POL["Deterministic policy engine"]
   PRICE --> POL
+  BVAL --> POL
   POL --> REVIEW["Human review queue"]
   POL --> REPORT["2D / 3D / inventory / report"]
   REVIEW --> REPORT
-  REVIEW --> FEED["Evaluation and feedback store"]
-  REPORT --> FEED
+  REVIEW --> BUF["Replay buffer: RLTransition"]
+  REPORT --> BUF
+  BUF --> TRAIN["Offline trainer"]
+  TRAIN --> REG["Policy registry + specialist zoo"]
+  REG -.->|approved policy_id| POL
+  REG -.->|specialist heads| CV
 ```
 
 ### Service boundaries
 
 | Component | Owns | Does not own |
 | --- | --- | --- |
-| Capture app | acquisition, local quality, package, upload, review UI | final count/valuation truth |
+| Capture app | acquisition, local quality, package, upload, review UI, location → geography | final count/valuation truth |
 | Ingestion API | auth, survey lifecycle, signed URLs, manifest acceptance | media processing |
 | Workflow engine | retries, dependencies, timeouts, idempotency, dead-letter state | domain inference |
-| Geometry worker | RoomPlan normalization and 2D/3D geometry | asset identity or value |
-| CV worker | quality, shelves, detections, tracking, crops, OCR/barcodes | catalog truth or valuation policy |
+| Geometry worker | RoomPlan normalization, 2D/3D geometry, shelf capacity length | asset identity or value |
+| CV worker | quality, shelves, detections, tracking, crops, OCR/barcodes, occupied length | catalog truth or valuation policy |
 | Identity service | deterministic identifier validation and catalog candidates | physical-copy deduplication |
-| Pricing service | source adapters, cache, offer normalization, FX snapshot | insurer policy or appraisal |
-| Model adapters | bounded ambiguous classification | arithmetic, direct mutation, hard rules |
+| Pricing service | Bing query builder, Grounding-with-Bing adapter, cache, offer drafts, FX snapshot | insurer policy, Amazon HTML scrape, or appraisal |
+| Building valuation | area × versioned rate table, basis label | market appraisal |
+| Model adapters | bounded ambiguous classification; Pipeline B is Astra replay | live-assist UX, arithmetic, hard rules |
 | Policy engine | confidence/value gates and allowed transitions | perception |
-| Review/report | corrections, sign-off, evidence presentation | silent model retraining |
+| RL trainer / policy registry | offline bandit/RL, specialist heads, policy_id promotion | live per-survey weight updates |
+| Review/report | corrections, sign-off, evidence presentation, shelf data size | silent model retraining |
 
 ### MVP deployment profile
 
@@ -679,7 +1003,8 @@ For the $50 demonstration, keep the logical boundaries but deploy simply:
 - local filesystem or low-cost S3-compatible storage;
 - an in-process/durable local job table instead of adding Redis prematurely;
 - OpenCV/PyTorch/Vision for local CV;
-- paid model calls only for uncertain evidence packages.
+- paid model calls only for uncertain evidence packages, plus one Fable and one Astra-replay pass on the ambiguous set;
+- local offline trainer on the labeled demo set (no cloud GPU).
 
 For production, swap SQLite/filesystem/local jobs for PostgreSQL, object storage, and a durable workflow engine without changing the IR or provider interfaces.
 
@@ -692,13 +1017,17 @@ backend/app/domain/
 backend/app/workflows/
 backend/app/providers/catalog/
 backend/app/providers/pricing/
+backend/app/providers/pricing/bing_search.py
 backend/app/providers/models/
 backend/app/policy/
+backend/app/rl/
 cv/library_vision/
 schemas/survey-ir.schema.json
 schemas/evidence-package.schema.json
 schemas/model-assessment.schema.json
+schemas/rl-transition.schema.json
 eval/
+eval/transitions/
 fixtures/
 docs/
 ```
@@ -718,10 +1047,14 @@ GET    /v1/surveys/{id}/jobs
 GET    /v1/surveys/{id}/inventory
 GET    /v1/surveys/{id}/review
 POST   /v1/reviews/{id}/decision
-POST   /v1/assets/{id}/price-search
+POST   /v1/assets/{id}/price-search          # Bing: ISBN first, else name
+POST   /v1/surveys/{id}/price-search-queue   # one Bing query per unique edition+market
 POST   /v1/assets/{id}/price-observations
 GET    /v1/surveys/{id}/report
+GET    /v1/surveys/{id}/shelves
 GET    /v1/evidence/{id}
+GET    /v1/policies
+POST   /v1/policies/{id}/shadow
 ```
 
 Mutations require idempotency keys. Processing jobs use stable keys such as `survey_id + stage + input_hash + pipeline_version`. Retrying a stage must update or replace its own versioned output, never append duplicate assets.
@@ -757,8 +1090,8 @@ Store both overall survey status and each stage's status. An individual asset ca
 
 ## 16. Mobile product flow
 
-1. **Create Survey** — property, locale, currency, valuation basis, consent.
-2. **Device Check** — LiDAR/support, storage, battery, camera/mic permission, network optional.
+1. **Create Survey** — request **When In Use** location; reverse-geocode country/city; suggest currency and Bing market; technician confirms or overrides; valuation basis; consent.
+2. **Device Check** — LiDAR/support, storage, battery, camera/mic/location permission, network optional.
 3. **Room Pass** — RoomPlan guidance, name rooms, confirm joins.
 4. **Shelf Map** — detect/confirm shelf units and sides.
 5. **Shelf Pass** — live quality/coverage overlay per face and row.
@@ -767,11 +1100,11 @@ Store both overall survey status and each stage's status. An individual asset ca
 8. **Exception Pass** — barcode/title-page/damage close-ups and high-value items.
 9. **Seal and Upload** — hashes, progress, pause/resume, local copy until acknowledgment.
 10. **Processing** — stage-specific progress and actionable failures.
-11. **Overview** — room/area, coverage, physical-copy count, resolved editions, estimated value, unresolved material items.
-12. **2D/3D** — select shelf/asset and open evidence.
-13. **Inventory** — distinguish physical copies from unique editions; filter by room/shelf/status; run **Search Web** for any individual book or queue searches for all found books using ISBN-or-name fallback.
+11. **Overview** — room/area, coverage, physical-copy count, shelf data size, resolved editions, contents range, building reconstruction estimate, survey city/market, unresolved material items.
+12. **2D/3D** — select shelf/asset and open evidence; shelf label shows occupied metres and copy count.
+13. **Inventory** — distinguish physical copies from unique editions; filter by room/shelf/status; **Search Bing** for any book by ISBN or name, or queue every found book.
 14. **Review** — merge/keep separate, choose edition, rescan barcode, bind note, confirm price, request appraisal.
-15. **Report** — signed-off JSON/PDF plus evidence manifest and limitations.
+15. **Report** — signed-off JSON/PDF plus evidence manifest, rate-table version, policy_id, and limitations.
 
 Accessibility requirements include Dynamic Type, VoiceOver labels, high-contrast status cues that do not rely on color, large touch targets, captions/transcripts, and safe one-handed operation during capture.
 
@@ -790,7 +1123,9 @@ Accessibility requirements include Dynamic Type, VoiceOver labels, high-contrast
 | Repeat pass appears duplicated | Cross-pass review candidate | Merge only with strong spatial/visual evidence or human decision |
 | Book moved mid-scan | `possibly_moved` | Confirm one moved copy versus two copies |
 | Audio names several visible objects | Note remains unbound | Technician selects target asset |
-| Price source unavailable/rate-limited | Cached value labeled stale or no estimate | Try another allowed provider/manual evidence |
+| Location denied, timed out, or indoor GPS jump | Geography `source=manual`; Bing market not auto-set | Technician enters country/city; scan continues |
+| Location country conflicts with typed address | `source=mixed`; review flag | Confirm which market to use for Bing and rebuild rates |
+| Price source unavailable/rate-limited | Cached Bing result labeled stale, or no estimate | Retry Bing, open bing.com in-app, or manual evidence |
 | Only eBook price found | Reject for physical replacement basis | Search physical format |
 | One extreme marketplace listing | Low confidence; not central value | Add comparables or appraisal |
 | Potentially valuable art/rare book | No automated precise value | Specialist appraisal |
@@ -855,7 +1190,7 @@ These choices materially change implementation and must be confirmed:
 4. Valuation basis for books: new replacement, like-for-like used replacement, actual cash value, or another insurer rule.
 5. Countries/currencies required in the demo.
 6. Whether technicians may pull books out for barcode/title-page capture.
-7. Which external sources are legally/contractually approved for automated price extraction.
+7. Which external sources are legally/contractually approved for automated price extraction — **default in this plan: Bing search** (Grounding with Bing Search, or in-app bing.com fallback). Retailer pages are opened from Bing citations, not scraped.
 8. Whether shelf/furniture value belongs to building, contents, or a configurable policy category.
 9. Retention, data residency, face/person redaction, and consent requirements.
 10. Who supplies building reconstruction-rate data and who signs off high-value appraisals.
@@ -907,10 +1242,13 @@ These choices materially change implementation and must be confirmed:
 
 ### Phase 5 — price evidence and valuation
 
-- Catalog/price provider contracts, caching, permitted in-app search, offer normalization, currency snapshot, and policy configuration.
-- Separate contents and building replacement calculations.
+- Catalog metadata for identity (Open Library / Google Books).
+- Bing query builder: ISBN first, else name; `market` from device location (overridable); cache by query hash.
+- Grounding with Bing Search adapter, plus in-app bing.com fallback.
+- Price Evidence UI: Bing query URL, citations, confirm offer.
+- Building replacement: area × labeled demo rate table.
 
-**Exit:** each estimated value exposes matching offers, timestamp, market, basis, range, and exclusions; rare/high-value cases remain appraisal items.
+**Exit:** a book with an ISBN and a book with only a name both produce Bing evidence; each estimated value exposes the Bing query, citation, timestamp, market, basis, range, and exclusions; rare/high-value cases remain appraisal items.
 
 ### Phase 6 — model A, model B, and Jev
 
@@ -947,7 +1285,7 @@ Use a hard per-survey ledger and stop expensive stages at the cap.
 | Pipeline A | $15 | best crops only; no raw long video |
 | Pipeline B | $15 | sampled uncertain/high-value cases; cache replay |
 | Jev/evaluation calls | $5 | compact structured state only |
-| Search/catalog/misc. | $5 | free/approved sources and caching |
+| Search/catalog/misc. | $5 | Bing Grounding (~$14/1k txns), cache by ISBN/name+market; Open Library/Google Books free |
 | Contingency | $5 | failed calls or final rerun |
 
 This is a planning allocation, not a claim about current provider prices. Verify live pricing before implementation. The app records per-run input/output usage and estimated cost. Local barcode/OCR/quality/deduplication should handle the bulk of evidence; paid models see only the small ambiguous set.
@@ -957,8 +1295,10 @@ This is a planning allocation, not a claim about current provider prices. Verify
 - Encrypt local packages and network transport; encrypt server storage.
 - Use signed, short-lived upload/download URLs and least-privilege service roles.
 - Keep secrets server-side; never ship retailer/model keys in the app.
-- Capture consent for video/audio and show recording state clearly.
-- Detect/redact bystanders/faces where policy requires it; avoid precise location unless needed.
+- Capture consent for video, audio, and **When In Use** location; show recording and location state clearly.
+- Use location to set survey geography (country, city, Bing market, rebuild-rate key). One reading at create-survey; no continuous tracking during the walkthrough.
+- Default to coarse geography. Store precise coordinates only with extra consent for a property pin. Reverse-geocode on-device when possible.
+- Detect/redact bystanders/faces where policy requires it.
 - Separate customer/tenant data and log evidence access.
 - Define retention/deletion for raw media, derived crops, transcripts, and reports.
 - Hash original files and keep original evidence immutable.
@@ -982,13 +1322,13 @@ Use a controlled 50–100-book area containing:
 
 Show, in order:
 
-1. RoomPlan geometry and multi-pass guidance.
+1. RoomPlan geometry and multi-pass guidance, including location-derived city/market on the survey.
 2. Shelf coverage warning and targeted recapture.
 3. Physical count before identity resolution.
 4. The repeat scan not doubling the count.
 5. Same-ISBN copies remaining separate.
 6. Barcode/ISBN validation and catalog candidate evidence.
-7. In-app price search with exact-edition/source/timestamp evidence and range.
+7. **Search Bing** by ISBN, then by name if needed; show query URL, citations, confirmed price range.
 8. Portrait audio note linked to the correct damage close-up.
 9. Mug deliberately excluded and art deliberately routed to appraisal.
 10. Pipeline A/B disagreement, Jev proposal, deterministic gate, and human review.
@@ -1001,7 +1341,9 @@ Show, in order:
 - Apple Vision [framework](https://developer.apple.com/documentation/vision), [barcode detection](https://developer.apple.com/documentation/vision/vndetectbarcodesrequest), and [text recognition](https://developer.apple.com/documentation/vision/recognizing-text-in-images)
 - Google Books API [usage](https://developers.google.com/books/docs/v1/using) and [volume/sale fields](https://developers.google.com/books/docs/v1/reference/volumes)
 - Open Library [developer APIs](https://openlibrary.org/developers/api), [Books API](https://openlibrary.org/dev/docs/api/books), and [Search API](https://openlibrary.org/dev/docs/api/search)
-- Amazon [Creators API onboarding](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/onboarding), [usage limits](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/concepts/api-rates), and [offer caveats](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/api-reference/resources/offersV2)
+- Bing Search APIs [retired 11 August 2025](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement); successor [Grounding with Bing Search](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/bing-tools) (`market`, `set_lang`, `count`) and [Foundry web search](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/web-search)
+- Grounding with Bing [pricing](https://www.microsoft.com/en-us/bing/apis) and [display requirements](https://www.microsoft.com/en-us/bing/apis) (show Bing query URL and citation URLs)
+- Amazon [Creators API onboarding](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/onboarding) — optional, not the demo path
 - International ISBN Agency [ISBN Users' Manual](https://www.isbn-international.org/content/isbn-users-manual)
 
 ## 25. Architecture summary
@@ -1018,7 +1360,8 @@ flowchart LR
   V --> IR
   N --> IR
   IR --> ID["Physical copy + edition resolution"]
-  ID --> PR["Price evidence + valuation policy"]
+  ID --> BING["Bing search: ISBN or name"]
+  BING --> PR["Price evidence + valuation policy"]
   IR --> MA["Pipeline A"]
   IR --> MB["Pipeline B"]
   MA --> J["Jev + policy gates"]
