@@ -1,0 +1,147 @@
+import SwiftUI
+
+struct RootView: View {
+  enum Stage {
+    case create
+    case deviceCheck
+    case roomCapture
+    case package
+  }
+
+  @StateObject private var drafts = SurveyDraftStore()
+  @StateObject private var location = LocationService()
+  @StateObject private var capture = RoomCaptureStore()
+  @StateObject private var audio = AudioNoteRecorder()
+  @StateObject private var uploader = SurveyUploadService()
+  @State private var stage: Stage = .create
+  @State private var notes: [WrittenNote] = []
+  @State private var sealedPackage: SealedSurveyPackage?
+  @State private var sealError: String?
+  @State private var recoveryError: String?
+  @State private var isRestoring = false
+
+  var body: some View {
+    NavigationStack {
+      Group {
+        switch stage {
+        case .create:
+          CreateSurveyView(store: drafts, location: location) {
+            try? drafts.save()
+            stage = .deviceCheck
+          }
+        case .deviceCheck:
+          DeviceCheckView(
+            locationAvailable: location.state == .resolved || location.state == .denied
+          ) {
+            stage = .roomCapture
+          }
+        case .roomCapture:
+          RoomPassView(
+            store: capture,
+            audio: audio,
+            notes: $notes,
+            recordSpokenNotes: drafts.draft.consent.audio,
+            sealError: sealError,
+            onSeal: seal
+          )
+        case .package:
+          if let sealedPackage {
+            PackagePreviewView(
+              package: sealedPackage,
+              draft: drafts.draft,
+              uploader: uploader,
+              onNewSurvey: reset
+            )
+          }
+        }
+      }
+      .navigationTitle(title)
+      .navigationBarTitleDisplayMode(.inline)
+      .onAppear(perform: restoreSealedPackageIfNeeded)
+      .overlay {
+        if isRestoring {
+          ProgressView("Verifying sealed package")
+            .padding()
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        }
+      }
+      .alert("Package recovery failed", isPresented: Binding(
+        get: { recoveryError != nil },
+        set: { if !$0 { recoveryError = nil } }
+      )) {
+        Button("OK", role: .cancel) { recoveryError = nil }
+      } message: {
+        Text(recoveryError ?? "The sealed package could not be verified.")
+      }
+    }
+  }
+
+  private var title: String {
+    switch stage {
+    case .create: "Create Survey"
+    case .deviceCheck: "Device Check"
+    case .roomCapture: "Room Pass A"
+    case .package: "Sealed Survey"
+    }
+  }
+
+  private func seal() {
+    audio.stop()
+    guard let startedAt = capture.startedAt,
+          let monotonicAnchor = capture.monotonicAnchor
+    else {
+      sealError = "Start and finish a RoomPlan scan before sealing."
+      return
+    }
+    Task {
+      do {
+        let package = try await CapturePackageWriter.seal(
+          draft: drafts.draft,
+          rooms: capture.rooms,
+          samples: capture.samples,
+          notes: notes,
+          audioURL: audio.recordingURL,
+          audioStartedMonotonicSeconds: audio.startedMonotonicSeconds,
+          audioEndedMonotonicSeconds: audio.endedMonotonicSeconds,
+          startedAt: startedAt,
+          monotonicAnchor: monotonicAnchor
+        )
+        sealedPackage = package
+        capture.releaseAfterSeal()
+        sealError = nil
+        stage = .package
+      } catch {
+        sealError = error.localizedDescription
+      }
+    }
+  }
+
+  private func restoreSealedPackageIfNeeded() {
+    guard stage == .create, sealedPackage == nil, !isRestoring else { return }
+    let surveyId = drafts.draft.id
+    isRestoring = true
+    Task {
+      do {
+        let package = try await Task.detached(priority: .userInitiated) {
+          try CapturePackageWriter.loadExisting(surveyId: surveyId)
+        }.value
+        if let package, drafts.draft.id == surveyId {
+          sealedPackage = package
+          stage = .package
+        }
+      } catch {
+        recoveryError = error.localizedDescription
+      }
+      isRestoring = false
+    }
+  }
+
+  private func reset() {
+    capture.reset()
+    drafts.reset()
+    notes = []
+    sealedPackage = nil
+    sealError = nil
+    stage = .create
+  }
+}
