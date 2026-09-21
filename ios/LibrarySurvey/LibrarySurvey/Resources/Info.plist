@@ -22,9 +22,9 @@
 	<string>1</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
 		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSBonjourServices</key>
@@ -39,6 +39,8 @@
 	<string>Location suggests the survey country, city, currency, and pricing market.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access records technician notes on the survey timeline.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Photo access lets you choose an exception close-up when a camera is unavailable.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

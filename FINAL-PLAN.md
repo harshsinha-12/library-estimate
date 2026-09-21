@@ -162,6 +162,8 @@ shelf_04.face_A
     evidence 412 MB
 ```
 
+For a row with 8–10 visible books, the live view should outline each candidate spine as the technician sweeps it. Each outline maps to a distinct physical-copy candidate and row/slot. A reverse sweep updates evidence without adding copies. If occlusion, blur, or missed strips prevent a reliable count, the row remains partial with an explicit count interval and targeted recapture; it cannot be marked complete at a lower count. The physical-device row walkthrough is the first Stage 4 acceptance task in `IMPLEMENTATION.md`; it does not reopen the recorded Stage 2 gate.
+
 ### Pass C — exceptions and valuable assets
 
 The app generates a targeted queue:
@@ -174,6 +176,8 @@ The app generates a targeted queue:
 - audio notes that could not be linked to an asset.
 
 The technician can pull out a book and scan the rear-cover EAN/ISBN, photograph the title/copyright page, or confirm that access is not permitted. An unresolved result is valid; it must not be silently guessed.
+
+For that same row, Pass C gives every physical-copy candidate a validated ISBN/catalog identity, a supported title/name identity, or a visible unresolved task. The technician can choose a book by its captured outline or row/slot, rescan its barcode, photograph the title page, or enter/correct the name. Several copies of one edition retain separate records. A single shelf sweep can count copies when coverage is good; it cannot promise readable names or barcodes from every spine. The row-wide device check is part of Stage 4 acceptance; it does not reopen the recorded Stage 3 gate.
 
 ### Capture sequence
 
@@ -1104,6 +1108,7 @@ Store both overall survey status and each stage's status. An individual asset ca
 11. **Overview** — room/area, coverage, physical-copy count, shelf data size, resolved editions, contents range, building reconstruction estimate, survey city/market, unresolved material items.
 12. **2D/3D** — select shelf/asset and open evidence; shelf label shows occupied metres and copy count.
 13. **Inventory** — distinguish physical copies from unique editions; filter by room/shelf/status; **Search Bing** for any book by ISBN or name, or queue every found book.
+    A shelf-row detail lists all physical copies against the captured row and expected/detected count. Selecting one highlights its spine and opens source images, identity status, Pass C action, condition, Bing search/price evidence, and reviewed range or explicit pending/no-comparable reason. Editing or rescanning one copy must retain its physical-copy ID and must not merge neighboring copies.
 14. **Review** — merge/keep separate, choose edition, rescan barcode, bind note, confirm price, request appraisal.
 15. **Report** — signed-off JSON/PDF plus evidence manifest, rate-table version, policy_id, and limitations.
 

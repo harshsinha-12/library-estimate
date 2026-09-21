@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		01A5CA2C60379F128F01957A /* ShelfCameraContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458A6CD3BBDA041B75801F97 /* ShelfCameraContainer.swift */; };
 		06D676099DB7DBBB76B8C41D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389E41DB3F4CA92F31EC105B /* RootView.swift */; };
+		0B355A2F35A7DD5F9087199B /* ExceptionPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377DE562BC6AC869728262CC /* ExceptionPassView.swift */; };
+		0B6E0898B6984E202D586C88 /* Stage3ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360C071ABB5CA35E7906875D /* Stage3ReviewView.swift */; };
 		107526297493CEC5A2388720 /* ShelfPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC6429C1CE32DF6750D9A09 /* ShelfPassView.swift */; };
 		1F13171D603809AED9D252C9 /* RoomCaptureContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7CA864A25DCD9232388B09 /* RoomCaptureContainer.swift */; };
 		2250F04C823B49975660A454 /* PackagePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA3E3171F4FBD156129CF23 /* PackagePreviewView.swift */; };
@@ -31,7 +33,9 @@
 		A3BAFA535CF5BE1B3A03B99A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A81946E74A526F9954F97A93 /* Assets.xcassets */; };
 		A5A04F7312ECEAD720D264DB /* ShelfCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDF1750F429DD0A64CFA4B16 /* ShelfCaptureStore.swift */; };
 		A5DA9AC07CE5EC166617A6F5 /* DeviceCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0679AB62A14FA7F626E9C301 /* DeviceCheckView.swift */; };
+		AAF8888453427F2521E67269 /* Stage3Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55F8EF37AA1BE2D94515D1C /* Stage3Models.swift */; };
 		BBFC5F5F63A5C1CDEC89BF2C /* FrameSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0624716C2A2BD1A11D57662 /* FrameSampler.swift */; };
+		C81024DCE1F30F16377EE250 /* ExceptionCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1EBBB8799553D6FFA1D044 /* ExceptionCaptureStore.swift */; };
 		CA31483B63673D5A56819A54 /* TaggedFloorPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87736FCC38F49BAA19136020 /* TaggedFloorPlanView.swift */; };
 		D215E2DD3727C89392C14BF7 /* RoomPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7034A4070A1337D36795C93 /* RoomPassView.swift */; };
 		DB63B7B55715ED98823D8A22 /* SurveyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1090F51E026F6CF4745FE7 /* SurveyModels.swift */; };
@@ -48,6 +52,8 @@
 		11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioNoteRecorder.swift; sourceTree = "<group>"; };
 		21956A0227737D443A1F57B5 /* FileHashing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileHashing.swift; sourceTree = "<group>"; };
 		26C68BCD82208FD8803E9219 /* MonotonicClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonotonicClock.swift; sourceTree = "<group>"; };
+		360C071ABB5CA35E7906875D /* Stage3ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage3ReviewView.swift; sourceTree = "<group>"; };
+		377DE562BC6AC869728262CC /* ExceptionPassView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExceptionPassView.swift; sourceTree = "<group>"; };
 		389E41DB3F4CA92F31EC105B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		458A6CD3BBDA041B75801F97 /* ShelfCameraContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfCameraContainer.swift; sourceTree = "<group>"; };
 		4D1090F51E026F6CF4745FE7 /* SurveyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurveyModels.swift; sourceTree = "<group>"; };
@@ -60,6 +66,7 @@
 		8618C4199B088D97355D25A8 /* SurveyUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurveyUploadService.swift; sourceTree = "<group>"; };
 		87736FCC38F49BAA19136020 /* TaggedFloorPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaggedFloorPlanView.swift; sourceTree = "<group>"; };
 		8B7CA864A25DCD9232388B09 /* RoomCaptureContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureContainer.swift; sourceTree = "<group>"; };
+		8C1EBBB8799553D6FFA1D044 /* ExceptionCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExceptionCaptureStore.swift; sourceTree = "<group>"; };
 		977703683E802C36955738B4 /* LibrarySurveyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySurveyApp.swift; sourceTree = "<group>"; };
 		99336D79C6661AE0A60CBB06 /* CapturePackageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturePackageWriter.swift; sourceTree = "<group>"; };
 		9A75896AF74FAE758ACD0681 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -70,6 +77,7 @@
 		A9BDABD7E89F58A048D3FD4F /* ShelfModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfModels.swift; sourceTree = "<group>"; };
 		ACA363AEF087E903C0E42ACE /* RoomCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureStore.swift; sourceTree = "<group>"; };
 		B364D56D3B0E3D204BBE73DF /* FloorPlanLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorPlanLayout.swift; sourceTree = "<group>"; };
+		B55F8EF37AA1BE2D94515D1C /* Stage3Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage3Models.swift; sourceTree = "<group>"; };
 		BB3AC545ECC81570B79CEF67 /* LibrarySurvey.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LibrarySurvey.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C40BB3E7A1589954C4D0EB87 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
 		CAEA0BFA0E112ED27C0548F2 /* LiveQualityAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveQualityAnalyzer.swift; sourceTree = "<group>"; };
@@ -130,6 +138,7 @@
 		9A9C3D868233DEAE652B0E3D /* Capture */ = {
 			isa = PBXGroup;
 			children = (
+				8C1EBBB8799553D6FFA1D044 /* ExceptionCaptureStore.swift */,
 				A0624716C2A2BD1A11D57662 /* FrameSampler.swift */,
 				CAEA0BFA0E112ED27C0548F2 /* LiveQualityAnalyzer.swift */,
 				8B7CA864A25DCD9232388B09 /* RoomCaptureContainer.swift */,
@@ -144,6 +153,7 @@
 			isa = PBXGroup;
 			children = (
 				A9BDABD7E89F58A048D3FD4F /* ShelfModels.swift */,
+				B55F8EF37AA1BE2D94515D1C /* Stage3Models.swift */,
 				4D1090F51E026F6CF4745FE7 /* SurveyModels.swift */,
 			);
 			path = Models;
@@ -154,11 +164,13 @@
 			children = (
 				D6CAB75C1A35A43B56F251AC /* CreateSurveyView.swift */,
 				0679AB62A14FA7F626E9C301 /* DeviceCheckView.swift */,
+				377DE562BC6AC869728262CC /* ExceptionPassView.swift */,
 				9CA3E3171F4FBD156129CF23 /* PackagePreviewView.swift */,
 				F7034A4070A1337D36795C93 /* RoomPassView.swift */,
 				389E41DB3F4CA92F31EC105B /* RootView.swift */,
 				10D267CACD1ED23A8AA22182 /* ShelfMapView.swift */,
 				7AC6429C1CE32DF6750D9A09 /* ShelfPassView.swift */,
+				360C071ABB5CA35E7906875D /* Stage3ReviewView.swift */,
 				87736FCC38F49BAA19136020 /* TaggedFloorPlanView.swift */,
 			);
 			path = Views;
@@ -284,6 +296,8 @@
 				89724C9FB95BCE34277E426E /* CreateSurveyView.swift in Sources */,
 				32FF30380A5446D6967D8677 /* DeviceCheckService.swift in Sources */,
 				A5DA9AC07CE5EC166617A6F5 /* DeviceCheckView.swift in Sources */,
+				C81024DCE1F30F16377EE250 /* ExceptionCaptureStore.swift in Sources */,
+				0B355A2F35A7DD5F9087199B /* ExceptionPassView.swift in Sources */,
 				9CF0AAFDEEEF5FAED3375776 /* FileHashing.swift in Sources */,
 				E9CE58286FB6A8879AB553BB /* FloorPlanLayout.swift in Sources */,
 				BBFC5F5F63A5C1CDEC89BF2C /* FrameSampler.swift in Sources */,
@@ -305,6 +319,8 @@
 				8AC7DD498471AA22B643552F /* ShelfMapView.swift in Sources */,
 				82173908A3AA20756EB6AAD2 /* ShelfModels.swift in Sources */,
 				107526297493CEC5A2388720 /* ShelfPassView.swift in Sources */,
+				AAF8888453427F2521E67269 /* Stage3Models.swift in Sources */,
+				0B6E0898B6984E202D586C88 /* Stage3ReviewView.swift in Sources */,
 				684DABD691208009A9FF03F5 /* SurveyDraftStore.swift in Sources */,
 				DB63B7B55715ED98823D8A22 /* SurveyModels.swift in Sources */,
 				F0A8F396265D3BE93E50F318 /* SurveyUploadService.swift in Sources */,

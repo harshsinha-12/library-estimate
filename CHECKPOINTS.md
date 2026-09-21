@@ -13,8 +13,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 ## Clock
 
 - [x] T+0–4h Stage 1
-- [x] T+4–8h Stage 2
-- [ ] T+8–12h Stage 3
+- [ ] T+4–8h Stage 2 (original fixture/storage gate passed; added physical row gate open)
+- [ ] T+8–12h Stage 3 (original fixture gate passed; added physical row identity gate open)
 - [ ] T+12–16h Stage 4
 - [ ] T+16–24h Stage 5 (models, RL, review, security, eval, demo)
 
@@ -76,17 +76,20 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] On-device live assist.
 - [x] Idempotent Vision jobs.
 - [x] Gate: Redis/object-storage create/upload/seal/reopen and restart recovery pass; no SQLite dependency; reverse rescan does not double; uncovered rows partial.
+- [ ] Added phone row gate: one for example 8–10 book row has a distinct outlined `AssetCopy` candidate for every visible spine, reverse sweep does not double, and detected/actual plus partial/recapture status are recorded.
 
 ## Stage 3 — T+8–12h — Identity, non-books, damage
 
-- [ ] Pass C exception queue.
-- [ ] OCR + barcode; ISBN-10/13; 979; ISSN; library barcode typing.
-- [ ] Open Library + Google Books identity (not physical price).
-- [ ] Full closed taxonomy.
-- [ ] Mug excluded; art `requires_appraisal`.
-- [ ] OpenAI STT/TTS; note association; unbound notes visible.
-- [ ] Damage close-up workflow.
-- [ ] Gate: no guessed ISBN; portrait note linked; mug excluded; unresolved queue.
+- [x] Pass C on-device exception queue and backend review queue: unread spines, barcode/title page, damage, high-value, unbound notes.
+- [x] On-device Vision barcode/OCR and provisional image outlines; ISBN-10/13 checksums, 979, ISSN, set/volume, separately typed library barcode.
+- [x] Cache → Open Library → Google Books → manual identity chain; normalized Google output discards `saleInfo`.
+- [x] Full closed taxonomy, including books, portraits/photo frames, mug/cup, electronics, furniture.
+- [x] Mug counted with `valuation_required=false`; art/portrait `requires_appraisal`; excluded state explicit.
+- [x] OpenAI timed STT and operator TTS; capture clock runs through Passes A–C; tap/reticle/focus time/pose/semantic association; unbound notes visible.
+- [x] Damage assertion, close-up, and scale workflow; tap a provisional book/object outline to capture a zoomed crop while audio continues.
+- [x] Review actions: bind note, rescan barcode, keep unresolved.
+- [x] Gate exercised in `backend/tests/test_stage3_gate.py` and recorded in `SESSION-RUN.md`: invalid ISBN not eligible for ISBN price query; no-ISBN physical copy ID survives API restart; spoken portrait damage binds to its asset and close-up; mug is counted/excluded; unresolved queue visible; taxonomy covers every demo class.
+- [ ] Added phone row identity gate: every copy in the Stage 2 row has a supported ISBN/name identity or a visible per-copy barcode/title-page/manual task; unread and no-ISBN examples exercised; distinct copies remain distinct.
 
 ## Stage 4 — T+12–16h — Bing + building
 
@@ -95,11 +98,13 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Redis cache `sha256(q + market)`.
 - [ ] Price Evidence UI: Bing URL, citations, confirm, manual.
 - [ ] Queue search per edition+market.
+- [ ] Same-row per-copy price status: validated ISBN then name fallback, shared-edition evidence without copy merge, reviewed local physical-book range or explicit pending/no-comparable reason for every eligible copy.
 - [ ] Filter eBook/rental/bundle; valuation range.
 - [ ] Building reconstruction from `demo_rebuild_rates_v1`.
 - [ ] Overview totals + spend ledger.
 - [ ] All price APIs.
 - [ ] Gate: ISBN and name-only Bing evidence; local market; mug still excluded.
+- [ ] Added row gate: verify price/status roster against every eligible physical copy in the Stage 2/3 row; no draft result presented as a confirmed price.
 
 ## Stage 5 — T+16–24h — Models, RL, product, eval, demo
 
@@ -129,6 +134,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Remaining screens: Processing, Overview, Inventory, Review, Report.
 - [ ] JSON + PDF report with versions, citations, limitations.
 - [ ] Evidence viewer for every count and value.
+- [ ] Shelf-row inventory detail with expected/detected count, selectable copy outlines and evidence, identity/unresolved action, and per-copy price/condition status; barcode rescan, correction, and search actions.
 - [ ] Auth, encryption, signed URLs or local equivalent, retention, redaction, access log.
 - [ ] Accessibility requirements.
 - [ ] $50 ledger with stop-at-cap.
@@ -140,7 +146,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Labeled zone with every §23 case.
 - [ ] Metrics with numerator/denominator.
 - [ ] Holdout without retuning.
-- [ ] Demo script 1–12 run and recorded.
+- [ ] Demo script 1–13 run and recorded.
+- [ ] Added physical-device 8–10 book row demo: manual roster reconciled to distinct copy records, identity or Pass C tasks, price status, inventory/report, and numerator/denominator recorded in `SESSION-RUN.md`.
 - [ ] Gate: full product; RL home; spend and limitations disclosed; ask-map fully landed.
 
 ## Completion policy

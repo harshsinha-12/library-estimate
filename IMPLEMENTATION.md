@@ -226,13 +226,21 @@ Bad checksum never prices. No-ISBN copy is stable. Portrait spoken damage links 
 
 **Goal:** local contents range and a labeled reconstruction number.
 
+### First: one complete shelf row, from capture to price status
+
+Before the general pricing work, exercise the completed Stage 2–3 capabilities on one physical-device row of 8–10 books. Show a provisional outline for each visible spine, reconcile one stable `AssetCopy` per physical book with a manual row roster, and verify a reverse sweep does not duplicate copies. If any slot is missed or unreadable, retain an explicit count interval/partial state and named recapture action. Give every copy a validated ISBN/catalog or supported name identity, or a visible per-copy Pass C barcode/title-page/manual task. Preserve distinct copies even when they share an edition. A distant sweep cannot establish every title or barcode. Carry each eligible copy through price search to a reviewed local physical-book range or an explicit pending/no-comparable state. Show the whole row and each copy's evidence and status in a usable inventory row detail. This is Stage 4 work; the recorded Stage 2 and 3 gates remain complete.
+
 ### Work
 
+- Build the row detail first: expected/detected count, coverage, selectable spine outline and evidence per copy, title/ISBN source or unresolved task, condition, search state, reviewed range or pending reason, and correction/barcode-rescan/per-book search actions.
+- Reconcile the 8–10 book row on the phone; retain each physical-copy ID and row/slot, record detected/actual, and expose missed slots and reverse-sweep duplicates for correction before pricing.
+- For every row copy, link identity evidence or a visible unresolved Pass C action; never infer an ISBN from a title or silently omit an unread book.
 - Query builder (small OpenAI model + templates): ISBN first, else name+author+publisher+edition+country
 - Fetch Bing HTML with market/`cc`; Redis cache `sha256(q + market)`
 - Parse snippets to draft `PriceObservation`s; filter eBook/rental/bundle/wrong format
 - Price Evidence UI: query string, bing.com URL, citations, drafts, confirm, manual reason
 - Queue search for every found edition+market
+- For the 8–10 book row, expose a price-search/status entry for every eligible physical copy. Shared edition+market searches may reuse evidence, but each copy retains its own condition and valuation status. Search by validated ISBN, otherwise by recognized name; unresolved identities remain `price_pending`/unpriced with an action, never zero-valued or silently omitted.
 - Valuation range, FX snapshot, freshness, status `estimated|quoted|manual|requires_appraisal|unavailable`
 - Building: area × `demo_rebuild_rates_v1` for IN/IT/JP; label basis and table version
 - Overview totals: contents range, building, unresolved, city/market
@@ -242,6 +250,8 @@ Bad checksum never prices. No-ISBN copy is stable. Portrait spoken damage links 
 ### Gate
 
 ISBN book and name-only book both have Bing evidence. IT/JP/IN queries are not US. Mug still excluded. Building number shows rates + area. Ledger records search cost.
+
+**First Stage 4 gate:** on a physical device, follow one manually labeled 8–10 book row from live outlines to inventory. Record detected/actual; confirm one stable record per visible book and no reverse-sweep duplicate; show an evidenced ISBN/name or explicit unresolved task for each copy. Every eligible resolved copy has a cited, reviewed local physical-book range or a visible pending/no-comparable reason. Verify name fallback and shared-edition evidence without collapsing copies; drafts are not confirmed prices. Record per-copy outcomes and priced/eligible numerator/denominator in `SESSION-RUN.md` before completing Stage 4.
 
 ---
 
