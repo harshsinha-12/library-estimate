@@ -67,6 +67,7 @@ struct RootView: View {
               store: shelves,
               unit: activeFace.0,
               face: activeFace.1,
+              draft: drafts.draft,
               onFinished: { stage = .shelfMap },
               onFocus: { image, faceId, row, slot in
                 exceptions.currentCameraPose = shelves.currentPose()
@@ -97,8 +98,12 @@ struct RootView: View {
             )
           }
         case .exceptionPass:
-          ExceptionPassView(store: exceptions, units: shelves.units,
-                            shelfPackage: shelves.combinedLabeledPackage()) { stage = .shelfMap }
+          ExceptionPassView(
+            store: exceptions,
+            units: shelves.units,
+            shelfPackage: shelves.combinedLabeledPackage(),
+            draft: drafts.draft
+          ) { stage = .shelfMap }
         }
       }
       .navigationTitle(title)
@@ -159,7 +164,8 @@ struct RootView: View {
           exceptionPackage: PassCPackage(scans: exceptions.scans, notes: exceptions.notes,
                                          focusEvents: exceptions.focusEvents),
           otherAssets: exceptions.marks,
-          exceptionImages: exceptions.images
+          exceptionImages: exceptions.images,
+          shelfCrops: shelves.taggedEvidence()
         )
         sealedPackage = package
         capture.releaseAfterSeal()

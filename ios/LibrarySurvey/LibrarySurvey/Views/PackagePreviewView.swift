@@ -75,13 +75,31 @@ struct PackagePreviewView: View {
         .controlSize(.large)
         .disabled(uploader.isBusy || backendURL == nil)
 
-        if let backendURL {
-          NavigationLink {
-            Stage3ReviewView(surveyId: package.surveyId, backendURL: backendURL)
-          } label: {
-            Label("Review unresolved objects and notes", systemImage: "checklist")
+        GroupBox("Results") {
+          VStack(alignment: .leading, spacing: 10) {
+            if let backendURL {
+              NavigationLink {
+                OverviewView(surveyId: package.surveyId, backendURL: backendURL)
+              } label: {
+                Label("Overview, building, and spend", systemImage: "chart.bar.doc.horizontal")
+              }
+              NavigationLink {
+                InventoryView(surveyId: package.surveyId, backendURL: backendURL)
+              } label: {
+                Label("Inventory row and prices", systemImage: "books.vertical")
+              }
+              NavigationLink {
+                Stage3ReviewView(surveyId: package.surveyId, backendURL: backendURL)
+              } label: {
+                Label("Review unresolved objects and notes", systemImage: "checklist")
+              }
+            } else {
+              Text("Set the backend URL above to open overview, inventory, and review.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
           }
-          .buttonStyle(.borderedProminent)
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         Button("Start Another Survey", action: onNewSurvey)

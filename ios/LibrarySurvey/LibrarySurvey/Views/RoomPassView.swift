@@ -14,46 +14,52 @@ struct RoomPassView: View {
   @State private var pointedCategory: AssetCategory = .portrait
   @State private var pointedLabel = ""
   @State private var pointedHighValue = false
+  @State private var pointedCost = ""
+  @State private var pointedCurrency = "INR"
 
   var body: some View {
     ZStack(alignment: .bottom) {
       RoomCaptureContainer(store: store)
         .ignoresSafeArea(edges: .bottom)
 
-      ScrollView {
-        VStack(spacing: 12) {
-          status
-          TextField("Room name", text: $store.roomName)
-            .textFieldStyle(.roundedBorder)
-
-          HStack {
-            TextField("Written note", text: $noteText)
+      if isCapturing {
+        capturingBar
+      } else {
+        ScrollView {
+          VStack(spacing: 12) {
+            status
+            TextField("Room name", text: $store.roomName)
               .textFieldStyle(.roundedBorder)
-            Button("Add", systemImage: "plus", action: addNote)
-              .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          }
 
-          if audio.isRecording {
-            Label("Recording spoken notes", systemImage: "waveform.circle.fill")
-              .foregroundStyle(.red)
+            HStack {
+              TextField("Written note", text: $noteText)
+                .textFieldStyle(.roundedBorder)
+              Button("Add", systemImage: "plus", action: addNote)
+                .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if audio.isRecording {
+              Label("Recording spoken notes", systemImage: "waveform.circle.fill")
+                .foregroundStyle(.red)
+            }
+            if !notes.isEmpty {
+              Text("\(notes.count) written note\(notes.count == 1 ? "" : "s") on the capture clock")
+                .font(.caption)
+            }
+            if let message = audio.errorMessage {
+              Text(message).font(.caption).foregroundStyle(.orange)
+            }
+            if let message = sealError {
+              Text(message).font(.caption).foregroundStyle(.red)
+            }
+            actions
           }
-          if !notes.isEmpty {
-            Text("\(notes.count) written note\(notes.count == 1 ? "" : "s") on the capture clock")
-              .font(.caption)
-          }
-          if let message = audio.errorMessage {
-            Text(message).font(.caption).foregroundStyle(.orange)
-          }
-          if let message = sealError {
-            Text(message).font(.caption).foregroundStyle(.red)
-          }
-          actions
+          .padding()
         }
+        .frame(maxHeight: 330)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
         .padding()
       }
-      .frame(maxHeight: 330)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
-      .padding()
     }
     .sheet(isPresented: $showObjectMark) {
       NavigationStack {
@@ -66,10 +72,25 @@ struct RoomPassView: View {
           }
           TextField("Object label", text: $pointedLabel)
           Toggle("High-value or unusual", isOn: $pointedHighValue)
+          TextField("Stated replacement cost", text: $pointedCost)
+            .keyboardType(.decimalPad)
+          Picker("Currency", selection: $pointedCurrency) {
+            Text("INR").tag("INR")
+            Text("EUR").tag("EUR")
+            Text("JPY").tag("JPY")
+            Text("USD").tag("USD")
+          }
           Button("Mark pointed object") {
-            exceptions.addMark(category: pointedCategory, label: pointedLabel,
-                               room: store.roomName, highValue: pointedHighValue)
+            exceptions.addMark(
+              category: pointedCategory,
+              label: pointedLabel,
+              room: store.roomName,
+              highValue: pointedHighValue,
+              statedCost: Double(pointedCost),
+              statedCurrency: pointedCost.isEmpty ? nil : pointedCurrency
+            )
             pointedLabel = ""
+            pointedCost = ""
             showObjectMark = false
           }
           .disabled(pointedLabel.isEmpty)
@@ -77,6 +98,20 @@ struct RoomPassView: View {
         .navigationTitle("Pointed object")
       }
     }
+  }
+
+  private var isCapturing: Bool {
+    if case .capturing = store.state { return true }
+    return false
+  }
+
+  private var capturingBar: some View {
+    Button("Finish Room Scan", systemImage: "stop.fill", action: stop)
+      .buttonStyle(.borderedProminent)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      .background(.ultraThinMaterial, in: Capsule())
+      .padding()
   }
 
   @ViewBuilder
