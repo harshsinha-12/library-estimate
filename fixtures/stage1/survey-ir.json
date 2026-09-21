@@ -1,0 +1,53 @@
+{
+  "asset_copies": [],
+  "book_editions": [],
+  "building_valuations": [],
+  "evidence": [
+    {
+      "evidence_id": "roomplan_structure",
+      "mime_type": "application/json",
+      "path": "roomplan/processed/structure.json",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    }
+  ],
+  "geography": {
+    "city": "New Delhi",
+    "country_code": "IN",
+    "currency": "INR",
+    "market": "en-IN",
+    "precise_location_consent": false,
+    "region": "Delhi",
+    "source": "manual"
+  },
+  "property": {
+    "property_id": "property_demo",
+    "spaces": [
+      {
+        "geometry_ref": "roomplan_structure",
+        "name": "Library",
+        "space_id": "space_library",
+        "shelves": []
+      }
+    ]
+  },
+  "identifiers": [],
+  "model_assessments": [],
+  "observations": [],
+  "pipeline_runs": [],
+  "price_observations": [],
+  "review_decisions": [],
+  "rl_transitions": [],
+  "schema_version": "1.0.0",
+  "shelf_face_data_sizes": [],
+  "stage_status": {
+    "capture": "ok",
+    "geometry": "needs_review"
+  },
+  "status": "needs_review",
+  "survey_id": "11111111-1111-4111-8111-111111111111",
+  "tracks": [],
+  "valuations": [],
+  "works": []
+}
+

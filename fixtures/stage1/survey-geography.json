@@ -1,0 +1,12 @@
+{
+  "country_code": "IN",
+  "region": "Delhi",
+  "city": "New Delhi",
+  "currency": "INR",
+  "market": "en-IN",
+  "source": "manual",
+  "latitude": null,
+  "longitude": null,
+  "precise_location_consent": false
+}
+

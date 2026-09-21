@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "price_observation_id": "55555555-5555-4555-8555-555555555555",
+  "book_edition_id": "edition_demo",
+  "query": "example book physical edition",
+  "market": "en-IN",
+  "currency": "INR",
+  "source_url": "https://www.bing.com/search?q=example",
+  "observed_at": "2026-09-21T10:00:00+05:30",
+  "amount": 500,
+  "shipping": null,
+  "condition": "used-good",
+  "format": "hardcover",
+  "offer_type": "physical",
+  "review_status": "draft",
+  "evidence_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}
+
