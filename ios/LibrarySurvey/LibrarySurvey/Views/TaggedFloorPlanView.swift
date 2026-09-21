@@ -31,7 +31,15 @@ struct TaggedFloorPlanView: View {
       })
       openingLegend(kind: .door, title: "Doors")
       openingLegend(kind: .window, title: "Windows")
-      openingLegend(kind: .opening, title: "Openings")
+          openingLegend(kind: .opening, title: "Openings")
+      if !layout.shelves.isEmpty {
+        legend(title: "Shelves", rows: layout.shelves.map { shelf in
+          LegendRow(
+            color: shelf.status == "ok" ? Color.blue : Color.orange,
+            text: "\(shelf.label)  \(shelf.copyCountLabel)  \(shelf.fillLabel)"
+          )
+        })
+      }
     }
   }
 
@@ -87,6 +95,22 @@ private struct TaggedFloorPlanCanvas: View {
           path,
           with: .color(Color(floorPlanHex: wall.colorHex)),
           style: StrokeStyle(lineWidth: 7, lineCap: .square)
+        )
+      }
+      for shelf in layout.shelves {
+        let a = layout.screen(FloorPlanLayout.Point(x: shelf.minX, z: shelf.maxZ), in: size)
+        let b = layout.screen(FloorPlanLayout.Point(x: shelf.maxX, z: shelf.minZ), in: size)
+        let rect = CGRect(
+          x: min(a.x, b.x),
+          y: min(a.y, b.y),
+          width: abs(b.x - a.x),
+          height: abs(b.y - a.y)
+        )
+        let color = shelf.status == "ok" ? Color.blue.opacity(0.35) : Color.orange.opacity(0.4)
+        context.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(color))
+        context.draw(
+          Text(shelf.copyCountLabel).font(.caption2).foregroundColor(.white),
+          at: CGPoint(x: rect.midX, y: rect.midY)
         )
       }
       for opening in layout.openings {

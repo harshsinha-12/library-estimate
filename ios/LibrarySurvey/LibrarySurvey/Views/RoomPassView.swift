@@ -6,7 +6,7 @@ struct RoomPassView: View {
   @Binding var notes: [WrittenNote]
   let recordSpokenNotes: Bool
   let sealError: String?
-  let onSeal: () -> Void
+  let onContinue: () -> Void
 
   @State private var noteText = ""
 
@@ -90,7 +90,7 @@ struct RoomPassView: View {
       HStack {
         Button("Scan Again", systemImage: "arrow.counterclockwise", action: store.reset)
           .buttonStyle(.bordered)
-        Button("Seal Package", systemImage: "lock.fill", action: onSeal)
+        Button("Continue to Shelf Map", systemImage: "books.vertical", action: onContinue)
           .buttonStyle(.borderedProminent)
       }
     case .unsupported:

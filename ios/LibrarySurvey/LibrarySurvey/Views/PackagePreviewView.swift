@@ -27,6 +27,9 @@ struct PackagePreviewView: View {
             Text("Geography: \(draft.geography.city), \(draft.geography.countryCode)")
             Text("Source: \(draft.geography.source.rawValue)")
             Text("Files: \(package.manifest.files.count)")
+            if let shelf = layout?.shelves.first {
+              Text("Shelf data size: \(shelf.copyCountLabel) · \(shelf.fillLabel)")
+            }
             ShareLink(item: sharePlanURL ?? package.svgURL) {
               Label("Share floor plan", systemImage: "square.and.arrow.up")
             }
@@ -101,6 +104,25 @@ struct PackagePreviewView: View {
     let structureURL = package.rootURL.appendingPathComponent("roomplan/processed/structure.json")
     if layout == nil {
       layout = try? FloorPlanLayout.load(from: structureURL)
+    }
+    let labeledURL = package.rootURL.appendingPathComponent("shelf_scans/labeled.json")
+    if let data = try? Data(contentsOf: labeledURL),
+       let labeled = try? JSONCoding.decoder().decode(LabeledShelfPackage.self, from: data) {
+      var unique: [String: LabeledPass] = [:]
+      for item in labeled.passes { unique[item.faceId] = item }
+      layout?.shelves = unique.values.map { pass in
+        FloorPlanLayout.ShelfOverlay(
+          faceId: pass.faceId,
+          label: pass.label,
+          minX: pass.minX,
+          minZ: pass.minZ,
+          maxX: pass.maxX,
+          maxZ: pass.maxZ,
+          copyCountLabel: "\(pass.rows.reduce(0) { $0 + $1.spines.count }) copies",
+          fillLabel: "live assist",
+          status: pass.rows.contains(where: { $0.coverage < 0.8 }) ? "partial" : "ok"
+        )
+      }
     }
     if sharePlanURL == nil, let layout {
       let url = FileManager.default.temporaryDirectory

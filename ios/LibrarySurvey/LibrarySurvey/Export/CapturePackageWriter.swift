@@ -30,6 +30,8 @@ enum CapturePackageWriter {
     audioEndedMonotonicSeconds: Double?,
     startedAt: Date,
     monotonicAnchor: Double,
+    shelfPackage: LabeledShelfPackage = LabeledShelfPackage(passes: []),
+    shelfFrames: [FrameSample] = [],
     fileManager: FileManager = .default
   ) async throws -> SealedSurveyPackage {
     guard let firstRoom = rooms.first else { throw PackageWriterError.noRooms }
@@ -99,6 +101,13 @@ enum CapturePackageWriter {
       fileManager: fileManager
     )
     try writeFrames(samples, root: root, files: &files, fileManager: fileManager)
+    try writeShelfScans(
+      package: shelfPackage,
+      frames: shelfFrames,
+      root: root,
+      files: &files,
+      fileManager: fileManager
+    )
     try writeJSON(
       notes,
       relativePath: "notes/annotations.json",
@@ -165,7 +174,7 @@ enum CapturePackageWriter {
         timezone: TimeZone.current.identifier
       ),
       captureState: "complete",
-      captureModes: ["room"],
+      captureModes: shelfPackage.passes.isEmpty ? ["room"] : ["room", "shelf"],
       files: files
     )
     let manifestURL = root.appendingPathComponent("manifest.json")
@@ -227,6 +236,57 @@ enum CapturePackageWriter {
       guard size == file.bytes, digest == file.sha256 else {
         throw PackageWriterError.verificationFailed(file.path)
       }
+    }
+  }
+
+  private static func writeShelfScans(
+    package: LabeledShelfPackage,
+    frames: [FrameSample],
+    root: URL,
+    files: inout [PackageFile],
+    fileManager: FileManager
+  ) throws {
+    guard !package.passes.isEmpty else { return }
+    try writeJSON(
+      package,
+      relativePath: "shelf_scans/labeled.json",
+      mimeType: "application/json",
+      root: root,
+      files: &files,
+      fileManager: fileManager
+    )
+    struct FaceQuality: Codable {
+      let faceId: String
+      let blur: Double
+      let glare: Double
+      let speed: Double
+      let textPixelHeight: Double
+      let occlusion: Double
+    }
+    let snapshot = package.passes.map {
+      FaceQuality(
+        faceId: $0.faceId,
+        blur: $0.quality.blur,
+        glare: $0.quality.glare,
+        speed: $0.quality.speed,
+        textPixelHeight: $0.quality.textPixelHeight,
+        occlusion: $0.quality.occlusion
+      )
+    }
+    try writeJSON(
+      snapshot,
+      relativePath: "shelf_scans/quality.json",
+      mimeType: "application/json",
+      root: root,
+      files: &files,
+      fileManager: fileManager
+    )
+    for (index, sample) in frames.enumerated() {
+      let path = String(format: "shelf_scans/frames/%04d.jpg", index + 1)
+      let url = root.appendingPathComponent(path)
+      try createParent(of: url, fileManager: fileManager)
+      try sample.jpegData.write(to: url, options: .atomic)
+      try appendFile(url, relativePath: path, mimeType: "image/jpeg", files: &files)
     }
   }
 

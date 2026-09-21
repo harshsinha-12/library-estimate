@@ -41,6 +41,19 @@ struct FloorPlanLayout {
     }
   }
 
+  struct ShelfOverlay: Identifiable, Equatable {
+    var id: String { faceId }
+    let faceId: String
+    let label: String
+    let minX: Double
+    let minZ: Double
+    let maxX: Double
+    let maxZ: Double
+    let copyCountLabel: String
+    let fillLabel: String
+    let status: String
+  }
+
   static let palette = [
     "#3B7BFF", "#FF8C33", "#33C766", "#E040A8",
     "#8C59F2", "#26BFBF", "#F2C14E", "#FF5C5C"
@@ -55,6 +68,7 @@ struct FloorPlanLayout {
   let maxZ: Double
   let floorAreaSquareMetres: Double
   let ceilingHeightMetres: Double?
+  var shelves: [ShelfOverlay] = []
 
   var ceilingHeightCm: Int? {
     ceilingHeightMetres.map { Int(($0 * 100).rounded()) }

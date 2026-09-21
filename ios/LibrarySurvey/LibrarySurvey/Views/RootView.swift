@@ -5,6 +5,8 @@ struct RootView: View {
     case create
     case deviceCheck
     case roomCapture
+    case shelfMap
+    case shelfPass
     case package
   }
 
@@ -13,8 +15,10 @@ struct RootView: View {
   @StateObject private var capture = RoomCaptureStore()
   @StateObject private var audio = AudioNoteRecorder()
   @StateObject private var uploader = SurveyUploadService()
+  @StateObject private var shelves = ShelfCaptureStore()
   @State private var stage: Stage = .create
   @State private var notes: [WrittenNote] = []
+  @State private var activeFace: (ShelfUnit, ShelfFaceSide)?
   @State private var sealedPackage: SealedSurveyPackage?
   @State private var sealError: String?
   @State private var recoveryError: String?
@@ -42,8 +46,26 @@ struct RootView: View {
             notes: $notes,
             recordSpokenNotes: drafts.draft.consent.audio,
             sealError: sealError,
+            onContinue: { stage = .shelfMap }
+          )
+        case .shelfMap:
+          ShelfMapView(
+            store: shelves,
+            onScanFace: { unit, face in
+              activeFace = (unit, face)
+              stage = .shelfPass
+            },
             onSeal: seal
           )
+        case .shelfPass:
+          if let activeFace {
+            ShelfPassView(
+              store: shelves,
+              unit: activeFace.0,
+              face: activeFace.1,
+              onFinished: { stage = .shelfMap }
+            )
+          }
         case .package:
           if let sealedPackage {
             PackagePreviewView(
@@ -81,6 +103,8 @@ struct RootView: View {
     case .create: "Create Survey"
     case .deviceCheck: "Device Check"
     case .roomCapture: "Room Pass A"
+    case .shelfMap: "Shelf Map"
+    case .shelfPass: "Shelf Pass B"
     case .package: "Sealed Survey"
     }
   }
@@ -104,7 +128,9 @@ struct RootView: View {
           audioStartedMonotonicSeconds: audio.startedMonotonicSeconds,
           audioEndedMonotonicSeconds: audio.endedMonotonicSeconds,
           startedAt: startedAt,
-          monotonicAnchor: monotonicAnchor
+          monotonicAnchor: monotonicAnchor,
+          shelfPackage: shelves.combinedLabeledPackage(),
+          shelfFrames: shelves.samples
         )
         sealedPackage = package
         capture.releaseAfterSeal()
@@ -143,5 +169,7 @@ struct RootView: View {
     sealedPackage = nil
     sealError = nil
     stage = .create
+    shelves.captures = []
+    shelves.units = [ShelfUnit(id: UUID(), name: "Shelf 1", rowCount: 3, roomName: "Library")]
   }
 }
