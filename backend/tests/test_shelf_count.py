@@ -219,6 +219,9 @@ def test_labeled_shelf_count_interval_no_double_and_partial_uncovered() -> None:
     assert face_a["copy_count"]["status"] == "partial"
     assert "shelf_01.face_A/row_03" in result.recapture
     assert result.status == "partial"
+    assert all(
+        overlay["placement"] == "unregistered" for overlay in result.overlays
+    )
 
 
 def test_vision_job_is_idempotent_and_inventory_exposes_data_size() -> None:

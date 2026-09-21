@@ -22,6 +22,7 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         "Capture/FrameSampler.swift",
         "Capture/RoomCaptureContainer.swift",
         "Capture/RoomCaptureStore.swift",
+        "Capture/CameraSessionCoordinator.swift",
         "Export/CapturePackageWriter.swift",
         "Export/FloorPlanLayout.swift",
         "Export/RoomPlanSVGRenderer.swift",
@@ -68,3 +69,69 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     report = (source_root / "Views/ReportView.swift").read_text(encoding="utf-8")
     assert "modelRuns" in report
     assert "Fable, Astra, and Jev" in report
+
+
+def test_ios_camera_session_is_sequential() -> None:
+    source_root = IOS_ROOT / "LibrarySurvey"
+    coordinator = (source_root / "Capture/CameraSessionCoordinator.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "enum Owner" in coordinator
+    assert "case roomPlan" in coordinator
+    assert "case shelfAR" in coordinator
+    assert "case stillCamera" in coordinator
+    assert "func tryAcquire" in coordinator
+    assert "Optical zoom is not available" in coordinator
+
+    room_store = (source_root / "Capture/RoomCaptureStore.swift").read_text(encoding="utf-8")
+    assert "func releaseGeometrySession" in room_store
+    assert "sequentialFinalFrame" in room_store
+    assert "Sequential fallback" in room_store
+
+    room_container = (source_root / "Capture/RoomCaptureContainer.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "dismantleUIView" in room_container
+    assert "arSession.pause" in room_container
+
+    shelf_container = (source_root / "Capture/ShelfCameraContainer.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "automaticallyConfiguredSession = false" in shelf_container
+    assert "dismantleUIView" in shelf_container
+    assert "tryAcquire(.shelfAR)" in shelf_container
+
+    shelf_store = (source_root / "Capture/ShelfCaptureStore.swift").read_text(encoding="utf-8")
+    assert "ARSession()" not in shelf_store
+    assert "func releaseCamera" in shelf_store
+    assert "operatorKind" in shelf_store or "placement: box.placement" in shelf_store
+
+    room = (source_root / "Views/RoomPassView.swift").read_text(encoding="utf-8")
+    assert "UIImagePicker" not in room
+    assert "shelves.attach" not in room
+    assert "Optical zoom is not available" in room
+    assert "Close-ups are a later still" in room
+
+    exception = (source_root / "Views/ExceptionPassView.swift").read_text(encoding="utf-8")
+    assert "tryAcquire(.stillCamera)" in exception
+    assert "geometrySessionActive" in exception
+    assert "UIImagePickerController" in exception
+
+    device = (source_root / "Views/DeviceCheckView.swift").read_text(encoding="utf-8")
+    assert "Sequential fallback" in device
+    assert "second AVCaptureSession" in device
+
+    writer = (source_root / "Export/CapturePackageWriter.swift").read_text(encoding="utf-8")
+    assert '"camera_ownership": "sequential"' in writer
+    assert "rgb_evidence_mode" in writer
+    assert "shelf_footprints" in writer
+
+    map_view = (source_root / "Views/ShelfMapView.swift").read_text(encoding="utf-8")
+    assert "operator-placed" in map_view
+    assert "unregistered overlay" in map_view
+    assert "setFootprint" in map_view
+
+    project = (IOS_ROOT / "LibrarySurvey.xcodeproj" / "project.pbxproj").read_text(
+        encoding="utf-8"
+    )
+    assert "CameraSessionCoordinator.swift" in project

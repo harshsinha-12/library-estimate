@@ -237,6 +237,7 @@ class ShelfOverlay(StrictModel):
     copy_count_label: str
     fill_label: str
     status: Literal["ok", "partial", "failed", "needs_review"]
+    placement: Literal["operator", "unregistered"] = "unregistered"
 
 
 class InventoryResult(StrictModel):

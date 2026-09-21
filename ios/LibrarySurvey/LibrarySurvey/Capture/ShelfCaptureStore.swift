@@ -26,13 +26,60 @@ final class ShelfCaptureStore: ObservableObject {
   private let sampler = FrameSampler()
   private var previousTransform: [Float]?
   private var previousTime: Double?
+  private let camera: CameraSessionCoordinator
+
+  init(camera: CameraSessionCoordinator) {
+    self.camera = camera
+  }
 
   var selectedUnit: ShelfUnit? {
     units.first { $0.id == selectedUnitId } ?? units.first
   }
 
+  var footprintPlacementSummary: String {
+    units.contains { $0.footprint?.isOperatorPlaced == true }
+      ? "operator_placed"
+      : "unregistered_overlay"
+  }
+
   func attach(session: ARSession) {
     self.session = session
+  }
+
+  func detachSession() {
+    sampler.stop(captureFallback: false)
+    session = nil
+    camera.release(.shelfAR)
+  }
+
+  func releaseCamera() {
+    capturing = false
+    sampler.stop(captureFallback: false)
+    session?.pause()
+    session = nil
+    camera.release(.shelfAR)
+  }
+
+  func setFootprint(unitId: UUID, minX: Double, minZ: Double, maxX: Double, maxZ: Double) {
+    guard let index = units.firstIndex(where: { $0.id == unitId }) else { return }
+    let left = min(minX, maxX)
+    let right = max(minX, maxX)
+    let near = min(minZ, maxZ)
+    let far = max(minZ, maxZ)
+    let width = max(0.35, right - left)
+    let depth = max(0.25, far - near)
+    units[index].footprint = ShelfFootprint(
+      minX: left,
+      minZ: near,
+      maxX: left + width,
+      maxZ: near + depth,
+      placement: ShelfFootprint.operatorKind
+    )
+  }
+
+  func clearFootprint(unitId: UUID) {
+    guard let index = units.firstIndex(where: { $0.id == unitId }) else { return }
+    units[index].footprint = nil
   }
 
   func clearLiveAssist() {
@@ -78,8 +125,12 @@ final class ShelfCaptureStore: ObservableObject {
     rowSpines = [:]
     previousTransform = nil
     taggedCrops = [:]
+    guard let session else {
+      capturing = false
+      return
+    }
     capturing = true
-    sampler.start(session: session ?? ARSession(), interval: 0.4)
+    sampler.start(session: session, interval: 0.4)
   }
 
   func pauseFace() {
@@ -266,6 +317,7 @@ final class ShelfCaptureStore: ObservableObject {
   private func labeledPass(unit: ShelfUnit, face: ShelfFaceSide, samples: [FrameSample]) -> LabeledPass {
     let faceId = face == .a ? unit.faceAId : unit.faceBId
     let normal: [Double] = face == .a ? [0, 0, 1] : [0, 0, -1]
+    let box = unit.footprint(for: face)
     return LabeledPass(
       passId: "\(faceId)-\(Int(Date().timeIntervalSince1970))",
       roomId: unit.roomName.lowercased(),
@@ -273,10 +325,10 @@ final class ShelfCaptureStore: ObservableObject {
       faceId: faceId,
       faceNormal: normal,
       label: "\(unit.name) \(face.rawValue)",
-      minX: 0.4,
-      minZ: face == .a ? 0.3 : -0.2,
-      maxX: 1.6,
-      maxZ: face == .a ? 0.7 : 0.2,
+      minX: box.minX,
+      minZ: box.minZ,
+      maxX: box.maxX,
+      maxZ: box.maxZ,
       capacityM: Double(unit.rowCount) * 0.4,
       evidenceBytes: samples.reduce(0) { $0 + $1.jpegData.count },
       t: samples.last?.monotonicSeconds ?? 0,
@@ -306,7 +358,8 @@ final class ShelfCaptureStore: ObservableObject {
           actualCount: row.actualCount,
           spines: spines
         )
-      }
+      },
+      placement: box.placement
     )
   }
 }

@@ -11,12 +11,13 @@ struct RootView: View {
     case package
   }
 
+  @StateObject private var camera: CameraSessionCoordinator
   @StateObject private var drafts = SurveyDraftStore()
   @StateObject private var location = LocationService()
-  @StateObject private var capture = RoomCaptureStore()
+  @StateObject private var capture: RoomCaptureStore
   @StateObject private var audio = AudioNoteRecorder()
   @StateObject private var uploader = SurveyUploadService()
-  @StateObject private var shelves = ShelfCaptureStore()
+  @StateObject private var shelves: ShelfCaptureStore
   @StateObject private var exceptions = ExceptionCaptureStore()
   @State private var stage: Stage = .create
   @State private var notes: [WrittenNote] = []
@@ -25,6 +26,13 @@ struct RootView: View {
   @State private var sealError: String?
   @State private var recoveryError: String?
   @State private var isRestoring = false
+
+  init() {
+    let camera = CameraSessionCoordinator()
+    _camera = StateObject(wrappedValue: camera)
+    _capture = StateObject(wrappedValue: RoomCaptureStore(camera: camera))
+    _shelves = StateObject(wrappedValue: ShelfCaptureStore(camera: camera))
+  }
 
   var body: some View {
     NavigationStack {
@@ -44,33 +52,51 @@ struct RootView: View {
         case .roomCapture:
           RoomPassView(
             store: capture,
+            camera: camera,
             audio: audio,
             shelves: shelves,
             recordSpokenNotes: drafts.draft.consent.audio,
             sealError: sealError,
-            onContinue: { stage = .shelfMap }
+            onContinue: {
+              capture.releaseGeometrySession()
+              stage = .shelfMap
+            }
           )
         case .shelfMap:
           ShelfMapView(
             store: shelves,
+            camera: camera,
+            floorPlan: capture.floorPlan,
+            rgbEvidenceMode: capture.rgbEvidenceMode,
+            sequentialFallbackDetail: capture.sequentialFallbackDetail,
             onScanFace: { unit, face in
+              capture.releaseGeometrySession()
               activeFace = (unit, face)
               stage = .shelfPass
             },
-            onExceptions: { stage = .exceptionPass },
+            onExceptions: {
+              shelves.releaseCamera()
+              capture.releaseGeometrySession()
+              stage = .exceptionPass
+            },
             onSeal: seal
           )
         case .shelfPass:
           if let activeFace {
             ShelfPassView(
               store: shelves,
+              camera: camera,
               unit: activeFace.0,
               face: activeFace.1,
               draft: drafts.draft,
-              onFinished: { stage = .shelfMap },
+              onFinished: {
+                shelves.releaseCamera()
+                stage = .shelfMap
+              },
               onFocus: { image, faceId, row, slot in
                 exceptions.currentCameraPose = shelves.currentPose()
                 shelves.stopFace()
+                shelves.releaseCamera()
                 exceptions.capture(image)
                 exceptions.focusedFaceId = faceId
                 exceptions.focusedRow = row
@@ -81,6 +107,7 @@ struct RootView: View {
               onOther: { image in
                 exceptions.currentCameraPose = shelves.currentPose()
                 shelves.stopFace()
+                shelves.releaseCamera()
                 if let image { exceptions.capture(image) }
                 exceptions.pointAtOther()
                 stage = .exceptionPass
@@ -99,10 +126,14 @@ struct RootView: View {
         case .exceptionPass:
           ExceptionPassView(
             store: exceptions,
+            camera: camera,
             units: shelves.units,
             shelfPackage: shelves.combinedLabeledPackage(),
             draft: drafts.draft
-          ) { stage = .shelfMap }
+          ) {
+            camera.release(.stillCamera)
+            stage = .shelfMap
+          }
         }
       }
       .navigationTitle(title)
@@ -140,6 +171,8 @@ struct RootView: View {
 
   private func seal() {
     audio.stop()
+    shelves.releaseCamera()
+    capture.releaseGeometrySession()
     guard let startedAt = capture.startedAt,
           let monotonicAnchor = capture.monotonicAnchor
     else {
@@ -164,10 +197,13 @@ struct RootView: View {
                                          focusEvents: exceptions.focusEvents),
           otherAssets: exceptions.marks,
           exceptionImages: exceptions.images,
-          shelfCrops: shelves.taggedEvidence()
+          shelfCrops: shelves.taggedEvidence(),
+          rgbEvidenceMode: capture.rgbEvidenceMode.rawValue,
+          shelfFootprintPlacement: shelves.footprintPlacementSummary
         )
         sealedPackage = package
         capture.releaseAfterSeal()
+        camera.reset()
         sealError = nil
         stage = .package
       } catch {
@@ -198,12 +234,14 @@ struct RootView: View {
 
   private func reset() {
     capture.reset()
+    camera.reset()
     drafts.reset()
     notes = []
     sealedPackage = nil
     sealError = nil
     stage = .create
     shelves.captures = []
+    shelves.releaseCamera()
     exceptions.reset()
     shelves.units = [ShelfUnit(id: UUID(), name: "Shelf 1", rowCount: 3, roomName: "Library")]
   }

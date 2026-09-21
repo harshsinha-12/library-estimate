@@ -6,16 +6,44 @@ enum ShelfFaceSide: String, Codable, CaseIterable, Identifiable {
   var id: String { rawValue }
 }
 
+struct ShelfFootprint: Codable, Equatable {
+  var minX: Double
+  var minZ: Double
+  var maxX: Double
+  var maxZ: Double
+  var placement: String
+
+  static let operatorKind = "operator"
+  static let unregisteredKind = "unregistered"
+
+  var isOperatorPlaced: Bool { placement == Self.operatorKind }
+
+  static func unregisteredPlaceholder(face: ShelfFaceSide) -> ShelfFootprint {
+    ShelfFootprint(
+      minX: 0.4,
+      minZ: face == .a ? 0.3 : -0.2,
+      maxX: 1.6,
+      maxZ: face == .a ? 0.7 : 0.2,
+      placement: unregisteredKind
+    )
+  }
+}
+
 struct ShelfUnit: Identifiable, Codable, Equatable {
   let id: UUID
   var name: String
   var rowCount: Int
   var roomName: String
+  var footprint: ShelfFootprint?
 
   var faceAId: String { "\(slug).face_A" }
   var faceBId: String { "\(slug).face_B" }
   var slug: String {
     name.lowercased().replacingOccurrences(of: " ", with: "_")
+  }
+
+  func footprint(for face: ShelfFaceSide) -> ShelfFootprint {
+    footprint ?? .unregisteredPlaceholder(face: face)
   }
 }
 
@@ -79,6 +107,7 @@ struct LabeledPass: Codable {
   var t: Double
   var quality: LabeledQuality
   var rows: [LabeledRow]
+  var placement: String?
 }
 
 struct LabeledQuality: Codable {

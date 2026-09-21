@@ -4,6 +4,7 @@ import UIKit
 
 struct ExceptionPassView: View {
   @ObservedObject var store: ExceptionCaptureStore
+  @ObservedObject var camera: CameraSessionCoordinator
   let units: [ShelfUnit]
   let shelfPackage: LabeledShelfPackage
   let draft: SurveyDraft
@@ -59,7 +60,23 @@ struct ExceptionPassView: View {
         }
       }
       Section("Camera and Vision") {
-        Button("Capture image", systemImage: "camera") { showCamera = true }
+        Text(camera.statusLine)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        Button("Capture image", systemImage: "camera") {
+          guard camera.tryAcquire(.stillCamera) else { return }
+          showCamera = true
+        }
+        .disabled(camera.geometrySessionActive)
+        if camera.geometrySessionActive {
+          Text("Pass C camera waits until RoomPlan and the shelf AR view have stopped. Apple will not share the camera with UIImagePicker while those sessions run.")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+        } else {
+          Text("This still is not optical zoom during RoomPlan. Close-ups run only after the geometry session is released.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
         if let image = store.latestImage {
           Image(uiImage: image)
             .resizable()
@@ -79,11 +96,11 @@ struct ExceptionPassView: View {
                          height: max(44, box.height * geometry.size.height))
                   .position(x: box.midX * geometry.size.width,
                             y: (1 - box.midY) * geometry.size.height)
-                  .accessibilityLabel("Candidate object \(index + 1). Tap to zoom and inspect")
+                  .accessibilityLabel("Candidate object \(index + 1). Tap to crop this still")
                 }
               }
             }
-          Text("Tap an outlined object to zoom into its image while audio continues recording.")
+          Text("Tap an outlined object to crop this still. That is not a second camera and not optical zoom during RoomPlan.")
             .font(.footnote)
         }
         if let suggested = store.suggestedCategory {
@@ -235,8 +252,8 @@ struct ExceptionPassView: View {
           .buttonStyle(.borderedProminent)
       }
     }
-    .sheet(isPresented: $showCamera) {
-      ExceptionCamera { image in
+    .sheet(isPresented: $showCamera, onDismiss: { camera.release(.stillCamera) }) {
+      ExceptionCamera(camera: camera) { image in
         store.capture(image)
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let inferred = LivePriceAssist.title(from: store.latestText) {
@@ -314,12 +331,16 @@ struct ExceptionPassView: View {
 }
 
 struct ExceptionCamera: UIViewControllerRepresentable {
+  @ObservedObject var camera: CameraSessionCoordinator
   let onCapture: (UIImage) -> Void
   @Environment(\.dismiss) private var dismiss
 
   func makeUIViewController(context: Context) -> UIImagePickerController {
     let picker = UIImagePickerController()
-    picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+    let canUseHardwareCamera = camera.owner == .stillCamera
+      && !camera.geometrySessionActive
+      && UIImagePickerController.isSourceTypeAvailable(.camera)
+    picker.sourceType = canUseHardwareCamera ? .camera : .photoLibrary
     picker.delegate = context.coordinator
     return picker
   }

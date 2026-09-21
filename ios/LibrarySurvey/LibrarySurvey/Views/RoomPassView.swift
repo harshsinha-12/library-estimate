@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RoomPassView: View {
   @ObservedObject var store: RoomCaptureStore
+  @ObservedObject var camera: CameraSessionCoordinator
   @ObservedObject var audio: AudioNoteRecorder
   @ObservedObject var shelves: ShelfCaptureStore
   let recordSpokenNotes: Bool
@@ -10,7 +11,7 @@ struct RoomPassView: View {
 
   var body: some View {
     ZStack(alignment: .bottom) {
-      RoomCaptureContainer(store: store)
+      RoomCaptureContainer(store: store, camera: camera)
         .ignoresSafeArea(edges: .bottom)
 
       controls
@@ -27,6 +28,9 @@ struct RoomPassView: View {
 
   private var controls: some View {
     VStack(spacing: 10) {
+      Text(camera.statusLine)
+        .font(.caption)
+        .foregroundStyle(.secondary)
       if let message = audio.errorMessage {
         Text(message).font(.caption).foregroundStyle(.orange)
       }
@@ -35,8 +39,14 @@ struct RoomPassView: View {
       }
       switch store.state {
       case .ready, .failed:
+        if case let .failed(detail) = store.state {
+          Text(detail).font(.caption).foregroundStyle(.red)
+        }
         Button("Start Scan", systemImage: "record.circle", action: start)
           .buttonStyle(.borderedProminent)
+        Text("Close-ups are a later still after this geometry session is released. Optical zoom is not available during RoomPlan.")
+          .font(.caption2)
+          .foregroundStyle(.secondary)
       case .capturing:
         capturingBar
       case .paused:
@@ -49,6 +59,7 @@ struct RoomPassView: View {
       case .processing:
         ProgressView("Processing scan")
       case .captured:
+        sequentialStatus
         HStack {
           Button("Scan Again", systemImage: "arrow.counterclockwise", action: reset)
             .buttonStyle(.bordered)
@@ -71,6 +82,20 @@ struct RoomPassView: View {
     }
   }
 
+  @ViewBuilder
+  private var sequentialStatus: some View {
+    if let detail = store.sequentialFallbackDetail {
+      Label(detail, systemImage: "camera.badge.ellipsis")
+        .font(.caption)
+        .foregroundStyle(.orange)
+        .accessibilityLabel("Sequential fallback")
+    } else {
+      Text("RGB frames were copied from RoomPlan's AR session. Optical zoom is not available on this pass. Close-ups are a later still after this session is released.")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+  }
+
   private var status: String {
     switch store.state {
     case .capturing: "Scanning room geometry"
@@ -85,9 +110,8 @@ struct RoomPassView: View {
     store.start()
     guard isCapturing else { return }
     shelves.clearLiveAssist()
-    if let session = store.arSession, !shelves.units.isEmpty {
+    if !shelves.units.isEmpty {
       shelves.units[0].roomName = store.roomName
-      shelves.attach(session: session)
     }
     guard recordSpokenNotes else { return }
     let directory = FileManager.default.temporaryDirectory
