@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://library-survey.local/schemas/survey-geography.schema.json",
+  "title": "SurveyGeography v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["country_code", "city", "currency", "market", "source"],
+  "properties": {
+    "country_code": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "region": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "city": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "market": {
+      "type": "string",
+      "pattern": "^[a-z]{2}-[A-Z]{2}$"
+    },
+    "source": {
+      "enum": ["gps", "manual", "mixed"]
+    },
+    "latitude": {
+      "type": ["number", "null"],
+      "minimum": -90,
+      "maximum": 90
+    },
+    "longitude": {
+      "type": ["number", "null"],
+      "minimum": -180,
+      "maximum": 180
+    },
+    "precise_location_consent": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "precise_location_consent": {"const": false}
+        },
+        "required": ["precise_location_consent"]
+      },
+      "then": {
+        "properties": {
+          "latitude": {"type": "null"},
+          "longitude": {"type": "null"}
+        }
+      }
+    }
+  ]
+}
+

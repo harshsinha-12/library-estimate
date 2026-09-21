@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://library-survey.local/schemas/review-decision.schema.json",
+  "title": "ReviewDecision v1", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "review_decision_id", "survey_id", "subject_type", "subject_id", "action", "actor_id", "decided_at", "evidence_refs", "previous_value", "new_value"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"}, "review_decision_id": {"type": "string", "format": "uuid"}, "survey_id": {"type": "string", "format": "uuid"},
+    "subject_type": {"enum": ["asset_copy", "identifier", "price_observation", "note", "damage", "geometry", "pipeline_assessment"]},
+    "subject_id": {"type": "string", "minLength": 1},
+    "action": {"enum": ["accept", "reject", "correct", "merge", "keep_separate", "bind_note", "request_recapture", "request_appraisal"]},
+    "actor_id": {"type": "string", "minLength": 1}, "decided_at": {"type": "string", "format": "date-time"},
+    "reason": {"type": ["string", "null"]}, "evidence_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "previous_value": {}, "new_value": {}
+  }
+}
+

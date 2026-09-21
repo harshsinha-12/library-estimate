@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://library-survey.local/schemas/model-assessment.schema.json",
+  "title": "ModelAssessment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "assessment_id",
+    "survey_id",
+    "asset_copy_id",
+    "pipeline",
+    "provider",
+    "model",
+    "evidence_package_hash",
+    "category",
+    "condition",
+    "damage",
+    "identity_candidates",
+    "recommended_action",
+    "confidence",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "assessment_id": {"type": "string", "format": "uuid"},
+    "survey_id": {"type": "string", "format": "uuid"},
+    "asset_copy_id": {"type": "string", "minLength": 1},
+    "pipeline": {"enum": ["fable", "astra_replay"]},
+    "provider": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "evidence_package_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "category": {
+      "enum": ["book", "portrait", "painting", "cup", "furniture", "electronics", "other", "unknown"]
+    },
+    "condition": {
+      "enum": ["new", "good", "worn", "damaged", "unknown"]
+    },
+    "damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "types"],
+      "properties": {
+        "present": {"type": ["boolean", "null"]},
+        "types": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "description": {"type": ["string", "null"]}
+      }
+    },
+    "identity_candidates": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "confidence", "evidence_refs"],
+        "properties": {
+          "label": {"type": "string", "minLength": 1},
+          "identifier_type": {
+            "type": ["string", "null"],
+            "enum": ["isbn_10", "isbn_13", "ean", "library_barcode", "oclc", "lccn", "issn", "unknown", null]
+          },
+          "identifier_value": {"type": ["string", "null"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "recommended_action": {
+      "enum": ["accept_candidate", "recapture", "alternate_resolver", "human_review"]
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "rationale": {"type": ["string", "null"], "maxLength": 1000},
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
+

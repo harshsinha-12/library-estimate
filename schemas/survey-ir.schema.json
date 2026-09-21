@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://library-survey.local/schemas/survey-ir.schema.json",
+  "title": "SurveyIR v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "survey_id", "status", "geography", "property", "evidence",
+    "observations", "tracks", "asset_copies", "book_editions", "works", "identifiers",
+    "price_observations", "valuations", "shelf_face_data_sizes", "building_valuations",
+    "model_assessments", "pipeline_runs", "review_decisions", "rl_transitions", "stage_status"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "survey_id": {"type": "string", "format": "uuid"},
+    "status": {"$ref": "#/$defs/resultStatus"},
+    "geography": {"$ref": "survey-geography.schema.json"},
+    "property": {"$ref": "#/$defs/property"},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidenceBlob"}},
+    "observations": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+    "tracks": {"type": "array", "items": {"$ref": "#/$defs/track"}},
+    "asset_copies": {"type": "array", "items": {"$ref": "#/$defs/assetCopy"}},
+    "book_editions": {"type": "array", "items": {"$ref": "#/$defs/bookEdition"}},
+    "works": {"type": "array", "items": {"$ref": "#/$defs/work"}},
+    "identifiers": {"type": "array", "items": {"$ref": "#/$defs/identifier"}},
+    "price_observations": {"type": "array", "items": {"$ref": "price-observation.schema.json"}},
+    "valuations": {"type": "array", "items": {"$ref": "#/$defs/valuation"}},
+    "shelf_face_data_sizes": {"type": "array", "items": {"$ref": "#/$defs/shelfFaceDataSize"}},
+    "building_valuations": {"type": "array", "items": {"$ref": "#/$defs/buildingValuation"}},
+    "model_assessments": {"type": "array", "items": {"$ref": "model-assessment.schema.json"}},
+    "pipeline_runs": {"type": "array", "items": {"$ref": "#/$defs/pipelineRun"}},
+    "review_decisions": {"type": "array", "items": {"$ref": "review-decision.schema.json"}},
+    "rl_transitions": {"type": "array", "items": {"$ref": "rl-transition.schema.json"}},
+    "stage_status": {"type": "object", "additionalProperties": {"$ref": "#/$defs/resultStatus"}}
+  },
+  "$defs": {
+    "resultStatus": {"enum": ["ok", "partial", "failed", "needs_review"]},
+    "id": {"type": "string", "minLength": 1},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "measurement": {
+      "type": "object", "additionalProperties": false,
+      "required": ["value", "unit", "status", "confidence", "method", "evidence_refs", "run_id"],
+      "properties": {
+        "value": {}, "unit": {"type": "string", "minLength": 1},
+        "status": {"$ref": "#/$defs/resultStatus"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "interval": {
+          "type": ["object", "null"], "additionalProperties": false,
+          "required": ["low", "high", "level"],
+          "properties": {"low": {"type": "number"}, "high": {"type": "number"}, "level": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}}
+        },
+        "method": {"type": "string", "minLength": 1},
+        "evidence_refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true},
+        "run_id": {"$ref": "#/$defs/id"}
+      }
+    },
+    "property": {
+      "type": "object", "additionalProperties": false, "required": ["property_id", "spaces"],
+      "properties": {
+        "property_id": {"$ref": "#/$defs/id"},
+        "spaces": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["space_id", "name", "geometry_ref", "shelves"],
+          "properties": {"space_id": {"$ref": "#/$defs/id"}, "name": {"type": "string", "minLength": 1}, "geometry_ref": {"$ref": "#/$defs/id"}, "shelves": {"type": "array", "items": {"$ref": "#/$defs/id"}}}
+        }}
+      }
+    },
+    "evidenceBlob": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_id", "path", "sha256", "mime_type", "bytes"],
+      "properties": {"evidence_id": {"$ref": "#/$defs/id"}, "path": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/hash"}, "mime_type": {"type": "string", "minLength": 1}, "bytes": {"type": "integer", "minimum": 0}}
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["observation_id", "evidence_ref", "captured_at", "monotonic_seconds", "category", "confidence"],
+      "properties": {"observation_id": {"$ref": "#/$defs/id"}, "evidence_ref": {"$ref": "#/$defs/id"}, "captured_at": {"type": "string", "format": "date-time"}, "monotonic_seconds": {"type": "number", "minimum": 0}, "category": {"type": "string", "minLength": 1}, "confidence": {"type": "number", "minimum": 0, "maximum": 1}, "track_id": {"type": ["string", "null"]}, "asset_copy_id": {"type": ["string", "null"]}}
+    },
+    "track": {
+      "type": "object", "additionalProperties": false, "required": ["track_id", "observation_refs", "status"],
+      "properties": {"track_id": {"$ref": "#/$defs/id"}, "observation_refs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/id"}, "uniqueItems": true}, "status": {"$ref": "#/$defs/resultStatus"}}
+    },
+    "assetCopy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["asset_copy_id", "category", "observation_refs", "valuation_required", "requires_appraisal"],
+      "properties": {"asset_copy_id": {"$ref": "#/$defs/id"}, "category": {"type": "string", "minLength": 1}, "observation_refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true}, "book_edition_ref": {"type": ["string", "null"]}, "valuation_required": {"type": "boolean"}, "requires_appraisal": {"type": "boolean"}, "possibly_moved": {"type": "boolean", "default": false}}
+    },
+    "bookEdition": {
+      "type": "object", "additionalProperties": false, "required": ["book_edition_id", "work_ref", "title", "identifier_refs"],
+      "properties": {"book_edition_id": {"$ref": "#/$defs/id"}, "work_ref": {"$ref": "#/$defs/id"}, "title": {"type": "string", "minLength": 1}, "authors": {"type": "array", "items": {"type": "string"}}, "publisher": {"type": ["string", "null"]}, "format": {"type": ["string", "null"]}, "language": {"type": ["string", "null"]}, "identifier_refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true}}
+    },
+    "work": {"type": "object", "additionalProperties": false, "required": ["work_id", "title"], "properties": {"work_id": {"$ref": "#/$defs/id"}, "title": {"type": "string", "minLength": 1}}},
+    "identifier": {
+      "type": "object", "additionalProperties": false, "required": ["identifier_id", "type", "value", "valid", "evidence_refs"],
+      "properties": {"identifier_id": {"$ref": "#/$defs/id"}, "type": {"enum": ["isbn_10", "isbn_13", "ean", "library_barcode", "oclc", "lccn", "issn", "unknown"]}, "value": {"type": "string", "minLength": 1}, "valid": {"type": "boolean"}, "evidence_refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true}}
+    },
+    "valuation": {
+      "type": "object", "additionalProperties": false, "required": ["valuation_id", "asset_copy_id", "basis", "amount", "currency", "price_observation_refs"],
+      "properties": {"valuation_id": {"$ref": "#/$defs/id"}, "asset_copy_id": {"$ref": "#/$defs/id"}, "basis": {"type": "string", "minLength": 1}, "amount": {"$ref": "#/$defs/measurement"}, "currency": {"type": "string", "pattern": "^[A-Z]{3}$"}, "price_observation_refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true}}
+    },
+    "shelfFaceDataSize": {
+      "type": "object", "additionalProperties": false,
+      "required": ["shelf_face_id", "occupied_length", "capacity_length", "fill_ratio", "copy_count", "unresolved_count", "evidence_bytes"],
+      "properties": {"shelf_face_id": {"$ref": "#/$defs/id"}, "occupied_length": {"$ref": "#/$defs/measurement"}, "capacity_length": {"$ref": "#/$defs/measurement"}, "fill_ratio": {"$ref": "#/$defs/measurement"}, "copy_count": {"$ref": "#/$defs/measurement"}, "unresolved_count": {"$ref": "#/$defs/measurement"}, "evidence_bytes": {"$ref": "#/$defs/measurement"}}
+    },
+    "buildingValuation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["building_valuation_id", "basis", "floor_area", "rate_table_version", "amount", "currency"],
+      "properties": {"building_valuation_id": {"$ref": "#/$defs/id"}, "basis": {"const": "replacement_cost"}, "floor_area": {"$ref": "#/$defs/measurement"}, "rate_table_version": {"type": "string", "minLength": 1}, "amount": {"$ref": "#/$defs/measurement"}, "currency": {"type": "string", "pattern": "^[A-Z]{3}$"}}
+    },
+    "pipelineRun": {
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "stage", "status", "input_hash", "pipeline_version", "started_at"],
+      "properties": {"run_id": {"$ref": "#/$defs/id"}, "stage": {"type": "string", "minLength": 1}, "status": {"$ref": "#/$defs/resultStatus"}, "input_hash": {"$ref": "#/$defs/hash"}, "pipeline_version": {"type": "string", "minLength": 1}, "started_at": {"type": "string", "format": "date-time"}, "ended_at": {"type": ["string", "null"], "format": "date-time"}}
+    }
+  }
+}
+

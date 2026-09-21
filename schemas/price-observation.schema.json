@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://library-survey.local/schemas/price-observation.schema.json",
+  "title": "PriceObservation v1", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "price_observation_id", "book_edition_id", "query", "market", "currency", "source_url", "observed_at", "amount", "offer_type", "review_status", "evidence_hash"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"}, "price_observation_id": {"type": "string", "format": "uuid"},
+    "book_edition_id": {"type": "string", "minLength": 1}, "query": {"type": "string", "minLength": 1},
+    "market": {"type": "string", "pattern": "^[a-z]{2}-[A-Z]{2}$"}, "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "source_url": {"type": "string", "format": "uri"}, "observed_at": {"type": "string", "format": "date-time"},
+    "amount": {"type": "number", "exclusiveMinimum": 0}, "shipping": {"type": ["number", "null"], "minimum": 0},
+    "condition": {"type": ["string", "null"]}, "format": {"type": ["string", "null"]},
+    "offer_type": {"enum": ["physical", "ebook", "rental", "bundle", "unknown"]},
+    "review_status": {"enum": ["draft", "accepted", "rejected", "needs_review"]},
+    "evidence_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}
+

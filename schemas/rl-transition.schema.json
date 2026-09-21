@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://library-survey.local/schemas/rl-transition.schema.json",
+  "title": "RLTransition v1", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "transition_id", "survey_id", "policy_id", "state", "action", "action_source", "reward", "cost_usd", "elapsed_ms"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"}, "transition_id": {"type": "string", "format": "uuid"}, "survey_id": {"type": "string", "format": "uuid"},
+    "policy_id": {"type": "string", "minLength": 1}, "state": {"type": "object"},
+    "action": {"enum": ["accept", "recapture", "alternate_resolver", "human_review", "use_specialist_head", "use_frontier"]},
+    "action_source": {"enum": ["jev+policy", "policy", "human", "baseline"]},
+    "fable": {"type": ["object", "null"]}, "astra": {"type": ["object", "null"]}, "jev": {"type": ["object", "null"]},
+    "human_truth": {"type": ["object", "null"]}, "independent_outcome": {"type": ["object", "null"]},
+    "reward": {"type": ["number", "null"]}, "next_state_id": {"type": ["string", "null"]},
+    "cost_usd": {"type": "number", "minimum": 0}, "elapsed_ms": {"type": "integer", "minimum": 0}
+  }
+}

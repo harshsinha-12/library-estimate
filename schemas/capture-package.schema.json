@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://library-survey.local/schemas/capture-package.schema.json",
+  "title": "CapturePackageManifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "survey_id",
+    "session_id",
+    "app",
+    "device",
+    "geography",
+    "consent",
+    "timing",
+    "capture_state",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "survey_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "build"],
+      "properties": {
+        "version": {"type": "string", "minLength": 1},
+        "build": {"type": "string", "minLength": 1}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "system_version", "supports_lidar"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1},
+        "system_version": {"type": "string", "minLength": 1},
+        "supports_lidar": {"type": "boolean"},
+        "roomplan_version": {"type": ["string", "null"]},
+        "vision_version": {"type": ["string", "null"]}
+      }
+    },
+    "geography": {
+      "$ref": "survey-geography.schema.json"
+    },
+    "consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["video", "audio", "location", "retention_policy_id"],
+      "properties": {
+        "video": {"type": "boolean"},
+        "audio": {"type": "boolean"},
+        "location": {"type": "boolean"},
+        "retention_policy_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["started_at", "ended_at", "monotonic_anchor_seconds", "timezone"],
+      "properties": {
+        "started_at": {"type": "string", "format": "date-time"},
+        "ended_at": {"type": "string", "format": "date-time"},
+        "monotonic_anchor_seconds": {"type": "number", "minimum": 0},
+        "timezone": {"type": "string", "minLength": 1}
+      }
+    },
+    "capture_state": {
+      "enum": ["complete", "interrupted", "resumed", "manually_sealed"]
+    },
+    "capture_modes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["room", "shelf", "exception"]}
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "mime_type", "bytes", "sha256"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+          },
+          "mime_type": {"type": "string", "minLength": 1},
+          "bytes": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}
+

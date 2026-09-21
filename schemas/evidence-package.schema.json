@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://library-survey.local/schemas/evidence-package.schema.json",
+  "title": "EvidencePackage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "package_id", "survey_id", "asset_copy_id", "package_hash", "task", "evidence_refs", "deterministic_flags"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"}, "package_id": {"type": "string", "format": "uuid"},
+    "survey_id": {"type": "string", "format": "uuid"}, "asset_copy_id": {"type": "string", "minLength": 1},
+    "package_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "task": {"enum": ["category", "condition", "damage", "identity", "note_association"]},
+    "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "ocr_candidates": {"type": "array", "items": {"type": "object"}}, "catalog_candidates": {"type": "array", "items": {"type": "object"}},
+    "spatial_context": {"type": ["object", "null"]}, "operator_note": {"type": ["string", "null"]},
+    "deterministic_flags": {"type": "object", "additionalProperties": {"type": "boolean"}}
+  }
+}
+
