@@ -8,7 +8,7 @@ enum LiveQualityAnalyzer {
     guard let image = UIImage(data: jpeg)?.cgImage else { return [] }
     let request = VNDetectRectanglesRequest()
     request.minimumAspectRatio = 0.08
-    request.maximumAspectRatio = 0.45
+    request.maximumAspectRatio = 1.05
     request.minimumSize = 0.02
     request.maximumObservations = 80
     try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
@@ -110,7 +110,7 @@ enum LiveQualityAnalyzer {
   private static func rectangleCount(_ image: CGImage) -> Int {
     let request = VNDetectRectanglesRequest()
     request.minimumAspectRatio = 0.08
-    request.maximumAspectRatio = 0.45
+    request.maximumAspectRatio = 1.05
     request.minimumSize = 0.02
     request.maximumObservations = 80
     let handler = VNImageRequestHandler(cgImage: image, options: [:])

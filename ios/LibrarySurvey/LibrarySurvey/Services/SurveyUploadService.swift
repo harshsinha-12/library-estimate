@@ -159,11 +159,28 @@ final class SurveyUploadService: ObservableObject {
       url: try Self.makeAPIURL(backendURL, path: "v1/surveys/\(package.surveyId.uuidString)/seal")
     )
     request.httpMethod = "POST"
-    request.timeoutInterval = 60
+    request.timeoutInterval = 180
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("seal-\(package.surveyId.uuidString)", forHTTPHeaderField: "Idempotency-Key")
     request.httpBody = try JSONCoding.encoder(pretty: false).encode(package.manifest)
-    try await perform(request)
+    do {
+      try await perform(request)
+    } catch {
+      if await alreadySealed(package.surveyId, backendURL: backendURL) { return }
+      throw error
+    }
+  }
+
+  private func alreadySealed(_ surveyId: UUID, backendURL: URL) async -> Bool {
+    guard let url = try? Self.makeAPIURL(backendURL, path: "v1/surveys/\(surveyId.uuidString)") else {
+      return false
+    }
+    guard let (data, response) = try? await URLSession.shared.data(from: url),
+          (response as? HTTPURLResponse)?.statusCode == 200,
+          let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let status = payload["status"] as? String
+    else { return false }
+    return status == "geometry" || status == "partial"
   }
 
   private func perform(_ request: URLRequest, fromFile fileURL: URL? = nil) async throws {

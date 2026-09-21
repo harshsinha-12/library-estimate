@@ -18,6 +18,9 @@ final class ShelfCaptureStore: ObservableObject {
   @Published var samples: [FrameSample] = []
   @Published var assistCount = 0
   @Published var highlightedSpines: [CGRect] = []
+  @Published var imageSize: CGSize = .zero
+  private var rowSpines: [String: [AccumulatedSpine]] = []
+  private var taggedCrops: [String: Data] = [:]
 
   private var session: ARSession?
   private let sampler = FrameSampler()
@@ -56,6 +59,7 @@ final class ShelfCaptureStore: ObservableObject {
     }
     recaptureRows = rowCoverage.map(\.rowId)
     samples = []
+    rowSpines = [:]
     previousTransform = nil
     capturing = true
     sampler.start(session: session ?? ARSession(), interval: 0.4)
@@ -73,6 +77,8 @@ final class ShelfCaptureStore: ObservableObject {
     )
     assistCount = quality.provisionalCount
     highlightedSpines = LiveQualityAnalyzer.spineRegions(jpeg: frame.jpegData)
+    if let image = UIImage(data: frame.jpegData) { imageSize = image.size }
+    mergeSpines(highlightedSpines, jpeg: frame.jpegData, time: now, frameIndex: sampler.samples.count)
     previousTransform = frame.cameraTransform
     previousTime = now
     updateCoverage()
@@ -120,6 +126,33 @@ final class ShelfCaptureStore: ObservableObject {
     return UIImage(data: data)
   }
 
+  func currentJpeg() -> Data? { sampler.samples.last?.jpegData }
+
+  func taggedEvidence() -> [String: Data] { taggedCrops }
+
+  func displayRect(for box: CGRect, in viewSize: CGSize) -> CGRect {
+    guard imageSize.width > 1, imageSize.height > 1, viewSize.width > 1, viewSize.height > 1 else {
+      return CGRect(
+        x: box.minX * viewSize.width,
+        y: (1 - box.maxY) * viewSize.height,
+        width: box.width * viewSize.width,
+        height: box.height * viewSize.height
+      )
+    }
+    let scale = max(viewSize.width / imageSize.width, viewSize.height / imageSize.height)
+    let scaled = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    let origin = CGPoint(
+      x: (viewSize.width - scaled.width) / 2,
+      y: (viewSize.height - scaled.height) / 2
+    )
+    return CGRect(
+      x: origin.x + box.minX * scaled.width,
+      y: origin.y + (1 - box.maxY) * scaled.height,
+      width: box.width * scaled.width,
+      height: box.height * scaled.height
+    )
+  }
+
   func currentPose() -> [Float]? { sampler.samples.last?.cameraTransform }
 
   func combinedLabeledPackage() -> LabeledShelfPackage {
@@ -132,14 +165,65 @@ final class ShelfCaptureStore: ObservableObject {
     return LabeledShelfPackage(passes: passes)
   }
 
+  private func mergeSpines(_ boxes: [CGRect], jpeg: Data, time: Double, frameIndex: Int) {
+    guard !rowCoverage.isEmpty else { return }
+    for box in boxes {
+      let rowIndex = min(
+        rowCoverage.count - 1,
+        max(0, Int((1 - box.midY) * CGFloat(rowCoverage.count)))
+      )
+      let rowId = rowCoverage[rowIndex].rowId
+      let x = Double(box.midX)
+      var list = rowSpines[rowId] ?? []
+      if let match = list.enumerated().min(by: { abs($0.element.x - x) < abs($1.element.x - x) }),
+         abs(match.element.x - x) <= 0.06 {
+        list[match.offset].x = (list[match.offset].x + x) / 2
+        list[match.offset].t = time
+        list[match.offset].box = box
+      } else {
+        list.append(
+          AccumulatedSpine(
+            slot: list.count,
+            x: x,
+            t: time,
+            evidenceRef: "shelf_frame_\(frameIndex)",
+            box: box
+          )
+        )
+        list.sort { $0.x < $1.x }
+        for index in list.indices { list[index].slot = index }
+      }
+      for index in list.indices {
+        let path = "shelf_scans/crops/\(rowId)_slot\(list[index].slot).jpg"
+        if let crop = crop(jpeg, box: list[index].box) {
+          taggedCrops[path] = crop
+          list[index].evidenceRef = path
+        }
+      }
+      rowSpines[rowId] = list
+      rowCoverage[rowIndex].copyCount = list.count
+    }
+  }
+
+  private func crop(_ jpeg: Data, box: CGRect) -> Data? {
+    guard let image = UIImage(data: jpeg)?.cgImage else { return nil }
+    let rect = CGRect(
+      x: box.minX * CGFloat(image.width),
+      y: (1 - box.maxY) * CGFloat(image.height),
+      width: max(1, box.width * CGFloat(image.width)),
+      height: max(1, box.height * CGFloat(image.height))
+    ).integral
+    guard let cropped = image.cropping(to: rect) else { return nil }
+    return UIImage(cgImage: cropped).jpegData(compressionQuality: 0.82)
+  }
+
   private func updateCoverage() {
     guard !rowCoverage.isEmpty else { return }
     let usable = quality.messages.isEmpty
     let increment = usable ? 0.18 : 0.04
-    let index = min(rowCoverage.count - 1, max(0, Int(Double(samples.count) / 6.0)))
+    let index = min(rowCoverage.count - 1, max(0, Int(Double(sampler.samples.count) / 6.0)))
     for offset in 0...index {
       rowCoverage[offset].coverage = min(1, rowCoverage[offset].coverage + increment)
-      rowCoverage[offset].copyCount = max(rowCoverage[offset].copyCount, assistCount / max(1, rowCoverage.count - offset))
       rowCoverage[offset].status = rowCoverage[offset].coverage >= 0.8 ? "ok" : "partial"
     }
     recaptureRows = rowCoverage.filter { $0.status != "ok" }.map(\.rowId)
@@ -169,24 +253,34 @@ final class ShelfCaptureStore: ObservableObject {
         textPixelHeight: quality.textPixelHeight,
         occlusion: quality.occlusion
       ),
-      rows: rowCoverage.enumerated().map { index, row in
-        let spines: [LabeledSpine] = (0..<max(0, row.copyCount)).map { slot in
+      rows: rowCoverage.map { row in
+        let stored = (rowSpines[row.rowId] ?? []).sorted { $0.x < $1.x }
+        let spines: [LabeledSpine] = stored.enumerated().map { slot, spine in
           LabeledSpine(
             slot: slot,
-            x: 0.1 + Double(slot) * 0.12,
-            t: samples.last?.monotonicSeconds ?? 0,
+            x: spine.x,
+            t: spine.t,
             isbn: nil,
             appearance: "live-\(slot)",
-            evidenceRef: "shelf_frame_\(index)_\(slot)"
+            evidenceRef: spine.evidenceRef
           )
         }
         return LabeledRow(
           rowId: row.rowId,
           coverage: row.coverage,
           capacityM: 0.4,
+          actualCount: row.actualCount,
           spines: spines
         )
       }
     )
   }
+}
+
+private struct AccumulatedSpine {
+  var slot: Int
+  var x: Double
+  var t: Double
+  var evidenceRef: String
+  var box: CGRect
 }

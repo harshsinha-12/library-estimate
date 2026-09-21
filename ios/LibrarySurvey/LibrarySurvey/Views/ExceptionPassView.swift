@@ -6,6 +6,7 @@ struct ExceptionPassView: View {
   @ObservedObject var store: ExceptionCaptureStore
   let units: [ShelfUnit]
   let shelfPackage: LabeledShelfPackage
+  let draft: SurveyDraft
   let onDone: () -> Void
 
   @State private var showCamera = false
@@ -13,6 +14,8 @@ struct ExceptionPassView: View {
   @State private var label = ""
   @State private var room = "Library"
   @State private var highValue = false
+  @State private var statedCost = ""
+  @State private var statedCurrency = "INR"
   @State private var selectedAssetId = ""
   @State private var faceId = ""
   @State private var row = 1
@@ -29,6 +32,7 @@ struct ExceptionPassView: View {
   @State private var noteText = ""
   @State private var promptPlayer: AVAudioPlayer?
   @AppStorage("backendURL") private var backendURLString = "http://192.168.29.178:8000"
+  @StateObject private var livePrices = LivePriceSession()
 
   var body: some View {
     Form {
@@ -95,6 +99,11 @@ struct ExceptionPassView: View {
             .textInputAutocapitalization(.characters)
         }
         if !store.latestText.isEmpty { Text(store.latestText).font(.caption) }
+        if !livePrices.status.isEmpty {
+          Text(livePrices.status)
+            .font(.callout)
+            .foregroundStyle(livePrices.latest?.status == "draft" ? .green : .orange)
+        }
         if let error = store.errorMessage { Text(error).foregroundStyle(.orange) }
         HStack {
           Button("Speak barcode prompt") { Task { await playPrompt("barcode") } }
@@ -108,13 +117,51 @@ struct ExceptionPassView: View {
         TextField("Object label", text: $label)
         TextField("Room", text: $room)
         Toggle("High-value or unusual", isOn: $highValue)
+        TextField("Stated replacement cost", text: $statedCost)
+          .keyboardType(.decimalPad)
+        Picker("Currency", selection: $statedCurrency) {
+          Text("INR").tag("INR")
+          Text("EUR").tag("EUR")
+          Text("JPY").tag("JPY")
+          Text("USD").tag("USD")
+        }
         Button("Count asset") {
-          store.addMark(category: category, label: label, room: room, highValue: highValue)
+          store.addMark(
+            category: category,
+            label: label,
+            room: room,
+            highValue: highValue,
+            statedCost: Double(statedCost),
+            statedCurrency: statedCost.isEmpty ? nil : statedCurrency
+          )
           selectedAssetId = store.marks.last?.assetCopyId ?? ""
+          if category != .book, category != .cup, let backendURL {
+            let jpeg = store.latestImageRef.flatMap { store.images[$0] }
+            let objectLabel = label
+            let objectCategory = category.rawValue
+            let spoken = [
+              objectLabel,
+              statedCost.isEmpty ? nil : "\(statedCost) \(statedCurrency)",
+              noteText
+            ].compactMap { $0 }.joined(separator: ". ")
+            let assetId = selectedAssetId
+            Task {
+              await livePrices.considerObject(
+                category: objectCategory,
+                label: objectLabel,
+                spoken: spoken,
+                jpeg: jpeg,
+                assetCopyId: assetId,
+                draft: draft,
+                backendURL: backendURL
+              )
+            }
+          }
           label = ""
+          statedCost = ""
         }
         .disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        Text("Mugs are counted and excluded from valuation. Art requires appraisal.")
+        Text("Mugs are counted and excluded from valuation. A portrait, AC, or table can keep its photo plus a spoken or typed cost as a draft for later confirmation.")
           .font(.footnote)
       }
       Section("Bind the scan to a physical object") {
@@ -189,7 +236,24 @@ struct ExceptionPassView: View {
       }
     }
     .sheet(isPresented: $showCamera) {
-      ExceptionCamera { image in store.capture(image) }
+      ExceptionCamera { image in
+        store.capture(image)
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let inferred = LivePriceAssist.title(from: store.latestText) {
+          title = inferred
+        }
+        if let backendURL {
+          Task {
+            await livePrices.considerCapturedText(
+              title: title,
+              barcode: store.latestBarcode,
+              ocr: store.latestText,
+              draft: draft,
+              backendURL: backendURL
+            )
+          }
+        }
+      }
     }
     .onAppear {
       if let focusedFaceId = store.focusedFaceId {
@@ -225,6 +289,10 @@ struct ExceptionPassView: View {
       return "\(face)/\(row)/\(slot)"
     })
     return found.values.filter { !scanned.contains($0.key) }.sorted { $0.key < $1.key }
+  }
+
+  private var backendURL: URL? {
+    URL(string: backendURLString.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
   @MainActor

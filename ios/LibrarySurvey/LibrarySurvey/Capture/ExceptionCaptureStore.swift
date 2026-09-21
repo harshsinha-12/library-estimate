@@ -61,6 +61,9 @@ final class ExceptionCaptureStore: ObservableObject {
       if label.contains("book") { suggestedCategory = .book }
       else if label.contains("portrait") || label.contains("picture frame") { suggestedCategory = .portrait }
       else if label.contains("cup") || label.contains("mug") { suggestedCategory = .cup }
+      else if label.contains("air conditioner") || label.contains("air-conditioning") { suggestedCategory = .appliance }
+      else if label.contains("bed") || label.contains("wardrobe") || label.contains("almirah") { suggestedCategory = .furniture }
+      else if label.contains("table") || label.contains("desk") { suggestedCategory = .furniture }
       else if label.contains("monitor") { suggestedCategory = .monitor }
       else if label.contains("computer") { suggestedCategory = .computer }
       else if label.contains("furniture") { suggestedCategory = .furniture }
@@ -82,18 +85,29 @@ final class ExceptionCaptureStore: ObservableObject {
     if let cropped = image.cropping(to: crop) { capture(UIImage(cgImage: cropped)) }
   }
 
-  func addMark(category: AssetCategory, label: String, room: String, highValue: Bool) {
+  func addMark(category: AssetCategory, label: String, room: String, highValue: Bool,
+               statedCost: Double? = nil, statedCurrency: String? = nil) {
     let id = UUID().uuidString.lowercased()
     marks.append(OtherAssetMark(
       id: id, assetCopyId: "asset_\(id)", category: category.rawValue,
       label: label, roomId: room, monotonicSeconds: pointedAt ?? MonotonicClock.now,
       evidenceRef: latestImageRef ?? "operator_mark", highValue: highValue,
-      cameraPose: currentCameraPose
+      cameraPose: currentCameraPose, statedCost: statedCost, statedCurrency: statedCurrency
     ))
     focusEvents.append(FocusEvent(id: UUID().uuidString.lowercased(),
                                   monotonicSeconds: pointedAt ?? MonotonicClock.now,
                                   assetCopyId: "asset_\(id)", faceId: nil, rowId: nil, slot: nil,
                                   cameraPose: currentCameraPose))
+    if let statedCost, let statedCurrency {
+      addNote(
+        text: "This \(label) cost us \(statedCost) \(statedCurrency).",
+        assetId: "asset_\(id)",
+        category: category,
+        faceId: nil,
+        rowId: nil,
+        slot: nil
+      )
+    }
     pointedAt = nil
   }
 

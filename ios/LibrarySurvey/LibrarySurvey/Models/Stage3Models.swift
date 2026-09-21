@@ -17,6 +17,8 @@ struct OtherAssetMark: Codable, Identifiable {
   let evidenceRef: String
   let highValue: Bool
   let cameraPose: [Float]?
+  let statedCost: Double?
+  let statedCurrency: String?
 }
 
 struct ExceptionScan: Codable, Identifiable {

@@ -25,6 +25,7 @@ struct ShelfRowCoverage: Identifiable, Codable, Equatable {
   var coverage: Double
   var status: String
   var copyCount: Int
+  var actualCount: Int?
 }
 
 struct LiveQualityReading: Equatable {
@@ -92,6 +93,7 @@ struct LabeledRow: Codable {
   var rowId: String
   var coverage: Double
   var capacityM: Double
+  var actualCount: Int?
   var spines: [LabeledSpine]
 }
 

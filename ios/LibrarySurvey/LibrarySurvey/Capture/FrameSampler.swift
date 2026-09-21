@@ -35,7 +35,7 @@ final class FrameSampler {
 
   private func sampleCurrentFrame() {
     guard let frame = session?.currentFrame else { return }
-    let image = CIImage(cvPixelBuffer: frame.capturedImage)
+    let image = CIImage(cvPixelBuffer: frame.capturedImage).oriented(displayOrientation)
     guard let cgImage = context.createCGImage(image, from: image.extent),
           let jpeg = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.78)
     else { return }
@@ -51,6 +51,15 @@ final class FrameSampler {
         jpegData: jpeg
       )
     )
+  }
+
+  private var displayOrientation: CGImagePropertyOrientation {
+    switch UIDevice.current.orientation {
+    case .landscapeLeft: .up
+    case .landscapeRight: .down
+    case .portraitUpsideDown: .left
+    default: .right
+    }
   }
 }
 

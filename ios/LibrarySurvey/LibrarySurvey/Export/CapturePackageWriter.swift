@@ -35,6 +35,7 @@ enum CapturePackageWriter {
     exceptionPackage: PassCPackage = PassCPackage(scans: [], notes: [], focusEvents: []),
     otherAssets: [OtherAssetMark] = [],
     exceptionImages: [String: Data] = [:],
+    shelfCrops: [String: Data] = [:],
     fileManager: FileManager = .default
   ) async throws -> SealedSurveyPackage {
     guard let firstRoom = rooms.first else { throw PackageWriterError.noRooms }
@@ -107,6 +108,7 @@ enum CapturePackageWriter {
     try writeShelfScans(
       package: shelfPackage,
       frames: shelfFrames,
+      crops: shelfCrops,
       root: root,
       files: &files,
       fileManager: fileManager
@@ -261,6 +263,7 @@ enum CapturePackageWriter {
   private static func writeShelfScans(
     package: LabeledShelfPackage,
     frames: [FrameSample],
+    crops: [String: Data],
     root: URL,
     files: inout [PackageFile],
     fileManager: FileManager
@@ -305,6 +308,13 @@ enum CapturePackageWriter {
       let url = root.appendingPathComponent(path)
       try createParent(of: url, fileManager: fileManager)
       try sample.jpegData.write(to: url, options: .atomic)
+      try appendFile(url, relativePath: path, mimeType: "image/jpeg", files: &files)
+    }
+    for (path, bytes) in crops.sorted(by: { $0.key < $1.key }) {
+      guard path.hasPrefix("shelf_scans/crops/"), path.lowercased().hasSuffix(".jpg") else { continue }
+      let url = root.appendingPathComponent(path)
+      try createParent(of: url, fileManager: fileManager)
+      try bytes.write(to: url, options: .atomic)
       try appendFile(url, relativePath: path, mimeType: "image/jpeg", files: &files)
     }
   }
