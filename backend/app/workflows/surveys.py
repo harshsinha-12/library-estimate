@@ -19,6 +19,7 @@ from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.utils.json_codec import canonical_json_bytes
 from backend.app.workflows.geometry import GeometryError, GeometryWorker
+from backend.app.workflows.stage3 import Stage3Worker
 from backend.app.workflows.vision import VisionWorker
 
 
@@ -35,10 +36,12 @@ class SurveyWorkflow:
         repository: SurveyRepository,
         geometry_worker: GeometryWorker | None = None,
         vision_worker: VisionWorker | None = None,
+        stage3_worker: Stage3Worker | None = None,
     ) -> None:
         self.repository = repository
         self.geometry_worker = geometry_worker or GeometryWorker()
         self.vision_worker = vision_worker or VisionWorker()
+        self.stage3_worker = stage3_worker or Stage3Worker()
 
     def create(self, request: SurveyCreate, *, idempotency_key: str) -> SurveyRecord:
         request_hash = sha256_bytes(canonical_json_bytes(request.model_dump(mode="json")))
@@ -91,9 +94,7 @@ class SurveyWorkflow:
             return replay
         survey = self.repository.get(survey_id)
         if survey.status not in {"created", "capturing", "uploading"}:
-            raise ManifestConflictError(
-                f"uploads are not accepted while survey is {survey.status}"
-            )
+            raise ManifestConflictError(f"uploads are not accepted while survey is {survey.status}")
         if survey.status == "created":
             self.repository.transition(survey_id, "capturing", occurred_at=utc_now())
         if survey.status != "uploading":
@@ -141,6 +142,7 @@ class SurveyWorkflow:
         try:
             geometry = self.geometry_worker.process(self.repository, survey_id)
             inventory = self.vision_worker.process(self.repository, survey_id)
+            self.stage3_worker.process(self.repository, survey_id)
             if inventory and inventory.overlays:
                 geometry = self.geometry_worker.process(
                     self.repository,

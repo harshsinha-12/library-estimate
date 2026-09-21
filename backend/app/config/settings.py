@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,15 +25,16 @@ class Settings:
     data_dir: Path
     openai_small_model: str
     openai_tts_model: str
+    openai_stt_model: str
     openai_tts_voice: str
     redis_host: str
     redis_port: int
     redis_username: str
-    redis_password: str
+    redis_password: str = field(repr=False)
     redis_key_prefix: str
     s3_endpoint_url: str
-    s3_access_key_id: str
-    s3_secret_access_key: str
+    s3_access_key_id: str = field(repr=False)
+    s3_secret_access_key: str = field(repr=False)
     s3_bucket: str
     s3_region: str
 
@@ -43,6 +44,7 @@ class Settings:
             data_dir=Path(os.getenv("LIBRARY_DATA_DIR", "data/runtime")),
             openai_small_model=os.getenv("OPENAI_SMALL_MODEL", "gpt-4o-mini"),
             openai_tts_model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
+            openai_stt_model=os.getenv("OPENAI_STT_MODEL", "gpt-4o-transcribe-diarize"),
             openai_tts_voice=os.getenv("OPENAI_TTS_VOICE", "marin"),
             redis_host=_require("REDIS_HOST"),
             redis_port=int(_require("REDIS_PORT")),

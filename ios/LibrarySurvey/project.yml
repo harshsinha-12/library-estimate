@@ -22,6 +22,7 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         NSCameraUsageDescription: Camera access captures RoomPlan geometry and synchronized survey evidence.
+        NSPhotoLibraryUsageDescription: Photo access lets you choose an exception close-up when a camera is unavailable.
         NSMicrophoneUsageDescription: Microphone access records technician notes on the survey timeline.
         NSLocationWhenInUseUsageDescription: Location suggests the survey country, city, currency, and pricing market.
         NSLocalNetworkUsageDescription: Local network access uploads sealed survey packages to the development backend.
