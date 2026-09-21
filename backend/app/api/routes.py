@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Body, Header, HTTPException, Query, Request, status
+from pydantic import ValidationError
+
+from backend.app.api.dependencies import get_survey_workflow
+from backend.app.domain.models import (
+    CapturePackageManifest,
+    SealResult,
+    SurveyCreate,
+    SurveyRecord,
+    SurveyStateEvent,
+    UploadedFile,
+)
+from backend.app.domain.repository import SurveyNotFoundError
+from backend.app.workflows.surveys import ManifestConflictError
+
+router = APIRouter(prefix="/v1")
+
+
+@router.post("/surveys", response_model=SurveyRecord, status_code=status.HTTP_201_CREATED)
+def create_survey(
+    request: Request,
+    payload: SurveyCreate,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+) -> SurveyRecord:
+    try:
+        return get_survey_workflow(request).create(payload, idempotency_key=idempotency_key)
+    except ManifestConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/surveys/{survey_id}", response_model=SurveyRecord)
+def get_survey(request: Request, survey_id: UUID) -> SurveyRecord:
+    try:
+        return get_survey_workflow(request).repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+
+
+@router.get("/surveys/{survey_id}/jobs", response_model=list[SurveyStateEvent])
+def get_survey_jobs(request: Request, survey_id: UUID) -> list[SurveyStateEvent]:
+    try:
+        return get_survey_workflow(request).repository.events(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+
+
+@router.post("/surveys/{survey_id}/uploads", response_model=UploadedFile)
+async def upload_evidence(
+    request: Request,
+    survey_id: UUID,
+    path: Annotated[str, Query(min_length=1)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+    content_type: Annotated[str, Header(alias="Content-Type", min_length=1)],
+) -> UploadedFile:
+    content = await request.body()
+    try:
+        return get_survey_workflow(request).upload(
+            survey_id,
+            path=path,
+            mime_type=content_type.split(";", maxsplit=1)[0],
+            content=content,
+            idempotency_key=idempotency_key,
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except (ManifestConflictError, ValidationError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/seal", response_model=SealResult)
+def seal_survey(
+    request: Request,
+    survey_id: UUID,
+    manifest: Annotated[CapturePackageManifest, Body()],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1)],
+) -> SealResult:
+    try:
+        return get_survey_workflow(request).seal(
+            survey_id,
+            manifest,
+            idempotency_key=idempotency_key,
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ManifestConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
