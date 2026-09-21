@@ -286,6 +286,7 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
                 "row_id": row["row_id"],
                 "coverage": float(row.get("coverage", 0)),
                 "capacity_m": float(row.get("capacity_m", scan.get("capacity_m", 1.0))),
+                "actual_count": row.get("actual_count"),
                 "label": scan.get("label") or scan["face_id"],
                 "min_x": float(scan.get("min_x", 0.4)),
                 "min_z": float(scan.get("min_z", 0.4)),
@@ -346,6 +347,7 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
                 "coverage": coverage,
                 "status": count_status,
                 "copy_count": count_value,
+                "actual_count": meta.get("actual_count"),
             }
         )
         face["occupied"] += occupied

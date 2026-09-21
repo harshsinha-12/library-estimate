@@ -135,6 +135,16 @@ def test_create_upload_and_seal_round_trip() -> None:
             "ingest_validation",
             "partial",
         ]
+        retry = client.post(
+            f"/v1/surveys/{survey_id}/seal",
+            headers=headers("seal-retry-after-done"),
+            json=manifest(
+                survey_id,
+                [("roomplan/processed/structure.json", "application/json", content)],
+            ),
+        )
+        assert retry.status_code == 200
+        assert retry.json()["status"] == "partial"
 
 
 def test_complete_roomplan_package_reaches_geometry_state() -> None:

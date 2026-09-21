@@ -6,7 +6,8 @@ The model boundary is deliberately provider-neutral. Fable and Astra replay rece
 
 | Role | Default | Configuration |
 | --- | --- | --- |
-| Focused smaller-model work | `gpt-4o-mini` | `OPENAI_SMALL_MODEL` |
+| Focused smaller-model work | `gpt-5.6-luna` | `OPENAI_SMALL_MODEL` |
+| Cover/spine title reading | `gpt-4o-mini` | `OPENAI_VISION_MODEL` |
 | Text-to-speech | `gpt-4o-mini-tts` | `OPENAI_TTS_MODEL` |
 | TTS voice | `marin` | `OPENAI_TTS_VOICE` |
 
