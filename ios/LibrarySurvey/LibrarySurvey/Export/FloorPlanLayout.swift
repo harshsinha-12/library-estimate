@@ -52,6 +52,11 @@ struct FloorPlanLayout {
     let copyCountLabel: String
     let fillLabel: String
     let status: String
+    var placement: String = ShelfFootprint.unregisteredKind
+
+    var placementLabel: String {
+      placement == ShelfFootprint.operatorKind ? "operator-placed" : "unregistered overlay"
+    }
   }
 
   static let palette = [
@@ -172,6 +177,18 @@ struct FloorPlanLayout {
     return try FloorPlanLayout(structure)
   }
 
+  func world(from screenPoint: CGPoint, in size: CGSize, padding: Double = 28) -> Point {
+    let width = max(maxX - minX, 0.01)
+    let depth = max(maxZ - minZ, 0.01)
+    let scale = min(
+      (Double(size.width) - padding * 2) / width,
+      (Double(size.height) - padding * 2) / depth
+    )
+    let x = (Double(screenPoint.x) - padding) / scale + minX
+    let z = maxZ - (Double(screenPoint.y) - padding) / scale
+    return Point(x: x, z: z)
+  }
+
   func screen(_ point: Point, in size: CGSize, padding: Double = 28) -> CGPoint {
     let width = max(maxX - minX, 0.01)
     let depth = max(maxZ - minZ, 0.01)
@@ -226,6 +243,19 @@ struct FloorPlanLayout {
         start.0, start.1, end.0, end.1, wall.colorHex, wall.index
       )
     }
+    let shelfMarkup = shelves.map { shelf -> String in
+      let a = mapped(Point(x: shelf.minX, z: shelf.maxZ))
+      let b = mapped(Point(x: shelf.maxX, z: shelf.minZ))
+      let x = min(a.0, b.0)
+      let y = min(a.1, b.1)
+      let width = abs(b.0 - a.0)
+      let height = abs(b.1 - a.1)
+      let fill = shelf.placement == ShelfFootprint.operatorKind ? "#3B7BFF55" : "#F2C14E55"
+      return String(
+        format: "<rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\" fill=\"%@\" data-shelf=\"%@\" data-placement=\"%@\" />",
+        x, y, width, height, fill, Self.escape(shelf.faceId), Self.escape(shelf.placementLabel)
+      )
+    }
     let openingMarkup = openings.map { opening -> String in
       let start = mapped(opening.start)
       let end = mapped(opening.end)
@@ -257,6 +287,9 @@ struct FloorPlanLayout {
       <g stroke-width="8" stroke-linecap="square">
         \(wallMarkup.joined(separator: "\n        "))
       </g>
+      <g>
+        \(shelfMarkup.joined(separator: "\n        "))
+      </g>
       <g stroke-width="10" stroke-linecap="butt">
         \(openingMarkup.joined(separator: "\n        "))
       </g>
@@ -279,6 +312,17 @@ struct FloorPlanLayout {
     var lines = [("#9A9AA2", "\(summaryLine). N is scan +Z, not magnetic north."), ("#E8E8ED", "Walls")]
     for wall in walls {
       lines.append((wall.colorHex, "Wall \(wall.index)  \(wall.lengthCm) cm · \(wall.compass)"))
+    }
+    if !shelves.isEmpty {
+      lines.append(("#E8E8ED", "Shelves"))
+      for shelf in shelves {
+        lines.append(
+          (
+            shelf.placement == ShelfFootprint.operatorKind ? "#3B7BFF" : "#F2C14E",
+            "\(shelf.label)  \(shelf.copyCountLabel)  \(shelf.fillLabel)  \(shelf.placementLabel)"
+          )
+        )
+      }
     }
     let groups: [(Opening.Kind, String)] = [(.door, "Doors"), (.window, "Windows"), (.opening, "Openings")]
     for (kind, title) in groups {

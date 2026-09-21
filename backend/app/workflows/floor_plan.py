@@ -353,10 +353,18 @@ def _legend_lines(
     if overlays:
         lines.append(("#E8E8ED", "Shelves"))
         for overlay in overlays:
+            placement = (
+                "operator-placed"
+                if getattr(overlay, "placement", "unregistered") == "operator"
+                else "unregistered overlay"
+            )
             lines.append(
                 (
                     "#F2C14E" if overlay.status != "ok" else "#3B7BFF",
-                    f"{overlay.label}  {overlay.copy_count_label}  {overlay.fill_label}",
+                    (
+                        f"{overlay.label}  {overlay.copy_count_label}  "
+                        f"{overlay.fill_label}  {placement}"
+                    ),
                 )
             )
     return lines

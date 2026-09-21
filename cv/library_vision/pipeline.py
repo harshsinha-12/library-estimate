@@ -293,6 +293,7 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
                 "max_x": float(scan.get("max_x", 1.2)),
                 "max_z": float(scan.get("max_z", 0.7)),
                 "evidence_bytes": int(scan.get("evidence_bytes", 0)),
+                "placement": "operator" if scan.get("placement") == "operator" else "unregistered",
             }
 
     copies_by_face_row: dict[tuple[str, str], list[dict]] = defaultdict(list)
@@ -339,6 +340,7 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
                 "min_z": meta["min_z"],
                 "max_x": meta["max_x"],
                 "max_z": meta["max_z"],
+                "placement": meta.get("placement") or "unregistered",
             },
         )
         face["rows"].append(
@@ -424,6 +426,7 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
                 ),
                 "fill_label": f"{int(fill * 100)}% fill",
                 "status": face["status"],
+                "placement": "operator" if face.get("placement") == "operator" else "unregistered",
             }
         )
 

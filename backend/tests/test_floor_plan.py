@@ -91,3 +91,59 @@ def test_existing_home_capture_keeps_wall_lengths() -> None:
     plan = TaggedFloorPlan.from_structure(PortableStructure.model_validate(payload))
     assert [wall.length_cm for wall in plan.walls] == [368, 205, 196, 131, 61]
     assert plan.ceiling_height_m == 2.928
+
+
+def test_shelf_overlay_legend_marks_unregistered_footprints() -> None:
+    from backend.app.domain.models import ShelfOverlay
+
+    structure = PortableStructure.model_validate(
+        {
+            "format": "library-roomplan-1.0",
+            "rooms": [
+                {
+                    "identifier": "room-1",
+                    "label": "Library",
+                    "walls": [
+                        {
+                            "identifier": "north",
+                            "dimensions": [4, 2.97, 0],
+                            "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2, 0, 3, 1],
+                        },
+                        {
+                            "identifier": "east",
+                            "dimensions": [3, 2.97, 0],
+                            "transform": [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 4, 0, 1.5, 1],
+                        },
+                        {
+                            "identifier": "south",
+                            "dimensions": [4, 2.97, 0],
+                            "transform": [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 2, 0, 0, 1],
+                        },
+                        {
+                            "identifier": "west",
+                            "dimensions": [3, 2.97, 0],
+                            "transform": [0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1.5, 1],
+                        },
+                    ],
+                    "doors": [],
+                    "windows": [],
+                    "openings": [],
+                }
+            ],
+        }
+    )
+    plan = TaggedFloorPlan.from_structure(structure)
+    overlay = ShelfOverlay(
+        face_id="shelf_01.face_A",
+        label="Shelf 1",
+        min_x=0.4,
+        min_z=0.3,
+        max_x=1.6,
+        max_z=0.7,
+        copy_count_label="8 copies",
+        fill_label="live assist",
+        status="partial",
+    )
+    svg = render_svg(plan, overlays=[overlay])
+    assert "unregistered overlay" in svg
+    assert 'data-shelf="shelf_01.face_A"' in svg

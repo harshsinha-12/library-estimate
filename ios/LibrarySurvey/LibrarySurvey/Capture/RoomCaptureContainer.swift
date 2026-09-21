@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RoomCaptureContainer: UIViewRepresentable {
   @ObservedObject var store: RoomCaptureStore
+  @ObservedObject var camera: CameraSessionCoordinator
 
   func makeCoordinator() -> Coordinator {
     Coordinator(store: store)
@@ -17,9 +18,16 @@ struct RoomCaptureContainer: UIViewRepresentable {
 
   func updateUIView(_ uiView: RoomCaptureView, context: Context) {}
 
+  static func dismantleUIView(_ uiView: RoomCaptureView, coordinator: Coordinator) {
+    uiView.captureSession.arSession.pause()
+    Task { @MainActor in
+      coordinator.store.didDismantleCaptureView()
+    }
+  }
+
   @objc(LibrarySurveyRoomCaptureCoordinator)
   final class Coordinator: NSObject, RoomCaptureViewDelegate {
-    private let store: RoomCaptureStore
+    let store: RoomCaptureStore
 
     init(store: RoomCaptureStore) {
       self.store = store

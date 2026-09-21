@@ -36,6 +36,8 @@ enum CapturePackageWriter {
     otherAssets: [OtherAssetMark] = [],
     exceptionImages: [String: Data] = [:],
     shelfCrops: [String: Data] = [:],
+    rgbEvidenceMode: String = CameraSessionCoordinator.RGBEvidenceMode.sampledDuringScan.rawValue,
+    shelfFootprintPlacement: String = "unregistered_overlay",
     fileManager: FileManager = .default
   ) async throws -> SealedSurveyPackage {
     guard let firstRoom = rooms.first else { throw PackageWriterError.noRooms }
@@ -97,7 +99,13 @@ enum CapturePackageWriter {
       fileManager: fileManager
     )
     try writeJSON(
-      ["coordinate_system": "roomplan-world", "units": "metres"],
+      [
+        "coordinate_system": "roomplan-world",
+        "units": "metres",
+        "camera_ownership": "sequential",
+        "rgb_evidence_mode": rgbEvidenceMode,
+        "shelf_footprints": shelfFootprintPlacement
+      ],
       relativePath: "device/calibration.json",
       mimeType: "application/json",
       root: root,

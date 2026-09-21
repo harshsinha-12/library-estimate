@@ -35,8 +35,8 @@ struct TaggedFloorPlanView: View {
       if !layout.shelves.isEmpty {
         legend(title: "Shelves", rows: layout.shelves.map { shelf in
           LegendRow(
-            color: shelf.status == "ok" ? Color.blue : Color.orange,
-            text: "\(shelf.label)  \(shelf.copyCountLabel)  \(shelf.fillLabel)"
+            color: shelf.placement == ShelfFootprint.operatorKind ? Color.blue : Color.orange,
+            text: "\(shelf.label)  \(shelf.copyCountLabel)  \(shelf.fillLabel)  \(shelf.placementLabel)"
           )
         })
       }
@@ -80,7 +80,7 @@ private struct LegendRow {
   let text: String
 }
 
-private struct TaggedFloorPlanCanvas: View {
+struct TaggedFloorPlanCanvas: View {
   let layout: FloorPlanLayout
 
   var body: some View {
@@ -106,7 +106,9 @@ private struct TaggedFloorPlanCanvas: View {
           width: abs(b.x - a.x),
           height: abs(b.y - a.y)
         )
-        let color = shelf.status == "ok" ? Color.blue.opacity(0.35) : Color.orange.opacity(0.4)
+        let color = shelf.placement == ShelfFootprint.operatorKind
+          ? Color.blue.opacity(0.35)
+          : Color.orange.opacity(0.4)
         context.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(color))
         context.draw(
           Text(shelf.copyCountLabel).font(.caption2).foregroundColor(.white),

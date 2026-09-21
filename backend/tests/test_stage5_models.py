@@ -112,7 +112,9 @@ def test_replay_names_the_extracted_title_in_a_crowded_frame() -> None:
             "observation_refs": ["obs-1"], "requires_appraisal": False,
             "row_id": "row_01", "slot": 0,
         }],
-        "observations": [{"observation_id": "obs-1", "evidence_ref": "roomplan/raw/frames/0071.jpg"}],
+        "observations": [
+            {"observation_id": "obs-1", "evidence_ref": "roomplan/raw/frames/0071.jpg"}
+        ],
     })
     repository.save_json(survey_id, "stage3", {
         "identities": [{"asset_copy_id": "copy-1", "title": "Python Data Science Handbook"}],

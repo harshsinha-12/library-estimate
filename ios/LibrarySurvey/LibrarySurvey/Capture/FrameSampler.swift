@@ -9,13 +9,15 @@ final class FrameSampler {
   private var timer: Timer?
   private weak var session: ARSession?
   private(set) var samples: [FrameSample] = []
+  private(set) var liveSampleCount = 0
 
   func start(session: ARSession, interval: TimeInterval = 1.0) {
-    stop()
+    stop(captureFallback: false)
     self.session = session
     samples = []
+    liveSampleCount = 0
     timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-      Task { @MainActor in self?.sampleCurrentFrame() }
+      Task { @MainActor in self?.sampleCurrentFrame(countsAsLive: true) }
     }
   }
 
@@ -23,7 +25,7 @@ final class FrameSampler {
     timer?.invalidate()
     timer = nil
     if captureFallback && samples.isEmpty {
-      sampleCurrentFrame()
+      sampleCurrentFrame(countsAsLive: false)
     }
     session = nil
   }
@@ -31,9 +33,10 @@ final class FrameSampler {
   func releaseSamples() {
     stop(captureFallback: false)
     samples = []
+    liveSampleCount = 0
   }
 
-  private func sampleCurrentFrame() {
+  private func sampleCurrentFrame(countsAsLive: Bool) {
     guard let frame = session?.currentFrame else { return }
     let image = CIImage(cvPixelBuffer: frame.capturedImage).oriented(displayOrientation)
     guard let cgImage = context.createCGImage(image, from: image.extent),
@@ -51,6 +54,7 @@ final class FrameSampler {
         jpegData: jpeg
       )
     )
+    if countsAsLive { liveSampleCount += 1 }
   }
 
   private var displayOrientation: CGImagePropertyOrientation {
@@ -62,4 +66,3 @@ final class FrameSampler {
     }
   }
 }
-

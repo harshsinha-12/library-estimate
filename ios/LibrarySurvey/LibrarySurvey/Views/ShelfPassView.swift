@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ShelfPassView: View {
   @ObservedObject var store: ShelfCaptureStore
+  @ObservedObject var camera: CameraSessionCoordinator
   let unit: ShelfUnit
   let face: ShelfFaceSide
   let draft: SurveyDraft
@@ -14,7 +15,7 @@ struct ShelfPassView: View {
 
   var body: some View {
     ZStack(alignment: .bottom) {
-      ShelfCameraContainer(store: store)
+      ShelfCameraContainer(store: store, camera: camera)
         .ignoresSafeArea()
       if store.capturing {
         GeometryReader { geometry in
@@ -63,6 +64,17 @@ struct ShelfPassView: View {
         VStack(alignment: .leading, spacing: 10) {
           Text("\(unit.name) · face \(face.rawValue)")
             .font(.headline)
+          Text(camera.statusLine)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          if camera.owner == .roomPlan {
+            Label(
+              "Waiting for RoomPlan to release the camera. Pass B does not start a second session.",
+              systemImage: "camera.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
+          }
           if store.assistCount > 0 {
             Label("About \(store.assistCount) visible copies", systemImage: "sparkles")
               .foregroundStyle(.yellow)
@@ -77,7 +89,13 @@ struct ShelfPassView: View {
               store.startFace(unit: unit, face: face)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(camera.owner != .shelfAR)
           }
+          Text(unit.footprint?.isOperatorPlaced == true
+            ? "This face is registered with an operator-placed footprint on the RoomPlan plan."
+            : "Unregistered overlay: place this unit on the RoomPlan plan in Review Shelves. Shelf RGB poses are from this later AR session.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
         }
         .padding()
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))

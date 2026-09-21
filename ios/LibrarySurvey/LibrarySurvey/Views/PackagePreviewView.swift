@@ -159,7 +159,8 @@ struct PackagePreviewView: View {
       var unique: [String: LabeledPass] = [:]
       for item in labeled.passes { unique[item.faceId] = item }
       layout?.shelves = unique.values.map { pass in
-        FloorPlanLayout.ShelfOverlay(
+        let placement = pass.placement ?? ShelfFootprint.unregisteredKind
+        return FloorPlanLayout.ShelfOverlay(
           faceId: pass.faceId,
           label: pass.label,
           minX: pass.minX,
@@ -167,8 +168,9 @@ struct PackagePreviewView: View {
           maxX: pass.maxX,
           maxZ: pass.maxZ,
           copyCountLabel: "\(pass.rows.reduce(0) { $0 + $1.spines.count }) copies",
-          fillLabel: "live assist",
-          status: pass.rows.contains(where: { $0.coverage < 0.8 }) ? "partial" : "ok"
+          fillLabel: placement == ShelfFootprint.operatorKind ? "operator-placed" : "unregistered overlay",
+          status: pass.rows.contains(where: { $0.coverage < 0.8 }) ? "partial" : "ok",
+          placement: placement
         )
       }
     }
