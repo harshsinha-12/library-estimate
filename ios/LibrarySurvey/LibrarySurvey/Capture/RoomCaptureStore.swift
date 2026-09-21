@@ -50,6 +50,8 @@ final class RoomCaptureStore: ObservableObject {
     session?.stop()
   }
 
+  func currentFrameSample() -> FrameSample? { sampler.samples.last }
+
   func didFinish(room: CapturedRoom?, error: Error?) {
     if let error {
       state = .failed(error.localizedDescription)
@@ -77,4 +79,3 @@ final class RoomCaptureStore: ObservableObject {
     state = RoomCaptureSession.isSupported ? .ready : .unsupported
   }
 }
-

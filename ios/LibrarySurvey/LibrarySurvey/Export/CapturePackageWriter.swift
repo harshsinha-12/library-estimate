@@ -32,6 +32,9 @@ enum CapturePackageWriter {
     monotonicAnchor: Double,
     shelfPackage: LabeledShelfPackage = LabeledShelfPackage(passes: []),
     shelfFrames: [FrameSample] = [],
+    exceptionPackage: PassCPackage = PassCPackage(scans: [], notes: [], focusEvents: []),
+    otherAssets: [OtherAssetMark] = [],
+    exceptionImages: [String: Data] = [:],
     fileManager: FileManager = .default
   ) async throws -> SealedSurveyPackage {
     guard let firstRoom = rooms.first else { throw PackageWriterError.noRooms }
@@ -108,6 +111,21 @@ enum CapturePackageWriter {
       files: &files,
       fileManager: fileManager
     )
+    if !exceptionPackage.scans.isEmpty || !exceptionPackage.notes.isEmpty || !exceptionPackage.focusEvents.isEmpty {
+      try writeJSON(exceptionPackage, relativePath: "exceptions/pass-c.json", mimeType: "application/json",
+                    root: root, files: &files, fileManager: fileManager)
+    }
+    if !otherAssets.isEmpty {
+      try writeJSON(otherAssets, relativePath: "other_assets/marks.json", mimeType: "application/json",
+                    root: root, files: &files, fileManager: fileManager)
+    }
+    for (path, bytes) in exceptionImages.sorted(by: { $0.key < $1.key }) {
+      guard path.hasPrefix("closeups/"), !path.contains("..") else { continue }
+      let imageURL = root.appendingPathComponent(path)
+      try createParent(of: imageURL, fileManager: fileManager)
+      try bytes.write(to: imageURL, options: .atomic)
+      try appendFile(imageURL, relativePath: path, mimeType: "image/jpeg", files: &files)
+    }
     try writeJSON(
       notes,
       relativePath: "notes/annotations.json",
@@ -174,7 +192,8 @@ enum CapturePackageWriter {
         timezone: TimeZone.current.identifier
       ),
       captureState: "complete",
-      captureModes: shelfPackage.passes.isEmpty ? ["room"] : ["room", "shelf"],
+      captureModes: (shelfPackage.passes.isEmpty ? ["room"] : ["room", "shelf"]) +
+        ((!exceptionPackage.scans.isEmpty || !otherAssets.isEmpty || !exceptionPackage.focusEvents.isEmpty) ? ["exception"] : []),
       files: files
     )
     let manifestURL = root.appendingPathComponent("manifest.json")

@@ -7,6 +7,7 @@ struct RootView: View {
     case roomCapture
     case shelfMap
     case shelfPass
+    case exceptionPass
     case package
   }
 
@@ -16,6 +17,7 @@ struct RootView: View {
   @StateObject private var audio = AudioNoteRecorder()
   @StateObject private var uploader = SurveyUploadService()
   @StateObject private var shelves = ShelfCaptureStore()
+  @StateObject private var exceptions = ExceptionCaptureStore()
   @State private var stage: Stage = .create
   @State private var notes: [WrittenNote] = []
   @State private var activeFace: (ShelfUnit, ShelfFaceSide)?
@@ -43,6 +45,7 @@ struct RootView: View {
           RoomPassView(
             store: capture,
             audio: audio,
+            exceptions: exceptions,
             notes: $notes,
             recordSpokenNotes: drafts.draft.consent.audio,
             sealError: sealError,
@@ -55,6 +58,7 @@ struct RootView: View {
               activeFace = (unit, face)
               stage = .shelfPass
             },
+            onExceptions: { stage = .exceptionPass },
             onSeal: seal
           )
         case .shelfPass:
@@ -63,7 +67,24 @@ struct RootView: View {
               store: shelves,
               unit: activeFace.0,
               face: activeFace.1,
-              onFinished: { stage = .shelfMap }
+              onFinished: { stage = .shelfMap },
+              onFocus: { image, faceId, row, slot in
+                exceptions.currentCameraPose = shelves.currentPose()
+                shelves.stopFace()
+                exceptions.capture(image)
+                exceptions.focusedFaceId = faceId
+                exceptions.focusedRow = row
+                exceptions.focusedSlot = slot
+                exceptions.pointAtShelf(faceId: faceId, row: row, slot: slot)
+                stage = .exceptionPass
+              },
+              onOther: { image in
+                exceptions.currentCameraPose = shelves.currentPose()
+                shelves.stopFace()
+                if let image { exceptions.capture(image) }
+                exceptions.pointAtOther()
+                stage = .exceptionPass
+              }
             )
           }
         case .package:
@@ -75,6 +96,9 @@ struct RootView: View {
               onNewSurvey: reset
             )
           }
+        case .exceptionPass:
+          ExceptionPassView(store: exceptions, units: shelves.units,
+                            shelfPackage: shelves.combinedLabeledPackage()) { stage = .shelfMap }
         }
       }
       .navigationTitle(title)
@@ -105,6 +129,7 @@ struct RootView: View {
     case .roomCapture: "Room Pass A"
     case .shelfMap: "Shelf Map"
     case .shelfPass: "Shelf Pass B"
+    case .exceptionPass: "Exception Pass C"
     case .package: "Sealed Survey"
     }
   }
@@ -130,7 +155,11 @@ struct RootView: View {
           startedAt: startedAt,
           monotonicAnchor: monotonicAnchor,
           shelfPackage: shelves.combinedLabeledPackage(),
-          shelfFrames: shelves.samples
+          shelfFrames: shelves.samples,
+          exceptionPackage: PassCPackage(scans: exceptions.scans, notes: exceptions.notes,
+                                         focusEvents: exceptions.focusEvents),
+          otherAssets: exceptions.marks,
+          exceptionImages: exceptions.images
         )
         sealedPackage = package
         capture.releaseAfterSeal()
@@ -170,6 +199,7 @@ struct RootView: View {
     sealError = nil
     stage = .create
     shelves.captures = []
+    exceptions.reset()
     shelves.units = [ShelfUnit(id: UUID(), name: "Shelf 1", rowCount: 3, roomName: "Library")]
   }
 }

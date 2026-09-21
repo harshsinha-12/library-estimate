@@ -4,6 +4,17 @@ import UIKit
 import Vision
 
 enum LiveQualityAnalyzer {
+  static func spineRegions(jpeg: Data) -> [CGRect] {
+    guard let image = UIImage(data: jpeg)?.cgImage else { return [] }
+    let request = VNDetectRectanglesRequest()
+    request.minimumAspectRatio = 0.08
+    request.maximumAspectRatio = 0.45
+    request.minimumSize = 0.02
+    request.maximumObservations = 80
+    try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+    return (request.results ?? []).map(\.boundingBox)
+  }
+
   static func analyze(
     jpeg: Data,
     previousTransform: [Float]?,

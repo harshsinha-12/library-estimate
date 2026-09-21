@@ -3,12 +3,17 @@ import SwiftUI
 struct RoomPassView: View {
   @ObservedObject var store: RoomCaptureStore
   @ObservedObject var audio: AudioNoteRecorder
+  @ObservedObject var exceptions: ExceptionCaptureStore
   @Binding var notes: [WrittenNote]
   let recordSpokenNotes: Bool
   let sealError: String?
   let onContinue: () -> Void
 
   @State private var noteText = ""
+  @State private var showObjectMark = false
+  @State private var pointedCategory: AssetCategory = .portrait
+  @State private var pointedLabel = ""
+  @State private var pointedHighValue = false
 
   var body: some View {
     ZStack(alignment: .bottom) {
@@ -50,6 +55,28 @@ struct RoomPassView: View {
       .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
       .padding()
     }
+    .sheet(isPresented: $showObjectMark) {
+      NavigationStack {
+        Form {
+          if let image = exceptions.latestImage {
+            Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 220)
+          }
+          Picker("Object", selection: $pointedCategory) {
+            ForEach(AssetCategory.allCases) { item in Text(item.label).tag(item) }
+          }
+          TextField("Object label", text: $pointedLabel)
+          Toggle("High-value or unusual", isOn: $pointedHighValue)
+          Button("Mark pointed object") {
+            exceptions.addMark(category: pointedCategory, label: pointedLabel,
+                               room: store.roomName, highValue: pointedHighValue)
+            pointedLabel = ""
+            showObjectMark = false
+          }
+          .disabled(pointedLabel.isEmpty)
+        }
+        .navigationTitle("Pointed object")
+      }
+    }
   }
 
   @ViewBuilder
@@ -82,8 +109,12 @@ struct RoomPassView: View {
       Button("Start Room Scan", systemImage: "camera.viewfinder", action: start)
         .buttonStyle(.borderedProminent)
     case .capturing:
-      Button("Finish Room Scan", systemImage: "stop.fill", action: stop)
-        .buttonStyle(.borderedProminent)
+      HStack {
+        Button("Point out object", systemImage: "hand.point.up.left", action: pointOutObject)
+          .buttonStyle(.bordered)
+        Button("Finish Room Scan", systemImage: "stop.fill", action: stop)
+          .buttonStyle(.borderedProminent)
+      }
     case .processing:
       EmptyView()
     case .captured:
@@ -107,8 +138,16 @@ struct RoomPassView: View {
   }
 
   private func stop() {
-    audio.stop()
     store.stop()
+  }
+
+  private func pointOutObject() {
+    guard let sample = store.currentFrameSample(),
+          let image = UIImage(data: sample.jpegData) else { return }
+    exceptions.currentCameraPose = sample.cameraTransform
+    exceptions.capture(image)
+    exceptions.pointAtOther()
+    showObjectMark = true
   }
 
   private func addNote() {
@@ -125,4 +164,3 @@ struct RoomPassView: View {
     noteText = ""
   }
 }
-

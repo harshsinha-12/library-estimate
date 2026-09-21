@@ -75,6 +75,15 @@ struct PackagePreviewView: View {
         .controlSize(.large)
         .disabled(uploader.isBusy || backendURL == nil)
 
+        if let backendURL {
+          NavigationLink {
+            Stage3ReviewView(surveyId: package.surveyId, backendURL: backendURL)
+          } label: {
+            Label("Review unresolved objects and notes", systemImage: "checklist")
+          }
+          .buttonStyle(.borderedProminent)
+        }
+
         Button("Start Another Survey", action: onNewSurvey)
           .buttonStyle(.bordered)
       }

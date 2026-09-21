@@ -3,6 +3,7 @@ import SwiftUI
 struct ShelfMapView: View {
   @ObservedObject var store: ShelfCaptureStore
   let onScanFace: (ShelfUnit, ShelfFaceSide) -> Void
+  let onExceptions: () -> Void
   let onSeal: () -> Void
 
   var body: some View {
@@ -37,6 +38,8 @@ struct ShelfMapView: View {
           .foregroundStyle(.secondary)
         Button("Seal Package", systemImage: "lock.fill", action: onSeal)
           .buttonStyle(.borderedProminent)
+        Button("Other assets and Exception Pass C", systemImage: "barcode.viewfinder", action: onExceptions)
+          .buttonStyle(.bordered)
       }
     }
     .navigationTitle("Shelf Map")

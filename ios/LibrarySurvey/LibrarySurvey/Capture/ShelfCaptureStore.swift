@@ -17,6 +17,7 @@ final class ShelfCaptureStore: ObservableObject {
   @Published var captures: [ShelfFaceCapture] = []
   @Published var samples: [FrameSample] = []
   @Published var assistCount = 0
+  @Published var highlightedSpines: [CGRect] = []
 
   private var session: ARSession?
   private let sampler = FrameSampler()
@@ -71,6 +72,7 @@ final class ShelfCaptureStore: ObservableObject {
       dt: dt
     )
     assistCount = quality.provisionalCount
+    highlightedSpines = LiveQualityAnalyzer.spineRegions(jpeg: frame.jpegData)
     previousTransform = frame.cameraTransform
     previousTime = now
     updateCoverage()
@@ -97,6 +99,28 @@ final class ShelfCaptureStore: ObservableObject {
       )
     )
   }
+
+  func focusedImage(for region: CGRect) -> UIImage? {
+    guard let data = sampler.samples.last?.jpegData,
+          let image = UIImage(data: data)?.cgImage else { return nil }
+    let padding: CGFloat = 0.05
+    let expanded = CGRect(x: max(0, region.minX - padding), y: max(0, region.minY - padding),
+                          width: min(1 - max(0, region.minX - padding), region.width + padding * 2),
+                          height: min(1 - max(0, region.minY - padding), region.height + padding * 2))
+    let crop = CGRect(x: expanded.minX * CGFloat(image.width),
+                      y: (1 - expanded.maxY) * CGFloat(image.height),
+                      width: expanded.width * CGFloat(image.width),
+                      height: expanded.height * CGFloat(image.height)).integral
+    guard let cropped = image.cropping(to: crop) else { return nil }
+    return UIImage(cgImage: cropped)
+  }
+
+  func currentImage() -> UIImage? {
+    guard let data = sampler.samples.last?.jpegData else { return nil }
+    return UIImage(data: data)
+  }
+
+  func currentPose() -> [Float]? { sampler.samples.last?.cameraTransform }
 
   func combinedLabeledPackage() -> LabeledShelfPackage {
     var passes: [LabeledPass] = []
