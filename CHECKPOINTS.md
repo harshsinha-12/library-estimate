@@ -126,14 +126,14 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 
 ### Models and Jev
 
-- [ ] Evidence package frozen; identical input to A and B.
-- [ ] Fable batch adapter.
-- [ ] Astra replay adapter.
+- [x] Evidence package frozen; identical input to A and B.
+- [x] Fable batch adapter.
+- [x] Astra replay adapter.
 - [ ] Astra-live assist.
-- [ ] Shared assessment schema wired end-to-end.
-- [ ] Jev routing: accept, recapture, human, alternate resolver.
+- [x] Shared assessment schema wired end-to-end.
+- [x] Jev routing: accept, recapture, human, alternate resolver.
 - [ ] Policy vetoes (high-value, eBook-as-physical, ISBN-only merge).
-- [ ] Cost, latency, disagreement logs.
+- [x] Cost, latency, disagreement logs.
 
 
 
@@ -152,12 +152,12 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 ### Product, security, failures
 
 - [ ] Remaining screens: Processing, Overview, Inventory, Review, Report.
-- [ ] JSON + PDF report with versions, citations, limitations.
+- [x] JSON + PDF report with versions, citations, limitations.
 - [ ] Evidence viewer for every count and value.
 - [ ] Shelf-row inventory detail with expected/detected count, selectable copy outlines and evidence, identity/unresolved action, and per-copy price/condition status; barcode rescan, correction, and search actions.
 - [ ] Auth, encryption, signed URLs or local equivalent, retention, redaction, access log.
 - [ ] Accessibility requirements.
-- [ ] $50 ledger with stop-at-cap.
+- [x] $50 ledger with stop-at-cap.
 - [ ] Every §17 failure row as status + operator action.
 - [ ] Remaining APIs: jobs, inventory, review, report, shelves, evidence, policies, shadow.
 

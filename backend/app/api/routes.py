@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError
@@ -21,7 +22,10 @@ from backend.app.domain.models import (
     UploadedFile,
 )
 from backend.app.domain.repository import SurveyNotFoundError
+from backend.app.providers.usage import usage_for_run, usage_for_survey, usage_scope
 from backend.app.providers.voice import synthesize_prompt
+from backend.app.workflows.models import ModelReplayError, replay_asset
+from backend.app.workflows.report import build_report
 from backend.app.workflows.stage3 import apply_review
 from backend.app.workflows.surveys import ManifestConflictError
 
@@ -60,6 +64,88 @@ def get_survey_jobs(request: Request, survey_id: UUID) -> list[SurveyStateEvent]
         return get_survey_workflow(request).repository.events(survey_id)
     except SurveyNotFoundError as error:
         raise HTTPException(status_code=404, detail="survey not found") from error
+
+
+@router.get("/surveys/{survey_id}/runs/{run_id}/usage")
+def get_run_usage(request: Request, survey_id: UUID, run_id: UUID) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    return usage_for_run(repository, survey_id, run_id)
+
+
+@router.get("/surveys/{survey_id}/usage")
+def get_survey_usage(request: Request, survey_id: UUID) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    return usage_for_survey(repository, survey_id)
+
+
+@router.get("/surveys/{survey_id}/report")
+def get_report(request: Request, survey_id: UUID) -> dict:
+    try:
+        report, _ = build_report(get_survey_workflow(request).repository, survey_id)
+        return report
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/surveys/{survey_id}/report.pdf")
+def get_report_pdf(request: Request, survey_id: UUID) -> Response:
+    try:
+        _, pdf = build_report(get_survey_workflow(request).repository, survey_id)
+        return Response(content=pdf, media_type="application/pdf")
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/assets/{asset_copy_id}/model-replay")
+def model_replay(request: Request, survey_id: UUID, asset_copy_id: str) -> dict:
+    try:
+        return replay_asset(
+            get_survey_workflow(request).repository, survey_id, asset_copy_id,
+            run_id=request.state.run_id,
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ModelReplayError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/surveys/{survey_id}/model-runs")
+def get_model_runs(request: Request, survey_id: UUID) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    key = f"{repository.key_prefix}:survey:{survey_id}:model_runs"
+    runs = [
+        repository.get_json(survey_id, f"model-run:{raw}")
+        for raw in sorted(repository.redis.smembers(key))
+    ]
+    return {"survey_id": str(survey_id), "runs": [row for row in runs if row]}
+
+
+@router.get("/surveys/{survey_id}/rl-transitions")
+def get_rl_transitions(request: Request, survey_id: UUID) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    key = f"{repository.key_prefix}:survey:{survey_id}:rl_transitions"
+    rows = [json.loads(raw) for raw in repository.redis.lrange(key, 0, -1)]
+    return {"survey_id": str(survey_id), "transitions": rows}
 
 
 @router.post("/surveys/{survey_id}/uploads", response_model=UploadedFile)
@@ -151,9 +237,17 @@ def get_overview(request: Request, survey_id: UUID) -> dict:
 
 
 @router.post("/assets/{asset_id}/price-search")
-def price_search(request: Request, asset_id: str, payload: PriceSearchRequest) -> dict:
+def price_search(
+    request: Request, response: Response, asset_id: str, payload: PriceSearchRequest
+) -> dict:
     try:
-        return get_survey_workflow(request).price_search(payload.survey_id, asset_id)
+        run_id = uuid4()
+        with usage_scope(
+            get_survey_workflow(request).repository, payload.survey_id, run_id
+        ):
+            result = get_survey_workflow(request).price_search(payload.survey_id, asset_id)
+        response.headers["X-Survey-Run-Id"] = str(run_id)
+        return result
     except SurveyNotFoundError as error:
         raise HTTPException(status_code=404, detail="survey not found") from error
     except ValueError as error:

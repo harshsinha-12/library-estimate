@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from backend.app.providers.pricing import log as pricing_log
+from backend.app.providers.usage import record_usage, reserve_budget
 
 
 def completion_body(
@@ -50,6 +52,8 @@ def complete_json(
     last_error = None
     for response_format in formats:
         format_name = response_format.get("type")
+        reserve_budget("0.10")
+        started = time.monotonic()
         try:
             request = Request(
                 "https://api.openai.com/v1/chat/completions",
@@ -77,6 +81,10 @@ def complete_json(
             )
             with urlopen(request, timeout=30) as response:
                 payload = json.load(response)
+            record_usage(
+                provider="openai", model=model, operation=f"small_model:{schema_name}",
+                response=payload, latency_ms=round((time.monotonic() - started) * 1000),
+            )
             parsed = json.loads(payload["choices"][0]["message"]["content"])
             usage = payload.get("usage") or {}
             pricing_log.info(

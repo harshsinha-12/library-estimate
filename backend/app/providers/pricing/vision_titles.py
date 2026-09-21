@@ -5,9 +5,11 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from urllib.request import Request, urlopen
 
 from backend.app.providers.pricing.queries import titles_from_ocr
+from backend.app.providers.usage import record_usage, reserve_budget
 
 DEFAULT_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
 
@@ -107,6 +109,8 @@ def _complete_vision(
             },
         ],
     }
+    reserve_budget("0.10")
+    started = time.monotonic()
     try:
         request = Request(
             "https://api.openai.com/v1/chat/completions",
@@ -118,6 +122,10 @@ def _complete_vision(
         )
         with urlopen(request, timeout=45) as response:
             payload = json.load(response)
+        record_usage(
+            provider="openai", model=model, operation="vision_titles",
+            response=payload, latency_ms=round((time.monotonic() - started) * 1000),
+        )
         return json.loads(payload["choices"][0]["message"]["content"])
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None

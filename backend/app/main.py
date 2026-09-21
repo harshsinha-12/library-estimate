@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from redis import Redis
 
 from backend.app.api.routes import router
 from backend.app.config import Settings
 from backend.app.domain.repository import SurveyRepository
 from backend.app.providers.pricing import log as pricing_log
+from backend.app.providers.usage import BudgetExceededError, UsageContext, bind_usage, unbind_usage
 from backend.app.storage.objects import ObjectStore, S3ObjectStore
 from backend.app.storage.redis_client import connect_redis
 from backend.app.workflows.migrate_sqlite import migrate_sqlite_if_present
@@ -55,6 +58,29 @@ def create_app(
     app.state.settings = settings
     app.state.data_dir = data_dir
     app.state.survey_workflow = SurveyWorkflow(repository, small_model=small_model)
+
+    @app.exception_handler(BudgetExceededError)
+    async def budget_exceeded_handler(_, error: BudgetExceededError):
+        return JSONResponse(status_code=429, content={"detail": str(error)})
+
+    @app.middleware("http")
+    async def usage_scope(request, call_next):
+        parts = request.url.path.split("/")
+        try:
+            survey_id = UUID(parts[3]) if len(parts) > 3 and parts[2] == "surveys" else None
+        except ValueError:
+            survey_id = None
+        if survey_id is None:
+            return await call_next(request)
+        run_id = uuid4()
+        request.state.run_id = run_id
+        token = bind_usage(UsageContext(repository, survey_id, run_id))
+        try:
+            response = await call_next(request)
+            response.headers["X-Survey-Run-Id"] = str(run_id)
+            return response
+        finally:
+            unbind_usage(token)
     app.include_router(router)
 
     @app.get("/healthz", tags=["operations"])

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -19,6 +20,7 @@ from backend.app.providers.pricing.schema import (
     PRICE_SCHEMA,
     PRICE_SCHEMA_NAME,
 )
+from backend.app.providers.usage import record_usage, reserve_budget
 from backend.app.utils.hashing import sha256_bytes
 
 DEFAULT_WEB_SEARCH_MODEL = os.getenv("OPENAI_WEB_SEARCH_MODEL", "gpt-5.5").strip() or "gpt-5.5"
@@ -241,6 +243,8 @@ def _responses(
     body["tools"][0]["user_location"] = {
         key_name: value for key_name, value in location.items() if value
     }
+    reserve_budget("0.25")
+    started = time.monotonic()
     try:
         request = Request(
             "https://api.openai.com/v1/responses",
@@ -252,6 +256,10 @@ def _responses(
         )
         with urlopen(request, timeout=90) as response:
             payload = json.load(response)
+        record_usage(
+            provider="openai", model=model, operation="web_search",
+            response=payload, latency_ms=round((time.monotonic() - started) * 1000),
+        )
         pricing_log.info("web_search http_ok", model=model, schema=schema_name)
         return payload
     except HTTPError as error:
