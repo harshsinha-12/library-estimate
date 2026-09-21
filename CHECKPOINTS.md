@@ -18,6 +18,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] T+12–16h Stage 4
 - [ ] T+16–24h Stage 5 (models, RL, review, security, eval, demo)
 
+
+
 ## Project setup
 
 - [x] Read `IMPLEMENTATION.md` and `FINAL-PLAN.md`.
@@ -32,6 +34,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] `cv/library_vision` package exists for Stage 2 implementation.
 - [x] Lint, test, backend-run, XcodeGen, and simulator-build commands documented and green.
 
+
+
 ## Schemas (full IR)
 
 - [x] Survey geography schema.
@@ -43,6 +47,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Price-observation schema.
 - [x] Review-decision schema.
 - [x] Fixtures validate for every schema.
+
+
 
 ## Stage 1 — T+0–4h — Package, location, room, 2D/3D
 
@@ -59,6 +65,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] iOS reopen verifies every manifest file off the main UI thread; operator confirmed relaunch restores the last sealed survey.
 - [x] New audio captures write `audio/timing.json` on the same monotonic clock as written notes (`eb3f30fa` inspected).
 - [x] Gate: `docs/stage-1-device-validation.md` rows recorded in `SESSION-RUN.md`. Transcription/TTS remains Stage 3.
+
+
 
 ## Stage 2 — T+4–8h — Count
 
@@ -78,6 +86,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Gate: Redis/object-storage create/upload/seal/reopen and restart recovery pass; no SQLite dependency; reverse rescan does not double; uncovered rows partial.
 - [ ] Added phone row gate: one for example 8–10 book row has a distinct outlined `AssetCopy` candidate for every visible spine, reverse sweep does not double, and detected/actual plus partial/recapture status are recorded.
 
+
+
 ## Stage 3 — T+8–12h — Identity, non-books, damage
 
 - [x] Pass C on-device exception queue and backend review queue: unread spines, barcode/title page, damage, high-value, unbound notes.
@@ -90,6 +100,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Review actions: bind note, rescan barcode, keep unresolved.
 - [x] Gate exercised in `backend/tests/test_stage3_gate.py` and recorded in `SESSION-RUN.md`: invalid ISBN not eligible for ISBN price query; no-ISBN physical copy ID survives API restart; spoken portrait damage binds to its asset and close-up; mug is counted/excluded; unresolved queue visible; taxonomy covers every demo class.
 - [ ] Added phone row identity gate: every copy in the Stage 2 row has a supported ISBN/name identity or a visible per-copy barcode/title-page/manual task; unread and no-ISBN examples exercised; distinct copies remain distinct.
+
+
 
 ## Stage 4 — T+12–16h — Web search + building
 
@@ -106,28 +118,36 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Gate: ISBN and name-only web-search evidence; local market; mug still excluded.
 - [ ] Added row gate: verify price/status roster against every eligible physical copy in the Stage 2/3 row; no draft result presented as a confirmed price.
 
+
+
 ## Stage 5 — T+16–24h — Models, RL, product, eval, demo
+
+
 
 ### Models and Jev
 
 - [ ] Evidence package frozen; identical input to A and B.
 - [ ] Fable batch adapter.
 - [ ] Astra replay adapter.
-- [ ] Optional Astra-live assist (not Pipeline B).
+- [ ] Astra-live assist.
 - [ ] Shared assessment schema wired end-to-end.
 - [ ] Jev routing: accept, recapture, human, alternate resolver.
 - [ ] Policy vetoes (high-value, eBook-as-physical, ISBN-only merge).
 - [ ] Cost, latency, disagreement logs.
 
+
+
 ### RL home
 
-- [ ] `RLTransition` on every decision.
+- [ ] `RLTransition` on every decision, have RL feedback layer to improve on things.
 - [ ] Replay buffer.
 - [ ] Offline bandit on labeled set.
 - [ ] Recapture sequential transitions.
 - [ ] Specialist heads: condition, eligibility, damage, duplicate-features, quality.
 - [ ] Policy registry, shadow, rollback by `policy_id`.
 - [ ] Reward from independent labels (§13 table).
+
+
 
 ### Product, security, failures
 
@@ -141,6 +161,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Every §17 failure row as status + operator action.
 - [ ] Remaining APIs: jobs, inventory, review, report, shelves, evidence, policies, shadow.
 
+
+
 ### Eval and demo
 
 - [ ] Labeled zone with every §23 case.
@@ -149,6 +171,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Demo script 1–13 run and recorded.
 - [ ] Added physical-device 8–10 book row demo: manual roster reconciled to distinct copy records, identity or Pass C tasks, price status, inventory/report, and numerator/denominator recorded in `SESSION-RUN.md`.
 - [ ] Gate: full product; RL home; spend and limitations disclosed; ask-map fully landed.
+
+
 
 ## Completion policy
 

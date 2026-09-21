@@ -45,8 +45,7 @@ struct RootView: View {
           RoomPassView(
             store: capture,
             audio: audio,
-            exceptions: exceptions,
-            notes: $notes,
+            shelves: shelves,
             recordSpokenNotes: drafts.draft.consent.audio,
             sealError: sealError,
             onContinue: { stage = .shelfMap }
@@ -131,8 +130,8 @@ struct RootView: View {
     switch stage {
     case .create: "Create Survey"
     case .deviceCheck: "Device Check"
-    case .roomCapture: "Room Pass A"
-    case .shelfMap: "Shelf Map"
+    case .roomCapture: "Room and Books Scan"
+    case .shelfMap: "Review Shelves"
     case .shelfPass: "Shelf Pass B"
     case .exceptionPass: "Exception Pass C"
     case .package: "Sealed Survey"

@@ -91,6 +91,6 @@ final class AudioNoteRecorder: NSObject, ObservableObject, AVAudioRecorderDelega
   }
 
   nonisolated private func spokenNoteMessage(_ detail: String) -> String {
-    "Spoken notes unavailable (\(detail)). Written notes still work."
+    "Spoken audio unavailable (\(detail)). You can continue scanning."
   }
 }

@@ -8,11 +8,13 @@ enum LiveQualityAnalyzer {
     guard let image = UIImage(data: jpeg)?.cgImage else { return [] }
     let request = VNDetectRectanglesRequest()
     request.minimumAspectRatio = 0.08
-    request.maximumAspectRatio = 1.05
+    request.maximumAspectRatio = 0.65
     request.minimumSize = 0.02
     request.maximumObservations = 80
     try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-    return (request.results ?? []).map(\.boundingBox)
+    return (request.results ?? [])
+      .filter { $0.confidence >= 0.5 && $0.boundingBox.height > $0.boundingBox.width * 1.25 }
+      .map(\.boundingBox)
   }
 
   static func analyze(
@@ -41,7 +43,7 @@ enum LiveQualityAnalyzer {
       textPixelHeight: text,
       occlusion: occlusion,
       messages: messages,
-      provisionalCount: rectangleCount(image)
+      provisionalCount: spineRegions(jpeg: jpeg).count
     )
   }
 
@@ -107,14 +109,4 @@ enum LiveQualityAnalyzer {
     return heights.reduce(0, +) / Double(heights.count)
   }
 
-  private static func rectangleCount(_ image: CGImage) -> Int {
-    let request = VNDetectRectanglesRequest()
-    request.minimumAspectRatio = 0.08
-    request.maximumAspectRatio = 1.05
-    request.minimumSize = 0.02
-    request.maximumObservations = 80
-    let handler = VNImageRequestHandler(cgImage: image, options: [:])
-    try? handler.perform([request])
-    return request.results?.count ?? 0
-  }
 }

@@ -33,7 +33,7 @@ struct ShelfMapView: View {
         Button("Add shelf unit", systemImage: "plus", action: store.addUnit)
       }
       Section {
-        Text("Double-sided units keep face A and face B as separate copies. Uncovered rows stay partial, never a silent zero.")
+        Text("The room scan collected face A candidates. Review coverage here; scan an uncovered face or row only when needed. Face A and B remain separate.")
           .font(.footnote)
           .foregroundStyle(.secondary)
         Button("Seal Package", systemImage: "lock.fill", action: onSeal)
@@ -42,6 +42,6 @@ struct ShelfMapView: View {
           .buttonStyle(.bordered)
       }
     }
-    .navigationTitle("Shelf Map")
+    .navigationTitle("Review Shelves")
   }
 }

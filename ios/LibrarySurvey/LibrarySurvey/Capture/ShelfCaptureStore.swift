@@ -61,8 +61,24 @@ final class ShelfCaptureStore: ObservableObject {
     samples = []
     rowSpines = [:]
     previousTransform = nil
+    taggedCrops = [:]
     capturing = true
     sampler.start(session: session ?? ARSession(), interval: 0.4)
+  }
+
+  func pauseFace() {
+    guard capturing else { return }
+    sampler.stop(captureFallback: false)
+    samples.append(contentsOf: sampler.samples)
+    capturing = false
+  }
+
+  func resumeFace() {
+    guard !capturing, !rowCoverage.isEmpty, let session else { return }
+    capturing = true
+    previousTransform = nil
+    previousTime = nil
+    sampler.start(session: session, interval: 0.4)
   }
 
   func ingestCurrentFrame() {
@@ -85,8 +101,10 @@ final class ShelfCaptureStore: ObservableObject {
   }
 
   func stopFace() {
-    sampler.stop(captureFallback: true)
-    samples = sampler.samples
+    if capturing {
+      sampler.stop(captureFallback: true)
+      samples.append(contentsOf: sampler.samples)
+    }
     capturing = false
     guard let unit = selectedUnit else { return }
     let labeled = labeledPass(unit: unit, face: selectedFace, samples: samples)

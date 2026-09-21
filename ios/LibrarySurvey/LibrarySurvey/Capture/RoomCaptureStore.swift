@@ -1,3 +1,4 @@
+import ARKit
 import Foundation
 import RoomPlan
 
@@ -6,6 +7,7 @@ final class RoomCaptureStore: ObservableObject {
   enum State: Equatable {
     case ready
     case capturing
+    case paused
     case processing
     case captured
     case unsupported
@@ -19,6 +21,7 @@ final class RoomCaptureStore: ObservableObject {
 
   private var session: RoomCaptureSession?
   private let sampler = FrameSampler()
+  private var pauseRequested = false
   private(set) var startedAt: Date?
   private(set) var monotonicAnchor: Double?
 
@@ -30,6 +33,8 @@ final class RoomCaptureStore: ObservableObject {
     self.session = session
   }
 
+  var arSession: ARSession? { session?.arSession }
+
   func start() {
     guard RoomCaptureSession.isSupported, let session else {
       state = .unsupported
@@ -37,17 +42,42 @@ final class RoomCaptureStore: ObservableObject {
     }
     startedAt = Date()
     monotonicAnchor = MonotonicClock.now
+    pauseRequested = false
+    samples = []
+    rooms = []
     state = .capturing
     session.run(configuration: RoomCaptureSession.Configuration())
     sampler.start(session: session.arSession)
   }
 
   func stop() {
+    if state == .paused {
+      state = .captured
+      return
+    }
     guard state == .capturing else { return }
     sampler.stop()
-    samples = sampler.samples
+    samples.append(contentsOf: sampler.samples)
+    pauseRequested = false
     state = .processing
     session?.stop()
+  }
+
+  func pause() {
+    guard state == .capturing else { return }
+    sampler.stop()
+    samples.append(contentsOf: sampler.samples)
+    pauseRequested = true
+    state = .processing
+    session?.stop()
+  }
+
+  func resume() {
+    guard state == .paused, let session else { return }
+    pauseRequested = false
+    state = .capturing
+    session.run(configuration: RoomCaptureSession.Configuration())
+    sampler.start(session: session.arSession)
   }
 
   func currentFrameSample() -> FrameSample? { sampler.samples.last }
@@ -62,7 +92,7 @@ final class RoomCaptureStore: ObservableObject {
       return
     }
     rooms.append(room)
-    state = .captured
+    state = pauseRequested ? .paused : .captured
   }
 
   func releaseAfterSeal() {
