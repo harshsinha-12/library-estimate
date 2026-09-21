@@ -91,19 +91,19 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Gate exercised in `backend/tests/test_stage3_gate.py` and recorded in `SESSION-RUN.md`: invalid ISBN not eligible for ISBN price query; no-ISBN physical copy ID survives API restart; spoken portrait damage binds to its asset and close-up; mug is counted/excluded; unresolved queue visible; taxonomy covers every demo class.
 - [ ] Added phone row identity gate: every copy in the Stage 2 row has a supported ISBN/name identity or a visible per-copy barcode/title-page/manual task; unread and no-ISBN examples exercised; distinct copies remain distinct.
 
-## Stage 4 — T+12–16h — Bing + building
+## Stage 4 — T+12–16h — Web search + building
 
-- [ ] Bing HTML search, ISBN then name; `cc`/market from geography.
-- [ ] Small-model query build + snippet parse.
-- [ ] Redis cache `sha256(q + market)`.
-- [ ] Price Evidence UI: Bing URL, citations, confirm, manual.
-- [ ] Queue search per edition+market.
-- [ ] Same-row per-copy price status: validated ISBN then name fallback, shared-edition evidence without copy merge, reviewed local physical-book range or explicit pending/no-comparable reason for every eligible copy.
-- [ ] Filter eBook/rental/bundle; valuation range.
-- [ ] Building reconstruction from `demo_rebuild_rates_v1`.
-- [ ] Overview totals + spend ledger.
-- [ ] All price APIs.
-- [ ] Gate: ISBN and name-only Bing evidence; local market; mug still excluded.
+- [x] OpenAI Responses `web_search`, ISBN then name; market/`user_location` from geography.
+- [x] Unique unpriced objects batched (5 per Responses call); at most 5 listing URLs per item; stop after a parsed amount.
+- [x] Redis `found_prices` plus search attempt cap.
+- [x] Price Evidence UI: listing URL, citations, confirm, manual.
+- [x] Queue search per edition+market.
+- [x] Same-row per-copy price status: validated ISBN then name fallback, shared-edition evidence without copy merge, reviewed local physical-book range or explicit pending/no-comparable reason for every eligible copy.
+- [x] Filter eBook/rental/bundle; valuation range.
+- [x] Building reconstruction from `demo_rebuild_rates_v1`.
+- [x] Overview totals + spend ledger.
+- [x] All price APIs.
+- [x] Gate: ISBN and name-only web-search evidence; local market; mug still excluded.
 - [ ] Added row gate: verify price/status roster against every eligible physical copy in the Stage 2/3 row; no draft result presented as a confirmed price.
 
 ## Stage 5 — T+16–24h — Models, RL, product, eval, demo

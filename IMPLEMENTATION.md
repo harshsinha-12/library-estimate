@@ -10,7 +10,7 @@
 T+0h   Stage 1  Package, location, RoomPlan, 2D/3D
 T+4h   Stage 2  Shelf count, coverage, data size, live assist
 T+8h   Stage 3  ISBN, catalog, non-books, speech, damage
-T+12h  Stage 4  Bing prices, building reconstruction, overview
+T+12h  Stage 4  OpenAI web-search prices, building reconstruction, overview
 T+16h  Stage 5  Fable, Astra live+replay, Jev, RL, report, eval, demo
 T+24h  Done    Full survey → report, every requirement landed
 ```
@@ -27,31 +27,29 @@ Order of work inside the 24 hours (do not invert):
 | Scope | One controlled 50–100 book zone; IR still supports multiple rooms |
 | Pull books for barcode | Yes, Pass C |
 | Book valuation | Replacement range from comparable physical offers |
-| Geography | Core Location When In Use → country/city → Bing market; manual override |
-| Price discovery | Bing HTML search, no API key: ISBN first, else name. Small OpenAI model builds the query and parses results. No Amazon scrape of product pages |
+| Geography | Core Location When In Use → country/city → search market; manual override |
+| Price discovery | OpenAI Responses `web_search` only. Unique unpriced objects go in batches of 5. ISBN first, else name. At most 5 listing URLs per item. Drafts need human confirm. No Bing scrape and no dedicated Amazon product-page scraper |
+| Small models | OpenAI `gpt-5.6-luna` for query build and listing-excerpt parse |
 | Building value | Floor area × `demo_rebuild_rates_v1` |
 | Backend | Python FastAPI + Redis for Survey IR, metadata, state, idempotency, jobs, and cache; S3-compatible object storage for sealed media. No SQLite in the target backend. |
 | App | SwiftUI |
 | Voice | OpenAI TTS (exact model ID in `.env.local`) |
-| Small models | OpenAI, for query building, snippet parse, live-assist text |
 | Pipeline A | Fable / Anthropic |
 | Pipeline B | Astra replay on the sealed package |
 | Live assist | On-device Vision plus optional sampled Astra-live; never stored as Pipeline B |
 | Jev | Typed router over A, B, and deterministic flags |
 | RL | Full home: transitions, replay buffer, offline trainer, specialist heads, policy registry, shadow. No per-survey live weight update |
 
-Bing search without a Bing API key (query + HTML, then a small model extracts candidates):
+OpenAI Responses `web_search` (batched unique unpriced items, market from survey geography):
 
-```javascript
-const encodedQuery = encodeURIComponent(query.query)
-const countryParam = query.countryCode ? `&cc=${query.countryCode}` : ''
-const response = await axios.get(
-  `https://www.bing.com/search?q=${encodedQuery}${countryParam}`,
-  { headers: { 'User-Agent': 'Mozilla/5.0 …' }, timeout: 10000 }
-)
+```text
+POST https://api.openai.com/v1/responses
+tool = web_search
+user_location = { country, city, region }
+text.format = json_schema (one item or a batch of up to 5)
 ```
 
-Use the book/web search URL (`/search`), not Bing News. Cache the raw HTML and parsed drafts in Redis under `sha256(q + market)`. Show the Bing query URL and citation URLs in the Price Evidence screen.
+Unique unpriced objects share one Responses call, up to five at a time. Once a physical amount is stored in Redis `found_prices`, that object is not searched again (at most five attempts if still unpriced). Show the listing URL and citation URLs in the Price Evidence screen. Live Shelf Pass B OCR reads whatever cover or spine is in view and searches by that name; after seal, shelf frames are read the same way before the price queue.
 
 ## Complete product (nothing omitted)
 
@@ -59,7 +57,7 @@ If it is listed here, it is in the 24-hour build.
 
 ### Capture app (all 15 screens)
 
-1. Create Survey — consent, valuation basis, When In Use location, reverse-geocode, override country/city/currency/Bing market  
+1. Create Survey — consent, valuation basis, When In Use location, reverse-geocode, override country/city/currency/search market  
 2. Device Check — LiDAR, storage, battery, camera, mic, location, network optional  
 3. Room Pass A — RoomPlan, name rooms, joins, incomplete-scan warnings  
 4. Shelf Map — shelf units, face A/B  
@@ -71,7 +69,7 @@ If it is listed here, it is in the 24-hour build.
 10. Processing — per-stage status and actionable failures  
 11. Overview — area, coverage, copy count, shelf data size, editions, contents range, building reconstruction, city/market, unresolved  
 12. 2D / 3D — RoomPlan USDZ + SVG; tap shelf/asset; occupied metres and copy count on shelves; evidence links  
-13. Inventory — copies vs editions; filter; Search Bing one book or queue all  
+13. Inventory — copies vs editions; filter; Search prices one book or queue all  
 14. Review — merge/keep, edition, barcode, bind note, confirm price, appraisal  
 15. Report — signed-off JSON + PDF, manifest, rate-table version, `policy_id`, limitations, spend  
 
@@ -101,7 +99,7 @@ Taxonomy: book, serial, painting, portrait, sculpture, computer, monitor, printe
 
 ### Pricing and building
 
-Bing: ISBN first, else name. Market from location (`en-IN`, `it-IT`, `ja-JP`). Filter eBook/rental/bundle. Range + timestamp + citation. Building: `floor_area × demo_rebuild_rates_v1[country]`, basis `replacement_cost`, not sale price. Contents and building never mixed.
+OpenAI Responses `web_search`: ISBN first, else name. Unique unpriced items in batches of 5. Market from location (`en-IN`, `it-IT`, `ja-JP`). Filter eBook/rental/bundle. Range + timestamp + citation. Building: `floor_area × demo_rebuild_rates_v1[country]`, basis `replacement_cost`, not sale price. Contents and building never mixed.
 
 ### Models
 
@@ -123,6 +121,8 @@ GET    /v1/surveys/{id}/inventory
 GET    /v1/surveys/{id}/review
 POST   /v1/reviews/{id}/decision
 POST   /v1/assets/{id}/price-search
+POST   /v1/surveys/{id}/live-price-search
+POST   /v1/surveys/{id}/identify-and-price
 POST   /v1/surveys/{id}/price-search-queue
 POST   /v1/assets/{id}/price-observations
 GET    /v1/surveys/{id}/report
@@ -222,7 +222,7 @@ Bad checksum never prices. No-ISBN copy is stable. Portrait spoken damage links 
 
 ---
 
-## Stage 4 — T+12h to T+16h — Bing prices and the building
+## Stage 4 — T+12h to T+16h — Web-search prices and the building
 
 **Goal:** local contents range and a labeled reconstruction number.
 
@@ -235,10 +235,10 @@ Before the general pricing work, exercise the completed Stage 2–3 capabilities
 - Build the row detail first: expected/detected count, coverage, selectable spine outline and evidence per copy, title/ISBN source or unresolved task, condition, search state, reviewed range or pending reason, and correction/barcode-rescan/per-book search actions.
 - Reconcile the 8–10 book row on the phone; retain each physical-copy ID and row/slot, record detected/actual, and expose missed slots and reverse-sweep duplicates for correction before pricing.
 - For every row copy, link identity evidence or a visible unresolved Pass C action; never infer an ISBN from a title or silently omit an unread book.
-- Query builder (small OpenAI model + templates): ISBN first, else name+author+publisher+edition+country
-- Fetch Bing HTML with market/`cc`; Redis cache `sha256(q + market)`
-- Parse snippets to draft `PriceObservation`s; filter eBook/rental/bundle/wrong format
-- Price Evidence UI: query string, bing.com URL, citations, drafts, confirm, manual reason
+- Query builder (templates): ISBN first, else name+author+publisher+edition+country
+- OpenAI Responses `web_search` with survey geography as `user_location`; unique unpriced items in batches of 5; Redis `found_prices` stops further searches for that object
+- Parse citations to draft `PriceObservation`s; filter eBook/rental/bundle/wrong format
+- Price Evidence UI: query string, listing URL, citations, drafts, confirm, manual reason
 - Queue search for every found edition+market
 - For the 8–10 book row, expose a price-search/status entry for every eligible physical copy. Shared edition+market searches may reuse evidence, but each copy retains its own condition and valuation status. Search by validated ISBN, otherwise by recognized name; unresolved identities remain `price_pending`/unpriced with an action, never zero-valued or silently omitted.
 - Valuation range, FX snapshot, freshness, status `estimated|quoted|manual|requires_appraisal|unavailable`
@@ -249,7 +249,7 @@ Before the general pricing work, exercise the completed Stage 2–3 capabilities
 
 ### Gate
 
-ISBN book and name-only book both have Bing evidence. IT/JP/IN queries are not US. Mug still excluded. Building number shows rates + area. Ledger records search cost.
+ISBN book and name-only book both have web-search evidence. IT/JP/IN queries are not US. Mug still excluded. Building number shows rates + area. Ledger records search cost.
 
 **First Stage 4 gate:** on a physical device, follow one manually labeled 8–10 book row from live outlines to inventory. Record detected/actual; confirm one stable record per visible book and no reverse-sweep duplicate; show an evidenced ISBN/name or explicit unresolved task for each copy. Every eligible resolved copy has a cited, reviewed local physical-book range or a visible pending/no-comparable reason. Verify name fallback and shared-edition evidence without collapsing copies; drafts are not confirmed prices. Record per-copy outcomes and priced/eligible numerator/denominator in `SESSION-RUN.md` before completing Stage 4.
 
@@ -285,7 +285,7 @@ ISBN book and name-only book both have Bing evidence. IT/JP/IN queries are not U
 
 - Review queue UI and `POST /v1/reviews/{id}/decision`
 - Evidence viewer for every count and value
-- JSON + PDF report: property, geometry, inventory, damage, contents, building, unresolved, methodology, versions, Bing citations, policy_id, limitations
+- JSON + PDF report: property, geometry, inventory, damage, contents, building, unresolved, methodology, versions, listing citations, policy_id, limitations
 - Auth, encryption, signed URLs or local equivalent, retention/deletion, access log, redaction control
 - Accessibility pass on capture and review
 - Per-survey $50 ledger with stop-at-cap
@@ -303,7 +303,7 @@ ISBN book and name-only book both have Bing evidence. IT/JP/IN queries are not U
   4. Reverse scan does not double  
   5. Same-ISBN copies stay two  
   6. ISBN validation + catalog evidence  
-  7. Search Bing ISBN then name; confirm price  
+  7. Search prices ISBN then name; confirm price  
   8. Portrait audio → damage close-up  
   9. Mug excluded; art → appraisal  
   10. A/B disagreement, Jev, policy, human  
