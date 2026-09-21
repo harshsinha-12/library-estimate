@@ -42,7 +42,7 @@ class Settings:
     def from_environment(cls) -> Settings:
         return cls(
             data_dir=Path(os.getenv("LIBRARY_DATA_DIR", "data/runtime")),
-            openai_small_model=os.getenv("OPENAI_SMALL_MODEL", "gpt-4o-mini"),
+            openai_small_model=os.getenv("OPENAI_SMALL_MODEL", "gpt-5.6-luna"),
             openai_tts_model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
             openai_stt_model=os.getenv("OPENAI_STT_MODEL", "gpt-4o-transcribe-diarize"),
             openai_tts_voice=os.getenv("OPENAI_TTS_VOICE", "marin"),

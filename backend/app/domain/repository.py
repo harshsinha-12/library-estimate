@@ -225,6 +225,15 @@ class SurveyRepository:
             return None
         return _unwrap(raw)
 
+    def get_cache(self, name: str) -> dict[str, Any] | None:
+        raw = self.redis.get(self._cache_key(name))
+        if raw is None:
+            return None
+        return _unwrap(raw)
+
+    def save_cache(self, name: str, payload: dict[str, Any], *, ttl_seconds: int) -> None:
+        self.redis.set(self._cache_key(name), _envelope(payload), ex=ttl_seconds)
+
     def save_job(self, job_key: str, payload: dict[str, Any]) -> dict[str, Any]:
         redis_key = f"{self.key_prefix}:job:{job_key}"
         created = self.redis.set(redis_key, _envelope(payload), nx=True)
@@ -280,3 +289,6 @@ class SurveyRepository:
 
     def _named_key(self, survey_id: UUID, name: str) -> str:
         return f"{self.key_prefix}:survey:{survey_id}:{name}"
+
+    def _cache_key(self, name: str) -> str:
+        return f"{self.key_prefix}:cache:{name}"

@@ -10,6 +10,10 @@ from backend.app.api.dependencies import get_survey_workflow
 from backend.app.domain.models import (
     CapturePackageManifest,
     InventoryResult,
+    LivePriceSearchRequest,
+    PriceObservationWrite,
+    PriceQueueRequest,
+    PriceSearchRequest,
     SealResult,
     SurveyCreate,
     SurveyRecord,
@@ -135,6 +139,78 @@ def get_shelves(request: Request, survey_id: UUID) -> dict[str, object]:
         "recapture": inventory.recapture,
         "copy_count": len(inventory.asset_copies),
     }
+
+
+@router.get("/surveys/{survey_id}/overview")
+def get_overview(request: Request, survey_id: UUID) -> dict:
+    try:
+        get_survey_workflow(request).repository.get(survey_id)
+        return get_survey_workflow(request).overview(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+
+
+@router.post("/assets/{asset_id}/price-search")
+def price_search(request: Request, asset_id: str, payload: PriceSearchRequest) -> dict:
+    try:
+        return get_survey_workflow(request).price_search(payload.survey_id, asset_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/live-price-search")
+def live_price_search(
+    request: Request,
+    survey_id: UUID,
+    payload: LivePriceSearchRequest,
+) -> dict:
+    try:
+        return get_survey_workflow(request).live_price_search(
+            survey_id, payload.model_dump(mode="json")
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/identify-and-price")
+def identify_and_price(request: Request, survey_id: UUID) -> dict:
+    try:
+        return get_survey_workflow(request).identify_and_price(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/price-search-queue")
+def price_search_queue(
+    request: Request,
+    survey_id: UUID,
+    payload: PriceQueueRequest | None = None,
+) -> dict:
+    del payload
+    try:
+        return get_survey_workflow(request).price_queue(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/assets/{asset_id}/price-observations")
+def price_observations(request: Request, asset_id: str, payload: PriceObservationWrite) -> dict:
+    try:
+        return get_survey_workflow(request).price_observation(
+            payload.survey_id, asset_id, payload.model_dump(mode="json")
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.get("/surveys/{survey_id}/review")

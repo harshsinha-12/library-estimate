@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TypeVar
 from uuid import UUID, uuid4
 
@@ -14,11 +15,13 @@ from backend.app.domain.models import (
     SurveyRecord,
     UploadedFile,
 )
-from backend.app.domain.repository import SurveyRepository
+from backend.app.domain.repository import IdempotencyConflictError, SurveyRepository
+from backend.app.providers.pricing import log as pricing_log
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.utils.json_codec import canonical_json_bytes
 from backend.app.workflows.geometry import GeometryError, GeometryWorker
+from backend.app.workflows.pricing import PricingWorker
 from backend.app.workflows.stage3 import Stage3Worker
 from backend.app.workflows.vision import VisionWorker
 
@@ -37,11 +40,16 @@ class SurveyWorkflow:
         geometry_worker: GeometryWorker | None = None,
         vision_worker: VisionWorker | None = None,
         stage3_worker: Stage3Worker | None = None,
+        pricing_worker: PricingWorker | None = None,
+        small_model: str | None = None,
     ) -> None:
         self.repository = repository
         self.geometry_worker = geometry_worker or GeometryWorker()
         self.vision_worker = vision_worker or VisionWorker()
         self.stage3_worker = stage3_worker or Stage3Worker()
+        self.pricing_worker = pricing_worker or PricingWorker(
+            small_model=small_model or "gpt-5.6-luna"
+        )
 
     def create(self, request: SurveyCreate, *, idempotency_key: str) -> SurveyRecord:
         request_hash = sha256_bytes(canonical_json_bytes(request.model_dump(mode="json")))
@@ -117,9 +125,22 @@ class SurveyWorkflow:
         if replay is not None:
             return replay
         survey = self.repository.get(survey_id)
-        if survey.status != "uploading":
+        if survey.status in {"geometry", "partial"} and survey.package_hash:
+            return self._seal_result(survey, manifest)
+        if survey.status == "ingest_validation":
+            finished = self._await_seal(survey_id)
+            if finished is not None:
+                return self._seal_result(finished, manifest)
+            survey = self.repository.get(survey_id)
+        uploads = self.repository.uploads(survey_id)
+        if not uploads:
             raise ManifestConflictError("survey must have uploaded evidence before sealing")
-        self.repository.transition(survey_id, "ingest_validation", occurred_at=utc_now())
+        if survey.status not in {"created", "capturing", "uploading", "ingest_validation"}:
+            raise ManifestConflictError(
+                f"seal is not accepted while survey is {survey.status}"
+            )
+        if survey.status != "ingest_validation":
+            self.repository.transition(survey_id, "ingest_validation", occurred_at=utc_now())
         try:
             self._validate_manifest(survey_id, manifest, survey.geography)
         except ManifestConflictError as error:
@@ -158,6 +179,14 @@ class SurveyWorkflow:
                 usdz_path = geometry.usdz_path
             geometry_svg_path = geometry.svg_path
             geometry_summary_path = geometry.summary_path
+            try:
+                self.pricing_worker.after_seal(self.repository, survey_id)
+            except Exception as error:
+                pricing_log.warning(
+                    "pricing_after_seal failed",
+                    survey_id=str(survey_id),
+                    error=error.__class__.__name__,
+                )
         except GeometryError as error:
             final_status = "partial"
             detail = str(error)
@@ -172,14 +201,83 @@ class SurveyWorkflow:
             geometry_summary_path=geometry_summary_path,
             usdz_path=usdz_path,
         )
-        self._record(scope, idempotency_key, request_hash, result)
+        try:
+            self._record(scope, idempotency_key, request_hash, result)
+        except IdempotencyConflictError:
+            current = self.repository.get(survey_id)
+            if current.status in {"geometry", "partial"} and current.package_hash:
+                return self._seal_result(current, manifest)
+            raise ManifestConflictError(
+                "idempotency key was already used for another request"
+            ) from None
         return result
+
+    def _seal_result(self, survey: SurveyRecord, manifest: CapturePackageManifest) -> SealResult:
+        survey_id = survey.survey_id
+        svg = (
+            "derived/plan.svg"
+            if self.repository.exists_bytes(survey_id, "derived/plan.svg")
+            else None
+        )
+        summary = (
+            "derived/geometry.json"
+            if self.repository.exists_bytes(survey_id, "derived/geometry.json")
+            else None
+        )
+        usdz = (
+            "roomplan/model.usdz"
+            if self.repository.exists_bytes(survey_id, "roomplan/model.usdz")
+            else None
+        )
+        return SealResult(
+            survey_id=survey_id,
+            status=survey.status,
+            package_hash=survey.package_hash or "",
+            file_count=len(manifest.files),
+            sealed_at=survey.sealed_at or utc_now(),
+            geometry_svg_path=svg,
+            geometry_summary_path=summary,
+            usdz_path=usdz,
+        )
+
+    def _await_seal(self, survey_id: UUID, timeout_seconds: float = 150) -> SurveyRecord | None:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            survey = self.repository.get(survey_id)
+            if survey.status in {"geometry", "partial"} and survey.package_hash:
+                return survey
+            if survey.status != "ingest_validation":
+                return None
+            time.sleep(0.4)
+        return None
 
     def inventory(self, survey_id: UUID) -> InventoryResult | None:
         stored = self.repository.get_json(survey_id, "inventory")
         if stored is None:
             return self.vision_worker.process(self.repository, survey_id)
         return InventoryResult.model_validate(stored)
+
+    def overview(self, survey_id: UUID) -> dict:
+        return self.pricing_worker.overview(self.repository, survey_id)
+
+    def price_search(self, survey_id: UUID, asset_id: str) -> dict:
+        return self.pricing_worker.search_asset(self.repository, survey_id, asset_id)
+
+    def price_queue(self, survey_id: UUID) -> dict:
+        return self.pricing_worker.queue(self.repository, survey_id)
+
+    def live_price_search(self, survey_id: UUID, payload: dict) -> dict:
+        return self.pricing_worker.live_search(self.repository, survey_id, payload)
+
+    def identify_and_price(self, survey_id: UUID) -> dict:
+        identified = self.pricing_worker.identify_from_frames(self.repository, survey_id)
+        spoken = self.pricing_worker.price_spoken_notes(self.repository, survey_id)
+        return {**identified, "spoken": spoken}
+
+    def price_observation(self, survey_id: UUID, asset_id: str, payload: dict) -> dict:
+        return self.pricing_worker.apply_observation(
+            self.repository, survey_id, asset_id, payload
+        )
 
     def _validate_manifest(
         self,

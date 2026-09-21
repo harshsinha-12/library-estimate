@@ -250,3 +250,36 @@ class InventoryResult(StrictModel):
     shelf_face_data_sizes: list[ShelfFaceDataSize] = Field(default_factory=list)
     overlays: list[ShelfOverlay] = Field(default_factory=list)
     recapture: list[str] = Field(default_factory=list)
+
+
+class PriceSearchRequest(StrictModel):
+    survey_id: UUID
+
+
+class LivePriceSearchRequest(StrictModel):
+    isbn: str | None = None
+    title: str | None = None
+    barcode: str | None = None
+    ocr_text: str | None = None
+    identifier_kind: str | None = None
+    category: str | None = None
+    spoken_text: str | None = None
+    image_base64: str | None = None
+    asset_copy_id: str | None = None
+
+
+class PriceQueueRequest(StrictModel):
+    pass
+
+
+class PriceObservationWrite(StrictModel):
+    survey_id: UUID
+    action: Literal["confirm", "reject", "manual", "no_comparable"]
+    price_observation_id: str | None = None
+    amount: float | None = Field(default=None, gt=0)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    source_url: str | None = None
+    reason: str | None = None
+    condition: str | None = None
+    format: str | None = None
+    query: str | None = None

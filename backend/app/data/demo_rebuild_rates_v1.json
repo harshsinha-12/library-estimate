@@ -1,0 +1,19 @@
+{
+  "table_id": "demo_rebuild_rates_v1",
+  "unit": "currency_per_m2",
+  "disclaimer": "demo rates for architecture alignment; replace before any real survey",
+  "rates": {
+    "IN": {
+      "currency": "INR",
+      "commercial_library": { "low": 40000, "medium": 65000, "premium": 100000 }
+    },
+    "IT": {
+      "currency": "EUR",
+      "commercial_library": { "low": 1200, "medium": 1800, "premium": 2600 }
+    },
+    "JP": {
+      "currency": "JPY",
+      "commercial_library": { "low": 250000, "medium": 380000, "premium": 520000 }
+    }
+  }
+}

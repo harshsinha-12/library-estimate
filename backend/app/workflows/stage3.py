@@ -9,6 +9,7 @@ from uuid import UUID
 
 from backend.app.domain.repository import SurveyRepository
 from backend.app.providers.catalog.chain import CatalogChain
+from backend.app.providers.pricing.queries import title_from_ocr
 from backend.app.providers.voice import transcribe_segments
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.workflows.identifiers import type_identifier
@@ -33,6 +34,21 @@ TAXONOMY = frozenset(
 )
 APPRAISAL = {"painting", "portrait", "sculpture"}
 EXCLUDED = {"cup"}
+ASSET_COPY_FIELDS = {
+    "asset_copy_id",
+    "category",
+    "observation_refs",
+    "valuation_required",
+    "requires_appraisal",
+    "possibly_moved",
+    "book_edition_ref",
+    "room_id",
+    "shelf_id",
+    "face_id",
+    "row_id",
+    "slot",
+    "isbn",
+}
 
 
 def asset_policy(category: str, high_value: bool = False) -> dict:
@@ -57,8 +73,14 @@ def _associate(note: dict, assets: list[dict]) -> tuple[str | None, str]:
     inferred = {category for category in TAXONOMY if category in text}
     if "mug" in text or "coffee cup" in text:
         inferred.add("cup")
+    if "table" in text or "desk" in text or "bed" in text or "wardrobe" in text:
+        inferred.add("furniture")
+    if "almirah" in text:
+        inferred.add("furniture")
     if "photo frame" in text or "picture frame" in text:
         inferred.add("portrait")
+    if "air conditioner" in text or " a/c" in text or text.endswith(" ac") or " ac " in text:
+        inferred.add("appliance")
     hinted = set(note.get("category_hints") or []) | inferred
     for asset in assets:
         score = 0.0
@@ -178,7 +200,11 @@ class Stage3Worker:
                 "room_id": mark.get("room_id"),
                 "label": mark.get("label"),
                 "camera_pose": mark.get("camera_pose"),
+                "evidence_ref": mark.get("evidence_ref"),
             }
+            if mark.get("stated_cost") is not None:
+                asset["stated_cost"] = mark["stated_cost"]
+                asset["stated_currency"] = mark.get("stated_currency")
             assets.append(asset)
             if policy["requires_appraisal"]:
                 queue.append(
@@ -240,7 +266,7 @@ class Stage3Worker:
                         )
                     )
             elif scan.get("kind") in {"barcode", "title_page"}:
-                title = scan.get("title") or ""
+                title = scan.get("title") or title_from_ocr(scan.get("ocr_text")) or ""
                 raw = scan.get("barcode") or scan.get("printed_identifier")
                 if raw:
                     typed = type_identifier(raw, scan.get("identifier_kind"))
@@ -293,6 +319,7 @@ class Stage3Worker:
                         {
                             "asset_copy_id": asset_id,
                             "title": title,
+                            "author": scan.get("author") or "",
                             "status": "manual_title_match",
                             "evidence_ref": scan.get("evidence_ref"),
                             "catalog": catalog,
@@ -347,6 +374,7 @@ class Stage3Worker:
                 "note_id": str(note_id),
                 "text": note.get("text", ""),
                 "monotonic_seconds": note.get("monotonic_seconds"),
+                "ended_monotonic_seconds": note.get("ended_monotonic_seconds"),
                 "asset_copy_id": bound,
                 "association_method": method,
                 "status": "operator_assertion" if bound else "unbound",
@@ -412,7 +440,11 @@ class Stage3Worker:
         }
         repository.save_json(survey_id, "stage3", result)
         if inventory:
-            inventory["asset_copies"] = [asset for asset in assets if asset["category"] == "book"]
+            inventory["asset_copies"] = [
+                {key: value for key, value in asset.items() if key in ASSET_COPY_FIELDS}
+                for asset in assets
+                if asset["category"] == "book"
+            ]
             repository.save_json(survey_id, "inventory", inventory)
         ir = repository.get_json(survey_id, "ir") or {
             "schema_version": "1.0.0",

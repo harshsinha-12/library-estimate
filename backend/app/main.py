@@ -9,6 +9,7 @@ from redis import Redis
 from backend.app.api.routes import router
 from backend.app.config import Settings
 from backend.app.domain.repository import SurveyRepository
+from backend.app.providers.pricing import log as pricing_log
 from backend.app.storage.objects import ObjectStore, S3ObjectStore
 from backend.app.storage.redis_client import connect_redis
 from backend.app.workflows.migrate_sqlite import migrate_sqlite_if_present
@@ -35,6 +36,9 @@ def create_app(
         data_dir = data_dir or Path("data/runtime")
 
     repository = SurveyRepository(redis_client, object_store, key_prefix=key_prefix)
+    small_model = settings.openai_small_model if settings else "gpt-5.6-luna"
+    pricing_log.configure()
+    pricing_log.info("backend_ready", small_model=small_model)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -50,7 +54,7 @@ def create_app(
     )
     app.state.settings = settings
     app.state.data_dir = data_dir
-    app.state.survey_workflow = SurveyWorkflow(repository)
+    app.state.survey_workflow = SurveyWorkflow(repository, small_model=small_model)
     app.include_router(router)
 
     @app.get("/healthz", tags=["operations"])
