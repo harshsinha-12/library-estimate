@@ -102,7 +102,7 @@ Run as **one line**. If `--port 8000` is on the next line, the shell treats it a
 
 ```bash
 cd "/Users/harshsinha/VS Code/library-roomplan"
-python3 -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
 ```
 
 Or: `make run-backend`

@@ -4,9 +4,9 @@
 
 ## Current implementation
 
-Stage 1 device gate is closed. Canonical sealed capture is `eb3f30fa` (GPS, written notes, tagged 2D + USDZ, intact hashes, server `derived/`). Manual geography: `69d0a6d6` / `0cbeda56`. After seal, the upload screen shows a **tagged 2D plan** (numbered colored walls, centimetre lengths, doors/windows as gaps, compass N = scan +Z) and an interactive **3D USDZ**. Visual spec: [`docs/cosmo-tagged-plan-reference.png`](docs/cosmo-tagged-plan-reference.png). Stage 2 starts with Redis + object storage; see [`CHECKPOINTS.md`](CHECKPOINTS.md).
+Stage 1 device gate is closed. Canonical sealed capture is `eb3f30fa`. Stage 2 gate is closed: Redis + Cloudflare R2, shelf Pass B, labeled count without double-counting a reverse rescan. Next is Stage 3 identity / non-books / damage.
 
-Storage decision: the current SQLite/local-filesystem backend is a temporary Stage 1 implementation. Stage 2 replaces structured persistence with Redis and sealed-media persistence with S3-compatible object storage. SQLite is not part of the target backend; do not expose the current backend publicly.
+Storage decision: Redis holds Survey IR, metadata, idempotency, jobs, and state. Cloudflare R2 (S3-compatible) holds sealed media. SQLite is an archive of Stage 1 demo data only; it is not a runtime dependency.
 
 ```bash
 make check         # Ruff, compileall, and backend/schema tests

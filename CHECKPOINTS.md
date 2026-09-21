@@ -13,7 +13,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 ## Clock
 
 - [x] T+0–4h Stage 1
-- [ ] T+4–8h Stage 2
+- [x] T+4–8h Stage 2
 - [ ] T+8–12h Stage 3
 - [ ] T+12–16h Stage 4
 - [ ] T+16–24h Stage 5 (models, RL, review, security, eval, demo)
@@ -62,20 +62,20 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 
 ## Stage 2 — T+4–8h — Count
 
-- [ ] Replace temporary SQLite persistence with Redis for Survey IR, metadata, idempotency, state events, and jobs; remove SQLite runtime dependency.
-- [ ] Configure authenticated Redis from server-side env; durable keys have explicit versioning and no accidental TTL; restart/atomicity tests pass.
-- [ ] Persist sealed media in S3-compatible object storage, with hashes/reopen checks and no dependency on ephemeral host disk.
-- [ ] Verify migration or explicit preservation of any existing local demo surveys before removing SQLite data.
-- [ ] Shelf map: unit, face A/B, rows.
-- [ ] Live blur, glare, speed, text-size, occlusion guidance.
-- [ ] Coverage heatmap and targeted recapture.
-- [ ] Spine instance detection, tracking, cross-pass association.
-- [ ] ISBN never used as merge key; double-sided faces stay separate.
-- [ ] `possibly_moved`.
-- [ ] ShelfFaceDataSize on IR, inventory, 2D.
-- [ ] On-device live assist.
-- [ ] Idempotent Vision jobs.
-- [ ] Gate: Redis/object-storage create/upload/seal/reopen and restart recovery pass; no SQLite dependency; reverse rescan does not double; uncovered rows partial.
+- [x] Replace temporary SQLite persistence with Redis for Survey IR, metadata, idempotency, state events, and jobs; remove SQLite runtime dependency.
+- [x] Configure authenticated Redis from server-side env; durable keys have explicit versioning and no accidental TTL; restart/atomicity tests pass.
+- [x] Persist sealed media in S3-compatible object storage, with hashes/reopen checks and no dependency on ephemeral host disk.
+- [x] Verify migration or explicit preservation of any existing local demo surveys before removing SQLite data.
+- [x] Shelf map: unit, face A/B, rows.
+- [x] Live blur, glare, speed, text-size, occlusion guidance.
+- [x] Coverage heatmap and targeted recapture.
+- [x] Spine instance detection, tracking, cross-pass association.
+- [x] ISBN never used as merge key; double-sided faces stay separate.
+- [x] `possibly_moved`.
+- [x] ShelfFaceDataSize on IR, inventory, 2D.
+- [x] On-device live assist.
+- [x] Idempotent Vision jobs.
+- [x] Gate: Redis/object-storage create/upload/seal/reopen and restart recovery pass; no SQLite dependency; reverse rescan does not double; uncovered rows partial.
 
 ## Stage 3 — T+8–12h — Identity, non-books, damage
 

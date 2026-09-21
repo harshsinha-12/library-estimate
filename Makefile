@@ -3,14 +3,14 @@
 check: lint test
 
 lint:
-	python3 -m ruff check backend
-	python3 -m compileall -q backend
+	python3 -m ruff check backend cv
+	python3 -m compileall -q backend cv
 
 test:
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest
 
 run-backend:
-	python3 -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
+	python3 -m uvicorn backend.app.main:production_app --factory --reload --host 0.0.0.0 --port 8000
 
 ios-project:
 	cd ios/LibrarySurvey && xcodegen generate

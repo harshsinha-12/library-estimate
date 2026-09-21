@@ -62,9 +62,9 @@
 
 ## Implementation state
 
-Stage 1 device gate is closed. Canonical package `eb3f30fa`. Stage 2 is Redis + S3 + shelf count. Do not treat SQLite as the target backend.
+Stage 1 device gate is closed. Canonical package `eb3f30fa`. Stage 2 Redis + R2 + shelf count is gated. Do not treat SQLite as the target backend.
 
-**Storage decision (2026-09-21):** User selected Redis and ruled out SQLite. Stage 2 now begins by replacing the temporary SQLite repository with Redis for structured survey state and S3-compatible object storage for large capture files. The current code has not been migrated; do not deploy it publicly or mark the Redis checkpoint complete yet.
+**Storage decision (2026-09-21):** Redis for structured survey state; Cloudflare R2 via the S3 API for sealed media. SQLite remains only as a preserved Stage 1 archive and is migrated on API startup.
 
 ## Verification performed
 
@@ -147,6 +147,31 @@ Package evidence matches that:
 - Resume: `uploaded_files` has unique paths per survey (no second write of an ACK’d file). `cf61c539` remains `uploading` with 1 file from an earlier abandoned attempt.
 
 Stage 1 clock checkbox is marked complete. Speech-to-text is still Stage 3.
+
+## 2026-09-21 14:20 — Stage 2 Redis, R2, Pass B
+
+R2 is used through the S3 API only. The `library-scanner` bucket stays private (no r2.dev public access, no custom domain). Server-side Access Key ID / Secret Access Key / endpoint / bucket names are in `.env.local`; they are not in the iOS app. The Cloudflare API token values are unused. Rotate the S3 keys after this demo, as planned.
+
+Gate exercised:
+
+- Live Redis ping/round-trip and R2 put/get/delete succeeded (no credentials logged).
+- `make check`: 24 tests passed, including Redis-backed create/upload/seal/reopen/restart, no SQLite import in the runtime repository, sqlite archive preserved by migrator, labeled shelf count.
+- Labeled shelf: reverse rescan does not double; two same-ISBN copies in different slots stay two `AssetCopy` rows; uncovered `row_03` is `partial` with a disclosed count interval, never a silent zero; face B walkaround stays separate; `possibly_moved` is set on identity match + spatial jump.
+- Inventory and 2D overlay expose `ShelfFaceDataSize` (`GET /v1/surveys/{id}/inventory`, `GET /v1/surveys/{id}/shelves`, `data-shelf` on derived SVG). Vision jobs are idempotent on `survey_id + stage + input_hash + pipeline_version`.
+- iOS Shelf Map + Pass B (quality overlay, coverage heatmap, recapture named rows, live assist count) compile in the generic Simulator build.
+
+Run the API with `python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000`. First start migrates Stage 1 sqlite rows/files into Redis + R2 and leaves the sqlite file on disk.
+
+## 2026-09-21 14:32 — phone upload to Redis + R2
+
+Operator sealed a new survey from the phone against the production factory server. Create, every file upload, and seal returned 200 from `192.168.29.179`.
+
+- `survey_id` `371ea852-15fd-4471-a1b0-92b70a777e8d` (`371EA852`), display name Test with Redis and Cloudflare
+- `GET` status `geometry`; events created → capturing → uploading → ingest_validation → geometry
+- Geography `gps`, city Bareilly
+- Redis holds 53 uploaded-file records; R2 has 56 objects including `manifest.json`, `roomplan/model.usdz`, sampled JPEG frames, audio, and server `derived/plan.svg`
+
+This is a device confirmation of the Stage 2 storage cutover. Pass B shelf content on a later capture is still the next operator check.
 
 ## Session update rule
 
