@@ -153,3 +153,100 @@ class SurveyStateEvent(StrictModel):
     state: SurveyState
     occurred_at: datetime
     detail: str | None = None
+
+
+class MeasurementInterval(StrictModel):
+    low: float
+    high: float
+    level: float = Field(gt=0, le=1)
+
+
+class Measurement(StrictModel):
+    value: float | int
+    unit: str
+    status: Literal["ok", "partial", "failed", "needs_review"]
+    confidence: float = Field(ge=0, le=1)
+    interval: MeasurementInterval | None = None
+    method: str
+    evidence_refs: list[str] = Field(default_factory=list)
+    run_id: str
+
+
+class Observation(StrictModel):
+    observation_id: str
+    evidence_ref: str
+    captured_at: datetime | None = None
+    monotonic_seconds: float = 0
+    category: str
+    confidence: float = Field(ge=0, le=1)
+    track_id: str | None = None
+    asset_copy_id: str | None = None
+    room_id: str | None = None
+    shelf_id: str | None = None
+    face_id: str | None = None
+    row_id: str | None = None
+    slot: int | None = None
+    x: float | None = None
+    face_normal: list[float] | None = None
+    isbn: str | None = None
+    pass_id: str | None = None
+
+
+class Track(StrictModel):
+    track_id: str
+    observation_refs: list[str] = Field(min_length=1)
+    status: Literal["ok", "partial", "failed", "needs_review"]
+    face_id: str | None = None
+    row_id: str | None = None
+
+
+class AssetCopy(StrictModel):
+    asset_copy_id: str
+    category: str
+    observation_refs: list[str]
+    valuation_required: bool = True
+    requires_appraisal: bool = False
+    possibly_moved: bool = False
+    book_edition_ref: str | None = None
+    room_id: str | None = None
+    shelf_id: str | None = None
+    face_id: str | None = None
+    row_id: str | None = None
+    slot: int | None = None
+    isbn: str | None = None
+
+
+class ShelfFaceDataSize(StrictModel):
+    shelf_face_id: str
+    occupied_length: Measurement
+    capacity_length: Measurement
+    fill_ratio: Measurement
+    copy_count: Measurement
+    unresolved_count: Measurement
+    evidence_bytes: Measurement
+    rows: list[dict[str, object]] = Field(default_factory=list)
+
+
+class ShelfOverlay(StrictModel):
+    face_id: str
+    label: str
+    min_x: float
+    min_z: float
+    max_x: float
+    max_z: float
+    copy_count_label: str
+    fill_label: str
+    status: Literal["ok", "partial", "failed", "needs_review"]
+
+
+class InventoryResult(StrictModel):
+    survey_id: UUID
+    status: Literal["ok", "partial", "failed", "needs_review"]
+    pipeline_version: str
+    run_id: str
+    observations: list[Observation] = Field(default_factory=list)
+    tracks: list[Track] = Field(default_factory=list)
+    asset_copies: list[AssetCopy] = Field(default_factory=list)
+    shelf_face_data_sizes: list[ShelfFaceDataSize] = Field(default_factory=list)
+    overlays: list[ShelfOverlay] = Field(default_factory=list)
+    recapture: list[str] = Field(default_factory=list)

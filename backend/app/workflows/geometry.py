@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
+from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from backend.app.domain.models import ShelfOverlay
+from backend.app.domain.repository import SurveyRepository
 from backend.app.utils.json_codec import pretty_json
 
 
@@ -46,22 +48,30 @@ class PortableStructure(StrictModel):
 class GeometryResult:
     room_count: int
     wall_count: int
-    svg_path: Path
-    summary_path: Path
-    usdz_path: Path | None
+    svg_path: str
+    summary_path: str
+    usdz_path: str | None
 
 
 class GeometryWorker:
     structure_relative_path = "roomplan/processed/structure.json"
     usdz_relative_path = "roomplan/model.usdz"
+    svg_relative_path = "derived/plan.svg"
+    summary_relative_path = "derived/geometry.json"
 
-    def process(self, package_root: Path) -> GeometryResult:
-        structure_path = package_root / self.structure_relative_path
-        if not structure_path.is_file():
-            raise GeometryError(f"missing {self.structure_relative_path}")
+    def process(
+        self,
+        repository: SurveyRepository,
+        survey_id: UUID,
+        overlays: list[ShelfOverlay] | None = None,
+    ) -> GeometryResult:
         try:
-            payload = json.loads(structure_path.read_text(encoding="utf-8"))
+            payload = json.loads(
+                repository.get_bytes(survey_id, self.structure_relative_path).decode("utf-8")
+            )
             structure = PortableStructure.model_validate(payload)
+        except FileNotFoundError as error:
+            raise GeometryError(f"missing {self.structure_relative_path}") from error
         except (json.JSONDecodeError, ValueError) as error:
             raise GeometryError(f"invalid processed RoomPlan structure: {error}") from error
 
@@ -72,21 +82,32 @@ class GeometryWorker:
         except ValueError as error:
             raise GeometryError(str(error)) from error
 
-        # The sealed capture package may already contain generated/plan.svg in
-        # its manifest. Worker output must never rewrite those hashed bytes.
-        derived = package_root / "derived"
-        derived.mkdir(parents=True, exist_ok=True)
-        svg_path = derived / "plan.svg"
-        svg_path.write_text(render_svg(plan), encoding="utf-8")
+        svg = render_svg(plan, overlays=overlays or [])
+        repository.put_bytes(
+            survey_id,
+            self.svg_relative_path,
+            svg.encode("utf-8"),
+            "image/svg+xml",
+        )
         summary = plan.summary_dict()
         summary["source"] = self.structure_relative_path
-        summary_path = derived / "geometry.json"
-        summary_path.write_text(pretty_json(summary), encoding="utf-8")
-        usdz_path = package_root / self.usdz_relative_path
+        if overlays:
+            summary["shelves"] = [item.model_dump(mode="json") for item in overlays]
+        repository.put_bytes(
+            survey_id,
+            self.summary_relative_path,
+            pretty_json(summary).encode("utf-8"),
+            "application/json",
+        )
+        usdz_path = (
+            self.usdz_relative_path
+            if repository.exists_bytes(survey_id, self.usdz_relative_path)
+            else None
+        )
         return GeometryResult(
             room_count=len(structure.rooms),
             wall_count=len(plan.walls),
-            svg_path=svg_path,
-            summary_path=summary_path,
-            usdz_path=usdz_path if usdz_path.is_file() else None,
+            svg_path=self.svg_relative_path,
+            summary_path=self.summary_relative_path,
+            usdz_path=usdz_path,
         )

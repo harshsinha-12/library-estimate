@@ -208,12 +208,12 @@ class TaggedFloorPlan:
         }
 
 
-def render_svg(plan: TaggedFloorPlan) -> str:
+def render_svg(plan: TaggedFloorPlan, overlays: list | None = None) -> str:
     scale = 100.0
     padding = 48.0
     drawing_width = max((plan.max_x - plan.min_x) * scale + padding * 2, 220)
     drawing_height = max((plan.max_z - plan.min_z) * scale + padding * 2, 220)
-    legend_lines = _legend_lines(plan)
+    legend_lines = _legend_lines(plan, overlays or [])
     legend_height = 28 + 18 * len(legend_lines)
     width = drawing_width
     height = drawing_height + legend_height
@@ -242,6 +242,23 @@ def render_svg(plan: TaggedFloorPlan) -> str:
         labels.append(
             f'<text x="{mx + ox:.2f}" y="{my + oy:.2f}" fill="{wall.color}" '
             f'text-anchor="middle" dominant-baseline="middle">{wall.index}</text>'
+        )
+    overlay_markup = []
+    for overlay in overlays or []:
+        x1, y1 = screen(PlanPoint(overlay.min_x, overlay.max_z))
+        x2, y2 = screen(PlanPoint(overlay.max_x, overlay.min_z))
+        left, right = min(x1, x2), max(x1, x2)
+        top, bottom = min(y1, y2), max(y1, y2)
+        fill = "#3B7BFF33" if overlay.status == "ok" else "#F2C14E55"
+        overlay_markup.append(
+            f'<rect x="{left:.2f}" y="{top:.2f}" width="{right - left:.2f}" '
+            f'height="{bottom - top:.2f}" fill="{fill}" stroke="#E8E8ED" '
+            f'stroke-width="1.5" data-shelf="{escape(overlay.face_id)}" />'
+        )
+        overlay_markup.append(
+            f'<text x="{(left + right) / 2:.2f}" y="{(top + bottom) / 2:.2f}" '
+            f'fill="#F4F4F5" font-size="11" text-anchor="middle" '
+            f'dominant-baseline="middle">{escape(overlay.copy_count_label)}</text>'
         )
     opening_markup = []
     for opening in plan.openings:
@@ -272,6 +289,9 @@ def render_svg(plan: TaggedFloorPlan) -> str:
         '  <g stroke-width="8" stroke-linecap="square">\n    '
         + "\n    ".join(wall_markup)
         + "\n  </g>\n"
+        "  <g>\n    "
+        + "\n    ".join(overlay_markup)
+        + "\n  </g>\n"
         '  <g stroke-width="10" stroke-linecap="butt">\n    '
         + "\n    ".join(opening_markup)
         + "\n  </g>\n"
@@ -292,7 +312,9 @@ def render_svg(plan: TaggedFloorPlan) -> str:
     )
 
 
-def _legend_lines(plan: TaggedFloorPlan) -> list[tuple[str, str]]:
+def _legend_lines(
+    plan: TaggedFloorPlan, overlays: list | None = None
+) -> list[tuple[str, str]]:
     ceiling = (
         f"{round(plan.ceiling_height_m * 100)} cm"
         if plan.ceiling_height_m is not None
@@ -326,6 +348,15 @@ def _legend_lines(plan: TaggedFloorPlan) -> list[tuple[str, str]]:
                 (
                     opening.color,
                     f"{kind.title()} {opening.index}  {opening.length_cm} cm{wall}",
+                )
+            )
+    if overlays:
+        lines.append(("#E8E8ED", "Shelves"))
+        for overlay in overlays:
+            lines.append(
+                (
+                    "#F2C14E" if overlay.status != "ok" else "#3B7BFF",
+                    f"{overlay.label}  {overlay.copy_count_label}  {overlay.fill_label}",
                 )
             )
     return lines

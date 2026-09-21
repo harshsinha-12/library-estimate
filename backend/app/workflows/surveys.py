@@ -6,7 +6,9 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 
 from backend.app.domain.models import (
+    CaptureFile,
     CapturePackageManifest,
+    InventoryResult,
     SealResult,
     SurveyCreate,
     SurveyRecord,
@@ -17,6 +19,7 @@ from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.utils.json_codec import canonical_json_bytes
 from backend.app.workflows.geometry import GeometryError, GeometryWorker
+from backend.app.workflows.vision import VisionWorker
 
 
 class ManifestConflictError(ValueError):
@@ -31,9 +34,11 @@ class SurveyWorkflow:
         self,
         repository: SurveyRepository,
         geometry_worker: GeometryWorker | None = None,
+        vision_worker: VisionWorker | None = None,
     ) -> None:
         self.repository = repository
         self.geometry_worker = geometry_worker or GeometryWorker()
+        self.vision_worker = vision_worker or VisionWorker()
 
     def create(self, request: SurveyCreate, *, idempotency_key: str) -> SurveyRecord:
         request_hash = sha256_bytes(canonical_json_bytes(request.model_dump(mode="json")))
@@ -68,9 +73,6 @@ class SurveyWorkflow:
             bytes=len(content),
             sha256=sha256_bytes(content),
         )
-        # Reuse the manifest path guard before touching the filesystem.
-        from backend.app.domain.models import CaptureFile
-
         CaptureFile(**upload.model_dump())
         if path.startswith("derived/"):
             raise ManifestConflictError("derived/ is reserved for server-generated output")
@@ -137,22 +139,23 @@ class SurveyWorkflow:
         geometry_summary_path = None
         usdz_path = None
         try:
-            geometry = self.geometry_worker.process(self.repository.package_root(survey_id))
+            geometry = self.geometry_worker.process(self.repository, survey_id)
+            inventory = self.vision_worker.process(self.repository, survey_id)
+            if inventory and inventory.overlays:
+                geometry = self.geometry_worker.process(
+                    self.repository,
+                    survey_id,
+                    overlays=inventory.overlays,
+                )
             if geometry.usdz_path is None:
                 final_status = "partial"
                 detail = "2D geometry generated; RoomPlan USDZ is missing"
             else:
                 final_status = "geometry"
                 detail = None
-                usdz_path = str(
-                    geometry.usdz_path.relative_to(self.repository.package_root(survey_id))
-                )
-            geometry_svg_path = str(
-                geometry.svg_path.relative_to(self.repository.package_root(survey_id))
-            )
-            geometry_summary_path = str(
-                geometry.summary_path.relative_to(self.repository.package_root(survey_id))
-            )
+                usdz_path = geometry.usdz_path
+            geometry_svg_path = geometry.svg_path
+            geometry_summary_path = geometry.summary_path
         except GeometryError as error:
             final_status = "partial"
             detail = str(error)
@@ -169,6 +172,12 @@ class SurveyWorkflow:
         )
         self._record(scope, idempotency_key, request_hash, result)
         return result
+
+    def inventory(self, survey_id: UUID) -> InventoryResult | None:
+        stored = self.repository.get_json(survey_id, "inventory")
+        if stored is None:
+            return self.vision_worker.process(self.repository, survey_id)
+        return InventoryResult.model_validate(stored)
 
     def _validate_manifest(
         self,
@@ -195,12 +204,11 @@ class SurveyWorkflow:
                 raise ManifestConflictError(f"MIME-type mismatch: {expected.path}")
 
     def _verify_reopened_package(self, survey_id: UUID) -> None:
-        manifest_path = self.repository.package_root(survey_id) / "manifest.json"
         reopened = CapturePackageManifest.model_validate_json(
-            manifest_path.read_text(encoding="utf-8")
+            self.repository.get_bytes(survey_id, "manifest.json").decode("utf-8")
         )
         for expected in reopened.files:
-            data = self.repository.upload_path(survey_id, expected.path).read_bytes()
+            data = self.repository.get_bytes(survey_id, expected.path)
             if len(data) != expected.bytes or sha256_bytes(data) != expected.sha256:
                 raise ManifestConflictError(
                     f"reopened package verification failed: {expected.path}"

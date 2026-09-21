@@ -28,7 +28,10 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         "Views/TaggedFloorPlanView.swift",
         "Services/LocationService.swift",
         "Services/SurveyUploadService.swift",
-        "Views/PackagePreviewView.swift",
+        "Views/ShelfMapView.swift",
+        "Views/ShelfPassView.swift",
+        "Capture/ShelfCaptureStore.swift",
+        "Capture/LiveQualityAnalyzer.swift",
     }
     source_root = IOS_ROOT / "LibrarySurvey"
     assert all((source_root / relative).is_file() for relative in expected_sources)

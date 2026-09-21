@@ -1,0 +1,30 @@
+{
+  "passes": [
+    {
+      "pass_id": "pass_a",
+      "room_id": "library",
+      "shelf_id": "shelf_01",
+      "face_id": "shelf_01.face_A",
+      "face_normal": [0, 0, 1],
+      "label": "Shelf 1 A",
+      "min_x": 0.4,
+      "min_z": 0.3,
+      "max_x": 1.6,
+      "max_z": 0.7,
+      "capacity_m": 1.2,
+      "evidence_bytes": 412000,
+      "rows": [
+        {
+          "row_id": "row_01",
+          "coverage": 0.96,
+          "capacity_m": 0.6,
+          "spines": [
+            {"slot": 0, "x": 0.12, "t": 1.0, "isbn": "9780143127550", "appearance": "left"},
+            {"slot": 1, "x": 0.28, "t": 1.1, "isbn": "9780143127550", "appearance": "right"}
+          ]
+        },
+        {"row_id": "row_03", "coverage": 0.18, "capacity_m": 0.6, "spines": []}
+      ]
+    }
+  ]
+}

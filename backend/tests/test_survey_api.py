@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
 from backend.app.utils.hashing import sha256_bytes
+from backend.tests.conftest import isolated_app
 
 GEOGRAPHY = {
     "country_code": "IN",
@@ -93,8 +93,8 @@ def manifest(
     }
 
 
-def test_create_upload_and_seal_round_trip(tmp_path) -> None:
-    app = create_app(tmp_path)
+def test_create_upload_and_seal_round_trip() -> None:
+    app, _, store = isolated_app()
     with TestClient(app) as client:
         survey = create_survey(client)
         survey_id = survey["survey_id"]
@@ -123,8 +123,8 @@ def test_create_upload_and_seal_round_trip(tmp_path) -> None:
         stored = client.get(f"/v1/surveys/{survey_id}")
         assert stored.status_code == 200
         assert stored.json()["status"] == "partial"
-        assert (tmp_path / "uploads" / survey_id / "manifest.json").is_file()
-        assert (tmp_path / "uploads" / survey_id / "derived" / "plan.svg").is_file()
+        assert store.exists(f"{survey_id}/manifest.json")
+        assert store.exists(f"{survey_id}/derived/plan.svg")
 
         jobs = client.get(f"/v1/surveys/{survey_id}/jobs")
         assert jobs.status_code == 200
@@ -137,8 +137,8 @@ def test_create_upload_and_seal_round_trip(tmp_path) -> None:
         ]
 
 
-def test_complete_roomplan_package_reaches_geometry_state(tmp_path) -> None:
-    app = create_app(tmp_path)
+def test_complete_roomplan_package_reaches_geometry_state() -> None:
+    app, _, _ = isolated_app()
     with TestClient(app) as client:
         survey_id = create_survey(client)["survey_id"]
         uploads = [
@@ -169,8 +169,9 @@ def test_complete_roomplan_package_reaches_geometry_state(tmp_path) -> None:
     assert sealed.json()["usdz_path"] == "roomplan/model.usdz"
 
 
-def test_geometry_keeps_sealed_svg_immutable_and_survives_restart(tmp_path) -> None:
-    app = create_app(tmp_path)
+def test_geometry_keeps_sealed_svg_immutable_and_survives_restart() -> None:
+    app, redis_client, store = isolated_app()
+    prefix = app.state.survey_workflow.repository.key_prefix
     captured_svg = b"<svg xmlns='http://www.w3.org/2000/svg'><title>capture</title></svg>"
     uploads = [
         ("roomplan/processed/structure.json", "application/json", STRUCTURE),
@@ -198,27 +199,27 @@ def test_geometry_keeps_sealed_svg_immutable_and_survives_restart(tmp_path) -> N
         assert response.status_code == 200
         assert response.json()["geometry_svg_path"] == "derived/plan.svg"
 
-    package_root = tmp_path / "uploads" / survey_id
-    assert (package_root / "generated/plan.svg").read_bytes() == captured_svg
-    assert sha256_bytes((package_root / "generated/plan.svg").read_bytes()) == sha256_bytes(
-        captured_svg
+    assert store.get(f"{survey_id}/generated/plan.svg") == captured_svg
+    assert sha256_bytes(store.get(f"{survey_id}/generated/plan.svg")) == sha256_bytes(captured_svg)
+    assert store.get(f"{survey_id}/derived/plan.svg") != captured_svg
+    restarted, _, _ = isolated_app(
+        redis_client=redis_client, object_store=store, key_prefix=prefix
     )
-    assert (package_root / "derived/plan.svg").read_bytes() != captured_svg
-    with TestClient(create_app(tmp_path)) as client:
+    with TestClient(restarted) as client:
         stored = client.get(f"/v1/surveys/{survey_id}")
         assert stored.status_code == 200
         assert stored.json()["status"] == "geometry"
         replay = client.post(
             f"/v1/surveys/{survey_id}/seal",
             headers=headers("seal-immutable-svg"),
-            json=json.loads((package_root / "manifest.json").read_text(encoding="utf-8")),
+            json=json.loads(store.get(f"{survey_id}/manifest.json").decode("utf-8")),
         )
         assert replay.status_code == 200
         assert replay.json()["package_hash"] == response.json()["package_hash"]
 
 
-def test_upload_allows_identical_bytes_at_different_paths(tmp_path) -> None:
-    app = create_app(tmp_path)
+def test_upload_allows_identical_bytes_at_different_paths() -> None:
+    app, _, _ = isolated_app()
     with TestClient(app) as client:
         survey_id = create_survey(client)["survey_id"]
         for path in (
@@ -238,10 +239,9 @@ def test_upload_allows_identical_bytes_at_different_paths(tmp_path) -> None:
             assert response.json()["path"] == path
 
 
-def test_interrupted_upload_retries_after_backend_restart_without_duplicate_events(
-    tmp_path,
-) -> None:
-    app = create_app(tmp_path)
+def test_interrupted_upload_retries_after_backend_restart_without_duplicate_events() -> None:
+    app, redis_client, store = isolated_app()
+    prefix = app.state.survey_workflow.repository.key_prefix
     with TestClient(app) as client:
         survey_id = create_survey(client)["survey_id"]
         first = client.post(
@@ -252,7 +252,10 @@ def test_interrupted_upload_retries_after_backend_restart_without_duplicate_even
         )
         assert first.status_code == 200
 
-    with TestClient(create_app(tmp_path)) as client:
+    from backend.app.main import create_app
+
+    restarted = create_app(redis_client=redis_client, object_store=store, key_prefix=prefix)
+    with TestClient(restarted) as client:
         retry = client.post(
             f"/v1/surveys/{survey_id}/uploads",
             params={"path": "roomplan/processed/structure.json"},
@@ -287,8 +290,8 @@ def test_interrupted_upload_retries_after_backend_restart_without_duplicate_even
         ]
 
 
-def test_create_survey_is_idempotent_and_rejects_key_reuse(tmp_path) -> None:
-    app = create_app(tmp_path)
+def test_create_survey_is_idempotent_and_rejects_key_reuse() -> None:
+    app, _, _ = isolated_app()
     with TestClient(app) as client:
         first = create_survey(client)
         repeated = create_survey(client)
@@ -304,7 +307,7 @@ def test_create_survey_is_idempotent_and_rejects_key_reuse(tmp_path) -> None:
 
 
 def test_upload_rejects_unsafe_package_path(tmp_path) -> None:
-    app = create_app(tmp_path)
+    app, _, _ = isolated_app()
     with TestClient(app) as client:
         survey_id = create_survey(client)["survey_id"]
         response = client.post(
@@ -317,8 +320,8 @@ def test_upload_rejects_unsafe_package_path(tmp_path) -> None:
     assert not (tmp_path / "escape.json").exists()
 
 
-def test_upload_rejects_server_derived_path(tmp_path) -> None:
-    app = create_app(tmp_path)
+def test_upload_rejects_server_derived_path() -> None:
+    app, _, store = isolated_app()
     with TestClient(app) as client:
         survey_id = create_survey(client)["survey_id"]
         response = client.post(
@@ -328,11 +331,11 @@ def test_upload_rejects_server_derived_path(tmp_path) -> None:
             content=b"<svg/>",
         )
     assert response.status_code == 422
-    assert not (tmp_path / "uploads" / survey_id / "derived" / "plan.svg").exists()
+    assert not store.exists(f"{survey_id}/derived/plan.svg")
 
 
-def test_seal_rejects_hash_mismatch(tmp_path) -> None:
-    app = create_app(tmp_path)
+def test_seal_rejects_hash_mismatch() -> None:
+    app, _, _ = isolated_app()
     with TestClient(app) as client:
         survey_id = create_survey(client)["survey_id"]
         content = STRUCTURE
@@ -357,3 +360,11 @@ def test_seal_rejects_hash_mismatch(tmp_path) -> None:
     with TestClient(app) as verification_client:
         stored = verification_client.get(f"/v1/surveys/{survey_id}")
     assert stored.json()["status"] == "recapture_required"
+
+
+def test_repository_has_no_sqlite_dependency() -> None:
+    from pathlib import Path
+
+    source = Path("backend/app/domain/repository.py").read_text(encoding="utf-8")
+    assert "sqlite" not in source.lower()
+    assert "sqlite3" not in source

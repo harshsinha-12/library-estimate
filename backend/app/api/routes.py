@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from backend.app.api.dependencies import get_survey_workflow
 from backend.app.domain.models import (
     CapturePackageManifest,
+    InventoryResult,
     SealResult,
     SurveyCreate,
     SurveyRecord,
@@ -89,3 +90,40 @@ def seal_survey(
         raise HTTPException(status_code=404, detail="survey not found") from error
     except ManifestConflictError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/surveys/{survey_id}/inventory", response_model=InventoryResult)
+def get_inventory(request: Request, survey_id: UUID) -> InventoryResult:
+    try:
+        get_survey_workflow(request).repository.get(survey_id)
+        inventory = get_survey_workflow(request).inventory(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    if inventory is None:
+        raise HTTPException(status_code=404, detail="inventory not available")
+    return inventory
+
+
+@router.get("/surveys/{survey_id}/shelves")
+def get_shelves(request: Request, survey_id: UUID) -> dict[str, object]:
+    try:
+        get_survey_workflow(request).repository.get(survey_id)
+        inventory = get_survey_workflow(request).inventory(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    if inventory is None:
+        return {
+            "survey_id": str(survey_id),
+            "faces": [],
+            "overlays": [],
+            "recapture": [],
+            "copy_count": 0,
+        }
+    return {
+        "survey_id": str(survey_id),
+        "status": inventory.status,
+        "faces": [item.model_dump(mode="json") for item in inventory.shelf_face_data_sizes],
+        "overlays": [item.model_dump(mode="json") for item in inventory.overlays],
+        "recapture": inventory.recapture,
+        "copy_count": len(inventory.asset_copies),
+    }
