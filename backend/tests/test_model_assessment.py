@@ -5,6 +5,7 @@ import pytest
 from backend.app.providers.models.astra import parse_astra_response
 from backend.app.providers.models.fable import parse_fable_response
 from backend.app.providers.models.normalization import ProviderResponseError
+from backend.app.providers.models.remote import extract_json_object
 
 
 def payload(pipeline: str) -> dict[str, object]:
@@ -41,3 +42,20 @@ def test_extra_provider_fields_are_rejected() -> None:
     response["invented_price"] = 999
     with pytest.raises(ValueError):
         parse_fable_response(response)
+
+
+def test_fable_damage_array_and_category_aliases_are_coerced() -> None:
+    response = payload("fable")
+    response["damage"] = []
+    response["category"] = "computer"
+    parsed = parse_fable_response(response)
+    assert parsed.damage.present is None or parsed.damage.present is False
+    assert parsed.damage.types == []
+    assert parsed.category == "electronics"
+
+
+def test_extract_json_object_from_fenced_text() -> None:
+    blob = extract_json_object(
+        '```json\n{"category": "book", "confidence": 0.4}\n```'
+    )
+    assert blob["category"] == "book"

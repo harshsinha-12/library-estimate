@@ -14,7 +14,7 @@ from backend.app.providers.models.astra import parse_astra_response
 from backend.app.providers.models.contracts import ModelAssessment
 from backend.app.providers.models.fable import parse_fable_response
 from backend.app.providers.models.jev import parse_jev_response, propose_route
-from backend.app.providers.models.remote import call_astra, call_fable
+from backend.app.providers.models.remote import call_astra, call_fable, extract_json_object
 from backend.app.providers.usage import usage_for_run
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
@@ -32,9 +32,7 @@ def _assess(
     raw, content = call(evidence)
     raw_path = f"derived/model-runs/{run_id}/{pipeline}-raw.json"
     repository.put_bytes(survey_id, raw_path, canonical_json_bytes(raw), "application/json")
-    parsed = json.loads(content)
-    if not isinstance(parsed, dict):
-        raise ModelReplayError("provider assessment must be an object")
+    parsed = extract_json_object(content)
     package = json.loads(evidence)
     allowed_refs = set(package["evidence_refs"])
     supplied = set(parsed.get("evidence_refs") or [])
@@ -63,11 +61,15 @@ def _assess(
 
 
 def _route(a: dict | None, b: dict | None, asset: dict, jev: dict | None) -> dict:
+    if asset.get("requires_appraisal") or asset.get("high_value"):
+        return {"action": "human_review", "reason": "high_value_veto", "disagreement": None}
+    if asset.get("category") in {"ebook", "e_book", "digital_book"}:
+        return {"action": "human_review", "reason": "ebook_physical_veto", "disagreement": None}
+    if asset.get("merge_basis") == "isbn_only":
+        return {"action": "human_review", "reason": "isbn_only_merge_veto", "disagreement": None}
     if a is None or b is None:
         return {"action": "human_review", "reason": "model_unavailable", "disagreement": None}
     disagreement = any(a[field] != b[field] for field in ("category", "condition", "damage"))
-    if asset.get("requires_appraisal"):
-        return {"action": "human_review", "reason": "appraisal_veto", "disagreement": disagreement}
     if a["category"] != asset["category"] or b["category"] != asset["category"]:
         return {
             "action": "human_review", "reason": "deterministic_category_veto",
@@ -102,7 +104,9 @@ def replay_asset(
     astra_call: Callable = call_astra, jev_call: Callable = propose_route,
 ) -> dict:
     survey = repository.get(survey_id)
-    if not survey.package_hash or survey.status not in {"geometry", "partial"}:
+    if not survey.package_hash:
+        raise ModelReplayError("survey must be sealed before model replay")
+    if survey.status not in {"geometry", "partial", "ingest_validation"}:
         raise ModelReplayError("survey must be sealed before model replay")
     inventory = repository.get_json(survey_id, "inventory") or {}
     asset = next(
@@ -117,14 +121,26 @@ def replay_asset(
         row for row in inventory.get("observations", [])
         if row.get("observation_id") in asset.get("observation_refs", [])
     ]
-    refs = sorted({row["evidence_ref"] for row in observations if row.get("evidence_ref")})
+    refs = {row["evidence_ref"] for row in observations if row.get("evidence_ref")}
+    if asset.get("evidence_ref"):
+        refs.add(str(asset["evidence_ref"]))
+    crop = _crop_ref(repository, survey_id, asset)
+    if crop:
+        refs.add(crop)
+    refs = sorted(refs, key=lambda path: (0 if "/crops/" in path else 1, path))
     if not refs:
         raise ModelReplayError("asset has no evidence references")
+    target = _target_identity(repository, survey_id, asset)
+    named = dict(asset)
+    if target["title"]:
+        named["title"] = target["title"]
+        named["label"] = named.get("label") or target["title"]
     package = {
         "schema_version": "1.0.0", "survey_id": str(survey_id),
         "sealed_package_hash": survey.package_hash, "asset_copy_id": asset_copy_id,
-        "asset": asset, "observations": observations, "evidence_refs": refs,
-        "task": "assess category, condition, damage and identity candidates",
+        "asset": named, "observations": observations, "evidence_refs": refs,
+        "target_identity": target,
+        "task": target["instruction"],
     }
     media = []
     for ref in refs:
@@ -133,7 +149,7 @@ def replay_asset(
         if not repository.exists_bytes(survey_id, ref):
             continue
         content = repository.get_bytes(survey_id, ref)
-        if len(content) > 400_000:
+        if len(content) > 2_000_000:
             continue
         media.append({
             "evidence_ref": ref,
@@ -185,6 +201,7 @@ def replay_asset(
             "evidence_package_hash": result["evidence_package_hash"],
             "disagreement": decision["disagreement"],
             "appraisal_required": bool(asset.get("requires_appraisal")),
+            "logging_propensity": 1.0,
         },
         "action": action, "action_source": "policy",
         "fable": assessments.get("fable"), "astra": assessments.get("astra_replay"),
@@ -203,3 +220,79 @@ def replay_asset(
         f"{repository.key_prefix}:survey:{survey_id}:model_runs", str(run_id)
     )
     return result
+
+
+def _target_identity(repository: SurveyRepository, survey_id: UUID, asset: dict) -> dict:
+    asset_id = asset["asset_copy_id"]
+    stage3 = repository.get_json(survey_id, "stage3") or {}
+    identity = next(
+        (
+            item
+            for item in stage3.get("identities") or []
+            if item.get("asset_copy_id") == asset_id
+        ),
+        {},
+    )
+    labeled = next(
+        (
+            item
+            for item in stage3.get("assets") or []
+            if item.get("asset_copy_id") == asset_id
+        ),
+        {},
+    )
+    catalog = identity.get("catalog") if isinstance(identity.get("catalog"), dict) else {}
+    title = (
+        str(
+            identity.get("title")
+            or catalog.get("title")
+            or labeled.get("label")
+            or asset.get("title")
+            or asset.get("label")
+            or ""
+        ).strip()
+        or None
+    )
+    if title is None:
+        pricing = repository.get_json(survey_id, "pricing") or {}
+        for item in pricing.get("live_searches") or []:
+            if item.get("asset_copy_id") == asset_id:
+                title = str(item.get("title") or item.get("query") or "").strip() or None
+                break
+    isbn = str(
+        identity.get("normalized")
+        or identity.get("isbn")
+        or catalog.get("isbn")
+        or asset.get("isbn")
+        or ""
+    ).strip() or None
+    category = str(asset.get("category") or labeled.get("category") or "unknown")
+    if title:
+        instruction = (
+            f"This sealed copy is specifically {title}. "
+            "The photo may show several books or objects. "
+            "Assess only this copy: name it in identity_candidates, "
+            "judge its condition and damage, and ignore other titles."
+        )
+    else:
+        instruction = (
+            "Assess only this one physical copy. "
+            "If several objects are visible, do not merge them."
+        )
+    return {
+        "title": title,
+        "isbn": isbn,
+        "category": category,
+        "instruction": instruction,
+    }
+
+
+def _crop_ref(repository: SurveyRepository, survey_id: UUID, asset: dict) -> str | None:
+    row_id = asset.get("row_id")
+    slot = asset.get("slot")
+    if row_id is None or slot is None:
+        return None
+    path = f"shelf_scans/crops/{row_id}_slot{slot}.jpg"
+    if repository.exists_bytes(survey_id, path):
+        return path
+    return None

@@ -1029,3 +1029,59 @@ def test_live_object_search_uses_spoken_label_and_image(monkeypatch) -> None:
         assert "AC" in (body.get("title") or "") or "air" in (body.get("title") or "").lower()
         assert body["status"] in {"draft", "unresolved"}
 
+
+def test_identify_reads_later_roomplan_frames(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    stub_pricing(worker)
+    worker.extract_titles = lambda jpeg: (
+        ["Deep Learning with Python"] if jpeg == b"late-cover" else []
+    )
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = survey["survey_id"]
+        for path, body in (
+            ("roomplan/raw/frames/0001.jpg", b"early-wall"),
+            ("roomplan/raw/frames/0068.jpg", b"late-cover"),
+        ):
+            uploaded = client.post(
+                f"/v1/surveys/{survey_id}/uploads",
+                params={"path": path},
+                headers={**headers("upload-" + path), "Content-Type": "image/jpeg"},
+                content=body,
+            )
+            assert uploaded.status_code == 200
+        identified = client.post(f"/v1/surveys/{survey_id}/identify-and-price")
+        assert identified.status_code == 200
+        payload = identified.json()
+        assert payload["titles"] == ["Deep Learning with Python"]
+        assert payload["copy_count"] >= 1
+
+
+def test_overview_includes_spoken_object_searches(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    stub_pricing(worker)
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = survey["survey_id"]
+        named = client.post(
+            f"/v1/surveys/{survey_id}/live-price-search",
+            json={
+                "category": "monitor",
+                "title": "24-inch monitor",
+                "spoken_text": "this is a 24 inch monitor",
+            },
+        )
+        assert named.status_code == 200
+        overview = client.get(f"/v1/surveys/{survey_id}/overview")
+        assert overview.status_code == 200
+        titles = [
+            str(row.get("title") or row.get("label") or "")
+            for row in overview.json().get("copies") or []
+        ]
+        assert any("monitor" in title.lower() for title in titles)
+

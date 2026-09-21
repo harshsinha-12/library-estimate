@@ -36,6 +36,7 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         "Views/OverviewView.swift",
         "Views/InventoryView.swift",
         "Views/PriceEvidenceView.swift",
+        "Views/ReportView.swift",
         "Models/Stage4Models.swift",
     }
     source_root = IOS_ROOT / "LibrarySurvey"
@@ -57,3 +58,13 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "Finish Room Scan" in bar
     assert "Point out object" not in bar
     assert "Written note" not in bar
+    assert "Possible book" not in room
+    assert "startFace" not in room
+    assert "ingestCurrentFrame" not in room
+    price = (source_root / "Views/PriceEvidenceView.swift").read_text(encoding="utf-8")
+    assert "Run Fable, Astra, and Jev" in price
+    assert "model-replay" in price
+    assert "Results for this named copy appear here" in price
+    report = (source_root / "Views/ReportView.swift").read_text(encoding="utf-8")
+    assert "modelRuns" in report
+    assert "Fable, Astra, and Jev" in report

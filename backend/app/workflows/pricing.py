@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import re
 from decimal import Decimal
 from pathlib import Path
 from statistics import median
 from uuid import UUID, uuid4
 
+from backend.app.domain.models import AssetCopy, InventoryResult, Observation
 from backend.app.domain.repository import SurveyRepository
 from backend.app.providers.pricing import log as pricing_log
 from backend.app.providers.pricing.parse import is_shop_url, parse_spoken_cost
@@ -38,11 +41,15 @@ from backend.app.providers.pricing.web_search import search_book_price, search_p
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.workflows.identifiers import type_identifier
-from backend.app.workflows.stage3 import asset_policy
+from backend.app.workflows.stage3 import TAXONOMY, asset_policy
 
 RATES_PATH = Path(__file__).resolve().parents[1] / "data" / "demo_rebuild_rates_v1.json"
 PIPELINE_VERSION = "stage4-price-v1"
 DRAFT_REASON = "Web search citations are drafts until a technician confirms a physical offer"
+_GENERIC_TITLE = re.compile(
+    r"^(books on the bookshelf|unidentified book.*|isbn\s*\d+)$",
+    re.IGNORECASE,
+)
 
 
 def load_rebuild_rates() -> dict:
@@ -464,7 +471,8 @@ class PricingWorker:
         unread = [item for item in assets if item["asset_copy_id"] not in identified]
         titles: list[str] = []
         seen: set[str] = set()
-        for path in _frame_paths(repository, survey_id)[:8]:
+        frame_paths = _frame_paths(repository, survey_id)
+        for path in frame_paths[:12]:
             try:
                 jpeg = repository.get_bytes(survey_id, path)
             except FileNotFoundError:
@@ -527,11 +535,16 @@ class PricingWorker:
                     item["message"] = "Title read from shelf frame"
             stage3["identities"] = identities
             repository.save_json(survey_id, "stage3", stage3)
+        if titles:
+            self._promote_titles(repository, survey_id, titles, frame_paths[:1])
+            stage3 = repository.get_json(survey_id, "stage3") or {}
+            assets = [item for item in stage3.get("assets") or [] if item.get("category") == "book"]
         self._record_log(
             repository,
             survey_id,
             "identify_from_frames",
             titles=len(titles),
+            frames=len(frame_paths),
             copy_count=len(assets),
             searches=len(searches),
         )
@@ -618,8 +631,17 @@ class PricingWorker:
         )
         identified = self.identify_from_frames(repository, survey_id)
         spoken = self.price_spoken_notes(repository, survey_id)
+        self._promote_searches(repository, survey_id)
         queued = self.queue(repository, survey_id)
-        return {"identified": identified, "spoken": spoken, "queued": queued}
+        overview = self.overview(repository, survey_id)
+        replayed = self._replay_sample(repository, survey_id)
+        return {
+            "identified": identified,
+            "spoken": spoken,
+            "queued": queued,
+            "overview_copies": len(overview.get("copies") or []),
+            "replayed": replayed,
+        }
 
     def queue(self, repository: SurveyRepository, survey_id: UUID) -> dict:
         self.identify_from_frames(repository, survey_id)
@@ -1160,6 +1182,10 @@ class PricingWorker:
         self, stage3: dict, inventory: dict, state: dict, geography: dict
     ) -> list[dict]:
         assets = list(stage3.get("assets") or inventory.get("asset_copies") or [])
+        evidence_by_observation = {
+            item.get("observation_id"): item.get("evidence_ref")
+            for item in inventory.get("observations") or []
+        }
         identities = {item["asset_copy_id"]: item for item in stage3.get("identities") or []}
         notes = list(stage3.get("notes") or [])
         queue = [item for item in stage3.get("queue") or [] if item.get("status") == "open"]
@@ -1338,10 +1364,307 @@ class PricingWorker:
                     "search_id": None if search is None else search.get("search_id"),
                     "listing_url": None if search is None else search.get("listing_url"),
                     "evidence_refs": asset.get("observation_refs") or [],
+                    "evidence_paths": sorted({
+                        evidence_by_observation.get(ref) or ref
+                        for ref in asset.get("observation_refs") or []
+                        if evidence_by_observation.get(ref) or "/" in ref
+                    } | ({asset["evidence_ref"]} if asset.get("evidence_ref") else set())),
                     "actions": self._actions(status, eligible, query, identity_task, category),
                 }
             )
+        rows.extend(self._rows_from_searches(rows, state, geography))
         return rows
+
+    def _rows_from_searches(
+        self, existing: list[dict], state: dict, geography: dict
+    ) -> list[dict]:
+        known = []
+        for row in existing:
+            title = str(row.get("title") or row.get("label") or "").strip()
+            if not title:
+                continue
+            known.append(
+                object_key(
+                    kind=row.get("query_kind") or row.get("category") or "object",
+                    title=title,
+                    category=row.get("category"),
+                )
+            )
+        extra = []
+        for item in state.get("live_searches") or []:
+            title = str(item.get("title") or item.get("query") or "").strip()
+            if len(title) < 3 or _GENERIC_TITLE.match(title):
+                continue
+            category = _search_category(item)
+            kind = item.get("query_kind") or ("name" if category == "book" else "object")
+            key = object_key(kind="object", title=title, category=category)
+            matched = next(
+                (
+                    row
+                    for row in existing
+                    if keys_match(
+                        key,
+                        object_key(
+                            kind="object",
+                            title=str(row.get("title") or row.get("label") or ""),
+                            category=row.get("category"),
+                        ),
+                    )
+                    or str(row.get("title") or row.get("label") or "").strip().lower()
+                    == title.lower()
+                ),
+                None,
+            )
+            amount = item.get("amount")
+            if matched is not None:
+                if item.get("listing_url") and not matched.get("listing_url"):
+                    matched["listing_url"] = item.get("listing_url")
+                if item.get("query") and (
+                    not matched.get("query") or "paperback" in str(matched.get("query") or "")
+                ):
+                    matched["query"] = item.get("query")
+                    matched["query_kind"] = kind
+                if amount is not None and not (
+                    ((matched.get("valuation") or {}).get("amount") or {}).get("value")
+                ):
+                    matched["valuation"] = {
+                        "valuation_id": f"val_{matched['asset_copy_id']}",
+                        "asset_copy_id": matched["asset_copy_id"],
+                        "basis": "replacement_cost",
+                        "amount": {
+                            "value": amount,
+                            "unit": item.get("currency") or geography.get("currency"),
+                            "status": "draft",
+                            "confidence": 0.45,
+                            "interval": None,
+                            "method": "live-web-search-draft",
+                            "evidence_refs": [],
+                            "run_id": PIPELINE_VERSION,
+                        },
+                        "currency": item.get("currency") or geography.get("currency"),
+                        "price_observation_refs": [],
+                    }
+                    matched["draft_count"] = max(int(matched.get("draft_count") or 0), 1)
+                    matched["reason"] = item.get("reason") or DRAFT_REASON
+                    if matched.get("valuation_status") in {None, "price_pending"}:
+                        matched["valuation_status"] = "price_pending"
+                continue
+            if any(keys_match(key, stored) for stored in known):
+                continue
+            known.append(key)
+            extra.append(
+                {
+                    "asset_copy_id": _found_copy_id(category, title),
+                    "category": category,
+                    "label": title,
+                    "slot": None,
+                    "face_id": None,
+                    "row_id": None,
+                    "isbn": item.get("isbn"),
+                    "title": title,
+                    "eligible": True,
+                    "requires_appraisal": False,
+                    "excluded": False,
+                    "query": item.get("query") or title,
+                    "query_kind": kind,
+                    "edition_key": None,
+                    "identity_task": None,
+                    "identity_status": "name" if category == "book" else category,
+                    "condition": None,
+                    "valuation_status": (
+                        "price_pending" if item.get("status") == "draft" else (
+                            item.get("status") or "price_pending"
+                        )
+                    ),
+                    "reason": item.get("reason") or DRAFT_REASON,
+                    "valuation": None
+                    if amount is None
+                    else {
+                        "valuation_id": f"val_{_found_copy_id(category, title)}",
+                        "asset_copy_id": _found_copy_id(category, title),
+                        "basis": "replacement_cost",
+                        "amount": {
+                            "value": amount,
+                            "unit": item.get("currency") or geography.get("currency"),
+                            "status": "draft",
+                            "confidence": 0.45,
+                            "interval": None,
+                            "method": "live-web-search-draft",
+                            "evidence_refs": [],
+                            "run_id": PIPELINE_VERSION,
+                        },
+                        "currency": item.get("currency") or geography.get("currency"),
+                        "price_observation_refs": [],
+                    },
+                    "draft_count": 1 if amount is not None else 0,
+                    "confirmed_count": 0,
+                    "search_id": item.get("search_id"),
+                    "listing_url": item.get("listing_url"),
+                    "evidence_refs": [],
+                    "evidence_paths": [],
+                    "actions": ["confirm_or_manual"],
+                }
+            )
+        return extra
+
+    def _promote_titles(
+        self,
+        repository: SurveyRepository,
+        survey_id: UUID,
+        titles: list[str],
+        frame_paths: list[str],
+    ) -> None:
+        evidence = next((path for path in frame_paths if path), None)
+        for title in titles:
+            if _GENERIC_TITLE.match(title):
+                continue
+            self._ensure_found_copy(
+                repository,
+                survey_id,
+                title=title,
+                category="book",
+                evidence_ref=evidence,
+            )
+
+    def _promote_searches(self, repository: SurveyRepository, survey_id: UUID) -> None:
+        state = self._state(repository, survey_id)
+        evidence = next(iter(_frame_paths(repository, survey_id)), None)
+        for item in state.get("live_searches") or []:
+            title = str(item.get("title") or item.get("query") or "").strip()
+            if len(title) < 3 or _GENERIC_TITLE.match(title):
+                continue
+            self._ensure_found_copy(
+                repository,
+                survey_id,
+                title=title,
+                category=_search_category(item),
+                evidence_ref=evidence,
+            )
+
+    def _ensure_found_copy(
+        self,
+        repository: SurveyRepository,
+        survey_id: UUID,
+        *,
+        title: str,
+        category: str,
+        evidence_ref: str | None,
+    ) -> str:
+        asset_id = _found_copy_id(category, title)
+        policy = asset_policy(category)
+        stage3 = repository.get_json(survey_id, "stage3") or {
+            "assets": [],
+            "identities": [],
+            "notes": [],
+            "queue": [],
+        }
+        assets = list(stage3.get("assets") or [])
+        if not any(item.get("asset_copy_id") == asset_id for item in assets):
+            assets.append(
+                {
+                    "asset_copy_id": asset_id,
+                    "category": category,
+                    "label": title,
+                    "observation_refs": [],
+                    "evidence_ref": evidence_ref,
+                    "valuation_required": policy["valuation_required"],
+                    "requires_appraisal": policy["requires_appraisal"],
+                    "excluded": policy["excluded"],
+                }
+            )
+            stage3["assets"] = assets
+        identities = list(stage3.get("identities") or [])
+        if title and not any(item.get("asset_copy_id") == asset_id for item in identities):
+            identities.append(
+                {
+                    "asset_copy_id": asset_id,
+                    "title": title,
+                    "author": "",
+                    "status": "vision_title" if category == "book" else "spoken_object",
+                    "evidence_ref": evidence_ref or "pricing/live_searches",
+                }
+            )
+            stage3["identities"] = identities
+        repository.save_json(survey_id, "stage3", stage3)
+        inventory = self._inventory_payload(repository, survey_id)
+        observations = list(inventory.get("observations") or [])
+        copies = list(inventory.get("asset_copies") or [])
+        obs_id = f"obs_{asset_id[6:]}" if asset_id.startswith("found_") else f"obs_{asset_id}"
+        if evidence_ref and not any(
+            item.get("observation_id") == obs_id for item in observations
+        ):
+            observations.append(
+                Observation(
+                    observation_id=obs_id,
+                    evidence_ref=evidence_ref,
+                    monotonic_seconds=0,
+                    category=category,
+                    confidence=0.55,
+                    asset_copy_id=asset_id,
+                    pass_id="B" if category == "book" else "A",
+                ).model_dump(mode="json")
+            )
+        if not any(item.get("asset_copy_id") == asset_id for item in copies):
+            copies.append(
+                AssetCopy(
+                    asset_copy_id=asset_id,
+                    category=category,
+                    observation_refs=[obs_id] if evidence_ref else [],
+                    valuation_required=policy["valuation_required"],
+                    requires_appraisal=policy["requires_appraisal"],
+                ).model_dump(mode="json")
+            )
+        inventory["observations"] = observations
+        inventory["asset_copies"] = copies
+        inventory["status"] = "partial"
+        repository.save_json(
+            survey_id,
+            "inventory",
+            InventoryResult.model_validate(inventory).model_dump(mode="json"),
+        )
+        return asset_id
+
+    def _inventory_payload(self, repository: SurveyRepository, survey_id: UUID) -> dict:
+        stored = repository.get_json(survey_id, "inventory")
+        if stored:
+            return stored
+        return InventoryResult(
+            survey_id=survey_id,
+            status="partial",
+            pipeline_version=PIPELINE_VERSION,
+            run_id=f"price_{uuid4().hex[:12]}",
+        ).model_dump(mode="json")
+
+    def _replay_sample(self, repository: SurveyRepository, survey_id: UUID) -> list[dict]:
+        if not (
+            os.getenv("ANTHROPIC_API_KEY", "").strip()
+            or os.getenv("OPENAI_API_KEY", "").strip()
+        ):
+            return []
+        from backend.app.workflows.models import ModelReplayError, replay_asset
+
+        inventory = repository.get_json(survey_id, "inventory") or {}
+        ran: list[dict] = []
+        for asset in (inventory.get("asset_copies") or [])[:2]:
+            try:
+                ran.append(
+                    replay_asset(repository, survey_id, asset["asset_copy_id"])
+                )
+            except (
+                ModelReplayError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                TypeError,
+            ) as error:
+                pricing_log.warning(
+                    "replay_sample failed",
+                    survey_id=str(survey_id),
+                    asset_copy_id=asset.get("asset_copy_id"),
+                    error=error.__class__.__name__,
+                )
+        return ran
 
     def _actions(
         self,
@@ -1393,6 +1716,21 @@ class PricingWorker:
         elif asset.get("isbn"):
             # Inventory ISBN hints are Stage B OCR and are never a price query key.
             isbn = None
+        title = title or asset.get("label")
+        category = str(asset.get("category") or "book")
+        if category != "book":
+            built = template_object_query(
+                label=title or category,
+                category=category,
+                spoken=None,
+                country_code=geography["country_code"],
+                city=geography.get("city"),
+                currency=geography.get("currency"),
+            )
+            if built is None:
+                return None, None, asset.get("book_edition_ref") or asset["asset_copy_id"]
+            query, kind = built
+            return query, kind, asset.get("book_edition_ref") or asset["asset_copy_id"]
         built = template_query(
             isbn=isbn,
             title=title,
@@ -1504,6 +1842,8 @@ class PricingWorker:
         highs: list[Decimal] = []
         centrals: list[Decimal] = []
         for copy in copies:
+            if copy.get("valuation_status") not in {"quoted", "manual"}:
+                continue
             valuation = copy.get("valuation")
             if valuation is None or valuation.get("currency") != currency:
                 continue
@@ -1615,6 +1955,7 @@ class PricingWorker:
 def _frame_paths(repository: SurveyRepository, survey_id: UUID) -> list[str]:
     crops: list[str] = []
     frames: list[str] = []
+    room: list[str] = []
     for path in sorted(repository.uploads(survey_id)):
         lower = path.lower()
         if not lower.endswith((".jpg", ".jpeg")):
@@ -1623,7 +1964,34 @@ def _frame_paths(repository: SurveyRepository, survey_id: UUID) -> list[str]:
             crops.append(path)
         elif lower.startswith("shelf_scans/frames/"):
             frames.append(path)
-    return crops + frames
+        elif lower.startswith("roomplan/") and "/frames/" in lower:
+            room.append(path)
+    return crops + frames + room[-12:]
+
+
+def _found_copy_id(category: str, title: str) -> str:
+    return f"found_{sha256_bytes(f'{category}:{title.lower()}'.encode())[:12]}"
+
+
+def _search_category(item: dict) -> str:
+    raw = str(item.get("category") or "").strip().lower().replace(" ", "_")
+    if raw in TAXONOMY:
+        return raw
+    kind = str(item.get("query_kind") or "")
+    if kind in {"isbn", "name", "book"}:
+        return "book"
+    title = str(item.get("title") or item.get("query") or "").lower()
+    if any(token in title for token in ("macbook", "ipad", "laptop", "computer")):
+        return "computer"
+    if "monitor" in title:
+        return "monitor"
+    if any(token in title for token in ("air conditioner", "air-conditioner")):
+        return "appliance"
+    if re.search(r"\bac\b", title):
+        return "appliance"
+    if any(token in title for token in ("bed", "cupboard", "wardrobe", "almirah", "table")):
+        return "furniture"
+    return "other"
 
 
 def _jpeg_from_payload(payload: dict) -> bytes:
