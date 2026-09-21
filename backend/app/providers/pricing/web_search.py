@@ -14,7 +14,6 @@ from backend.app.providers.pricing.schema import (
     BATCH_PRICE_SCHEMA,
     BATCH_SCHEMA_NAME,
     BATCH_SIZE,
-    DEFAULT_SMALL_MODEL,
     MAX_LISTING_URLS,
     OFFER_TYPES,
     PRICE_SCHEMA,
@@ -23,15 +22,14 @@ from backend.app.providers.pricing.schema import (
 from backend.app.providers.usage import record_usage, reserve_budget
 from backend.app.utils.hashing import sha256_bytes
 
-DEFAULT_WEB_SEARCH_MODEL = os.getenv("OPENAI_WEB_SEARCH_MODEL", "gpt-5.5").strip() or "gpt-5.5"
+DEFAULT_WEB_SEARCH_MODEL = (
+    os.getenv("OPENAI_WEB_SEARCH_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
+)
 WEB_SEARCH_MODELS = tuple(
     dict.fromkeys(
         [
             os.getenv("OPENAI_WEB_SEARCH_MODEL", "").strip() or None,
-            "gpt-5.5",
-            "gpt-4.1",
-            "gpt-4o",
-            DEFAULT_SMALL_MODEL,
+            DEFAULT_WEB_SEARCH_MODEL,
         ]
     )
 )

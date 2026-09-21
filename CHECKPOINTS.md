@@ -132,7 +132,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Astra-live assist.
 - [x] Shared assessment schema wired end-to-end.
 - [x] Jev routing: accept, recapture, human, alternate resolver.
-- [ ] Policy vetoes (high-value, eBook-as-physical, ISBN-only merge).
+- [x] Policy vetoes (high-value, eBook-as-physical, ISBN-only merge).
 - [x] Cost, latency, disagreement logs.
 
 
@@ -140,18 +140,18 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 ### RL home
 
 - [ ] `RLTransition` on every decision, have RL feedback layer to improve on things.
-- [ ] Replay buffer.
-- [ ] Offline bandit on labeled set.
+- [x] Replay buffer.
+- [x] Offline bandit trainer exercised on a synthetic label fixture; physical labeled set remains in Eval and demo.
 - [ ] Recapture sequential transitions.
-- [ ] Specialist heads: condition, eligibility, damage, duplicate-features, quality.
+- [x] Specialist heads: condition, eligibility, damage, duplicate-features, quality.
 - [ ] Policy registry, shadow, rollback by `policy_id`.
-- [ ] Reward from independent labels (§13 table).
+- [x] Reward from independent labels (§13 table).
 
 
 
 ### Product, security, failures
 
-- [ ] Remaining screens: Processing, Overview, Inventory, Review, Report.
+- [x] Remaining screens: Processing, Overview, Inventory, Review, Report.
 - [x] JSON + PDF report with versions, citations, limitations.
 - [ ] Evidence viewer for every count and value.
 - [ ] Shelf-row inventory detail with expected/detected count, selectable copy outlines and evidence, identity/unresolved action, and per-copy price/condition status; barcode rescan, correction, and search actions.
@@ -159,7 +159,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Accessibility requirements.
 - [x] $50 ledger with stop-at-cap.
 - [ ] Every §17 failure row as status + operator action.
-- [ ] Remaining APIs: jobs, inventory, review, report, shelves, evidence, policies, shadow.
+- [x] Remaining APIs: jobs, inventory, review, report, shelves, evidence, policies, shadow.
 
 
 

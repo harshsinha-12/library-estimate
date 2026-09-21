@@ -5,17 +5,97 @@ from __future__ import annotations
 import json
 import os
 import time
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from backend.app.providers.pricing import log as pricing_log
 from backend.app.providers.usage import record_usage, reserve_budget
 
 SYSTEM = (
-    "Assess only the supplied physical asset evidence. Return a JSON object with keys "
+    "Assess only the supplied physical asset evidence. Return JSON with keys "
     "category, condition, damage, identity_candidates, recommended_action, confidence, "
-    "rationale, evidence_refs. Use only evidence_refs supplied in the input. "
+    "rationale, evidence_refs. damage must be an object "
+    '{"present": false, "types": [], "description": null}, never an array. '
+    "If target_identity.title is set, that named copy is the only asset to assess. "
+    "The photo may show several books or objects; ignore the others. "
+    "Put that title in identity_candidates with the supplied evidence_refs. "
+    "Judge condition and damage for that copy if it is visible. "
+    "Use only evidence_refs supplied in the input. "
     "Do not invent ISBNs, prices, geometry, or physical-copy merges. "
-    "If evidence is insufficient, request recapture or human_review."
+    "If that specific copy is unreadable, request recapture or human_review."
 )
+
+ASSESSMENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "category",
+        "condition",
+        "damage",
+        "identity_candidates",
+        "recommended_action",
+        "confidence",
+        "rationale",
+        "evidence_refs",
+    ],
+    "properties": {
+        "category": {
+            "type": "string",
+            "enum": [
+                "book", "portrait", "painting", "cup", "furniture",
+                "electronics", "other", "unknown",
+            ],
+        },
+        "condition": {
+            "type": "string",
+            "enum": ["new", "good", "worn", "damaged", "unknown"],
+        },
+        "damage": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["present", "types", "description"],
+            "properties": {
+                "present": {"type": ["boolean", "null"]},
+                "types": {"type": "array", "items": {"type": "string"}},
+                "description": {"type": ["string", "null"]},
+            },
+        },
+        "identity_candidates": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "label",
+                    "identifier_type",
+                    "identifier_value",
+                    "confidence",
+                    "evidence_refs",
+                ],
+                "properties": {
+                    "label": {"type": "string"},
+                    "identifier_type": {"type": ["string", "null"]},
+                    "identifier_value": {"type": ["string", "null"]},
+                    "confidence": {"type": "number"},
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+        "recommended_action": {
+            "type": "string",
+            "enum": [
+                "accept_candidate",
+                "recapture",
+                "alternate_resolver",
+                "human_review",
+            ],
+        },
+        "confidence": {"type": "number"},
+        "rationale": {"type": ["string", "null"]},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+    },
+}
 
 
 def _text_evidence(package: dict) -> str:
@@ -26,7 +106,10 @@ def _text_evidence(package: dict) -> str:
             for row in package.get("media", [])
         ],
     }
-    return json.dumps(bounded, sort_keys=True)
+    return (
+        "Reply with JSON matching the assessment schema.\n"
+        + json.dumps(bounded, sort_keys=True)
+    )
 
 
 def call_fable(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict, str]:
@@ -56,8 +139,7 @@ def call_fable(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
             "content-type": "application/json",
         },
     )
-    with urlopen(request, timeout=90) as response:
-        raw = json.load(response)
+    raw = _http_json(request, model=model, pipeline="fable")
     record_usage(
         provider="anthropic", model=model, operation="fable_assessment", response=raw,
         latency_ms=round((time.monotonic() - started) * 1000),
@@ -83,7 +165,14 @@ def call_astra(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
         "model": model,
         "instructions": SYSTEM,
         "input": [{"role": "user", "content": content}],
-        "text": {"format": {"type": "json_object"}},
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "model_assessment",
+                "strict": True,
+                "schema": ASSESSMENT_SCHEMA,
+            }
+        },
     }
     reserve_budget("1.00")
     started = time.monotonic()
@@ -91,8 +180,7 @@ def call_astra(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
         "https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
-    with urlopen(request, timeout=90) as response:
-        raw = json.load(response)
+    raw = _http_json(request, model=model, pipeline="astra_replay")
     record_usage(
         provider="openai", model=model, operation="astra_replay", response=raw,
         latency_ms=round((time.monotonic() - started) * 1000),
@@ -103,3 +191,35 @@ def call_astra(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
         for part in item.get("content", []) if part.get("type") in {"output_text", "text"}
     )
     return raw, content
+
+
+def _http_json(request: Request, *, model: str, pipeline: str) -> dict:
+    try:
+        with urlopen(request, timeout=90) as response:
+            return json.load(response)
+    except HTTPError as error:
+        detail = error.read()[:400].decode("utf-8", errors="replace").replace("\n", " ")
+        pricing_log.warning(
+            "model_http_error",
+            pipeline=pipeline,
+            model=model,
+            status=error.code,
+            detail=detail,
+        )
+        raise
+
+
+def extract_json_object(text: str) -> dict:
+    blob = (text or "").strip()
+    if blob.startswith("```"):
+        blob = blob.strip("`")
+        if blob.lower().startswith("json"):
+            blob = blob[4:].strip()
+    start = blob.find("{")
+    end = blob.rfind("}")
+    if start < 0 or end <= start:
+        raise json.JSONDecodeError("assessment JSON object missing", blob, 0)
+    parsed = json.loads(blob[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("provider assessment must be an object")
+    return parsed

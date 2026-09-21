@@ -9,6 +9,7 @@ description = "Evidence-first library survey capture and valuation backend"
 requires-python = ">=3.12"
 dependencies = [
   "boto3>=1.35,<2",
+  "cryptography>=44,<47",
   "fastapi>=0.115,<1",
   "jsonschema>=4.23,<5",
   "pydantic>=2.10,<3",

@@ -37,6 +37,9 @@ class Settings:
     s3_secret_access_key: str = field(repr=False)
     s3_bucket: str
     s3_region: str
+    operator_token: str = field(default="", repr=False)
+    data_encryption_key: str = field(default="", repr=False)
+    require_auth: bool = False
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -56,4 +59,7 @@ class Settings:
             s3_secret_access_key=_require("S3_SECRET_ACCESS_KEY"),
             s3_bucket=_require("S3_BUCKET"),
             s3_region=os.getenv("S3_REGION", "auto"),
+            operator_token=os.getenv("LIBRARY_OPERATOR_TOKEN", "").strip(),
+            data_encryption_key=os.getenv("LIBRARY_DATA_ENCRYPTION_KEY", "").strip(),
+            require_auth=os.getenv("LIBRARY_REQUIRE_AUTH", "0") == "1",
         )

@@ -253,6 +253,43 @@ class SurveyRepository:
     def survey_ids(self) -> list[str]:
         return sorted(self.redis.smembers(self._index_key()))
 
+    def delete_survey(self, survey_id: UUID) -> dict[str, int]:
+        self.get(survey_id)
+        object_keys = self.object_store.list_prefix(f"{survey_id}/")
+        for key in object_keys:
+            self.object_store.delete(key)
+        redis_keys = list(self.redis.scan_iter(f"{self.key_prefix}:survey:{survey_id}*"))
+        redis_keys.extend(self.redis.scan_iter(f"{self.key_prefix}:idempotency:upload:{survey_id}:*"))
+        redis_keys.extend(self.redis.scan_iter(f"{self.key_prefix}:idempotency:seal:{survey_id}:*"))
+        for create_key in self.redis.scan_iter(f"{self.key_prefix}:idempotency:create-survey:*"):
+            raw = self.redis.get(create_key)
+            if raw:
+                response = json.loads(_unwrap(raw)["response_json"])
+                if response.get("survey_id") == str(survey_id):
+                    redis_keys.append(create_key)
+        for job_key in self.redis.scan_iter(f"{self.key_prefix}:job:*"):
+            raw = self.redis.get(job_key)
+            if raw and _unwrap(raw).get("survey_id") == str(survey_id):
+                redis_keys.append(job_key)
+        for policy_id in self.redis.smembers(f"{self.key_prefix}:policies"):
+            key = f"{self.key_prefix}:policy:{policy_id}"
+            raw = self.redis.get(key)
+            if raw:
+                policy = json.loads(raw)
+                if str(survey_id) in (
+                    policy.get("train_survey_ids", []) + policy.get("holdout_survey_ids", [])
+                ):
+                    redis_keys.append(key)
+                    self.redis.srem(f"{self.key_prefix}:policies", policy_id)
+        if redis_keys:
+            self.redis.delete(*set(redis_keys))
+        access_key = f"{self.key_prefix}:access_log"
+        for entry in self.redis.lrange(access_key, 0, -1):
+            if str(survey_id) in entry:
+                self.redis.lrem(access_key, 0, entry)
+        self.redis.srem(self._index_key(), str(survey_id))
+        return {"deleted_objects": len(object_keys), "deleted_redis_keys": len(set(redis_keys))}
+
     def _record_payload(self, record: SurveyRecord) -> dict[str, Any]:
         return record.model_dump(mode="json")
 

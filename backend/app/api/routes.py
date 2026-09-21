@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -24,6 +25,14 @@ from backend.app.domain.models import (
 from backend.app.domain.repository import SurveyNotFoundError
 from backend.app.providers.usage import usage_for_run, usage_for_survey, usage_scope
 from backend.app.providers.voice import synthesize_prompt
+from backend.app.rl.offline import (
+    IndependentLabel,
+    append_label,
+    list_policies,
+    shadow_policy,
+    train_offline_policy,
+)
+from backend.app.utils.paths import validate_package_path
 from backend.app.workflows.models import ModelReplayError, replay_asset
 from backend.app.workflows.report import build_report
 from backend.app.workflows.stage3 import apply_review
@@ -108,6 +117,37 @@ def get_report_pdf(request: Request, survey_id: UUID) -> Response:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
+@router.get("/surveys/{survey_id}/evidence")
+def get_evidence(request: Request, survey_id: UUID, path: str = Query(min_length=1)) -> Response:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+        validate_package_path(path)
+        if path not in repository.uploads(survey_id) and not path.startswith("derived/"):
+            raise FileNotFoundError(path)
+        content = repository.get_bytes(survey_id, path)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=404, detail="evidence not found") from error
+    media_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    return Response(content=content, media_type=media_type)
+
+
+@router.delete("/surveys/{survey_id}")
+def delete_survey(
+    request: Request, survey_id: UUID,
+    confirm: Annotated[str, Header(alias="X-Confirm-Delete")],
+) -> dict:
+    if confirm != str(survey_id):
+        raise HTTPException(status_code=422, detail="X-Confirm-Delete must match survey ID")
+    try:
+        counts = get_survey_workflow(request).repository.delete_survey(survey_id)
+        return {"survey_id": str(survey_id), **counts}
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+
+
 @router.post("/surveys/{survey_id}/assets/{asset_copy_id}/model-replay")
 def model_replay(request: Request, survey_id: UUID, asset_copy_id: str) -> dict:
     try:
@@ -146,6 +186,58 @@ def get_rl_transitions(request: Request, survey_id: UUID) -> dict:
     key = f"{repository.key_prefix}:survey:{survey_id}:rl_transitions"
     rows = [json.loads(raw) for raw in repository.redis.lrange(key, 0, -1)]
     return {"survey_id": str(survey_id), "transitions": rows}
+
+
+@router.post("/surveys/{survey_id}/independent-labels")
+def create_independent_label(request: Request, survey_id: UUID, payload: IndependentLabel) -> dict:
+    if payload.survey_id != survey_id:
+        raise HTTPException(status_code=422, detail="label survey_id does not match route")
+    try:
+        return append_label(get_survey_workflow(request).repository, payload)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/surveys/{survey_id}/independent-labels")
+def get_independent_labels(request: Request, survey_id: UUID) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    key = f"{repository.key_prefix}:survey:{survey_id}:independent_labels"
+    return {
+        "survey_id": str(survey_id),
+        "labels": [json.loads(raw) for raw in repository.redis.lrange(key, 0, -1)],
+    }
+
+
+@router.post("/policies/train")
+def train_policy(request: Request, payload: dict) -> dict:
+    try:
+        train_ids = [UUID(value) for value in payload["train_survey_ids"]]
+        holdout_ids = [UUID(value) for value in payload["holdout_survey_ids"]]
+        return train_offline_policy(
+            get_survey_workflow(request).repository,
+            train_survey_ids=train_ids, holdout_survey_ids=holdout_ids,
+        )
+    except (KeyError, ValueError, TypeError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/policies")
+def get_policies(request: Request) -> dict:
+    return {"policies": list_policies(get_survey_workflow(request).repository)}
+
+
+@router.post("/policies/{policy_id}/shadow")
+def run_policy_shadow(request: Request, policy_id: str) -> dict:
+    try:
+        return shadow_policy(get_survey_workflow(request).repository, policy_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="policy not found") from error
 
 
 @router.post("/surveys/{survey_id}/uploads", response_model=UploadedFile)
