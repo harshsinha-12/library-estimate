@@ -77,7 +77,7 @@ struct OverviewView: View {
   private func load() async {
     do {
       let url = backendURL.appendingPathComponent("v1/surveys/\(surveyId.uuidString)/overview")
-      let (data, response) = try await URLSession.shared.data(from: url)
+      let (data, response) = try await OperatorSession.data(from: url)
       guard (response as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }

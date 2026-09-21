@@ -8,6 +8,7 @@ struct PackagePreviewView: View {
   @AppStorage("backendURL") private var backendURLString = "http://192.168.29.178:8000"
   @State private var layout: FloorPlanLayout?
   @State private var sharePlanURL: URL?
+  @State private var operatorToken = ""
 
   var body: some View {
     ScrollView {
@@ -46,6 +47,15 @@ struct PackagePreviewView: View {
             Text("Mac and iPhone must share Wi-Fi. Uvicorn must bind 0.0.0.0, not 127.0.0.1.")
               .font(.caption)
               .foregroundStyle(.secondary)
+            SecureField("Operator token", text: $operatorToken)
+              .textInputAutocapitalization(.never)
+              .autocorrectionDisabled()
+              .onChange(of: operatorToken) { _, value in
+                OperatorCredentials.save(value)
+              }
+            Text("Stored in this device's Keychain. A token requires an HTTPS backend URL.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
             Button("Test Connection", systemImage: "wifi") {
               Task { await pingBackend() }
             }
@@ -79,6 +89,11 @@ struct PackagePreviewView: View {
           VStack(alignment: .leading, spacing: 10) {
             if let backendURL {
               NavigationLink {
+                ProcessingView(surveyId: package.surveyId, backendURL: backendURL)
+              } label: {
+                Label("Processing status", systemImage: "clock.arrow.circlepath")
+              }
+              NavigationLink {
                 OverviewView(surveyId: package.surveyId, backendURL: backendURL)
               } label: {
                 Label("Overview, building, and spend", systemImage: "chart.bar.doc.horizontal")
@@ -86,12 +101,17 @@ struct PackagePreviewView: View {
               NavigationLink {
                 InventoryView(surveyId: package.surveyId, backendURL: backendURL)
               } label: {
-                Label("Inventory row and prices", systemImage: "books.vertical")
+                Label("Inventory, prices, Fable / Astra / Jev", systemImage: "books.vertical")
               }
               NavigationLink {
                 Stage3ReviewView(surveyId: package.surveyId, backendURL: backendURL)
               } label: {
                 Label("Review unresolved objects and notes", systemImage: "checklist")
+              }
+              NavigationLink {
+                ReportView(surveyId: package.surveyId, backendURL: backendURL)
+              } label: {
+                Label("Report, PDF, and model runs", systemImage: "doc.text")
               }
             } else {
               Text("Set the backend URL above to open overview, inventory, and review.")
@@ -108,6 +128,7 @@ struct PackagePreviewView: View {
       .padding()
     }
     .onAppear(perform: loadPlan)
+    .onAppear { operatorToken = OperatorCredentials.load() }
   }
 
   private var backendURL: URL? {

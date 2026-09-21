@@ -16,40 +16,40 @@ struct ShelfPassView: View {
     ZStack(alignment: .bottom) {
       ShelfCameraContainer(store: store)
         .ignoresSafeArea()
-      GeometryReader { geometry in
-        ForEach(Array(store.highlightedSpines.enumerated()), id: \.offset) { index, box in
-          let rect = store.displayRect(for: box, in: geometry.size)
-          let highlight = livePrices.highlight(for: box)
-          let color: Color = {
-            switch highlight?.status {
-            case "draft": .green
-            case "unresolved": .orange
-            default: .yellow
-            }
-          }()
-          RoundedRectangle(cornerRadius: 4)
-            .stroke(color, lineWidth: highlight == nil ? 2 : 3)
-            .background(color.opacity(0.12))
-            .overlay(alignment: .top) {
-              if let caption = highlight?.caption {
-                Text(caption)
-                  .font(.caption2.bold())
-                  .lineLimit(2)
-                  .padding(.horizontal, 4)
-                  .padding(.vertical, 2)
-                  .background(color)
-                  .foregroundStyle(.black)
-                  .clipShape(RoundedRectangle(cornerRadius: 3))
-              }
-            }
-            .frame(width: max(8, rect.width), height: max(16, rect.height))
-            .position(x: rect.midX, y: rect.midY)
-            .allowsHitTesting(false)
-            .accessibilityLabel("Book copy \(index + 1)")
-        }
-      }
-      .allowsHitTesting(false)
       if store.capturing {
+        GeometryReader { geometry in
+          ForEach(Array(store.highlightedSpines.enumerated()), id: \.offset) { index, box in
+            let rect = store.displayRect(for: box, in: geometry.size)
+            let highlight = livePrices.highlight(for: box)
+            let color: Color = {
+              switch highlight?.status {
+              case "draft": .green
+              case "unresolved": .orange
+              default: .yellow
+              }
+            }()
+            RoundedRectangle(cornerRadius: 4)
+              .stroke(color, lineWidth: highlight == nil ? 2 : 3)
+              .background(color.opacity(0.12))
+              .overlay(alignment: .top) {
+                if let caption = highlight?.caption {
+                  Text(caption)
+                    .font(.caption2.bold())
+                    .lineLimit(2)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(color)
+                    .foregroundStyle(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+              }
+              .frame(width: max(8, rect.width), height: max(16, rect.height))
+              .position(x: rect.midX, y: rect.midY)
+              .allowsHitTesting(false)
+              .accessibilityLabel("Book copy \(index + 1)")
+          }
+        }
+        .allowsHitTesting(false)
         Button("Finish face", systemImage: "stop.fill") {
           store.stopFace()
           onFinished()

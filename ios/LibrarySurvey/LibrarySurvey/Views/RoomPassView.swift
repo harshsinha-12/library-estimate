@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 
 struct RoomPassView: View {
@@ -14,35 +13,10 @@ struct RoomPassView: View {
       RoomCaptureContainer(store: store)
         .ignoresSafeArea(edges: .bottom)
 
-      if isCapturing {
-        GeometryReader { geometry in
-          ForEach(Array(shelves.highlightedSpines.enumerated()), id: \.offset) { index, box in
-            let rect = shelves.displayRect(for: box, in: geometry.size)
-            RoundedRectangle(cornerRadius: 4)
-              .stroke(.yellow, lineWidth: 2)
-              .background(.yellow.opacity(0.12))
-              .overlay(alignment: .top) {
-                Text("Possible book \(index + 1)")
-                  .font(.caption2.bold())
-                  .padding(3)
-                  .background(.yellow, in: RoundedRectangle(cornerRadius: 3))
-                  .foregroundStyle(.black)
-              }
-              .frame(width: max(8, rect.width), height: max(16, rect.height))
-              .position(x: rect.midX, y: rect.midY)
-              .accessibilityLabel("Possible book \(index + 1)")
-          }
-        }
-        .allowsHitTesting(false)
-      }
-
       controls
         .padding()
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
         .padding()
-    }
-    .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
-      if isCapturing { shelves.ingestCurrentFrame() }
     }
   }
 
@@ -53,10 +27,6 @@ struct RoomPassView: View {
 
   private var controls: some View {
     VStack(spacing: 10) {
-      if isCapturing, shelves.assistCount > 0 {
-        Text("\(shelves.assistCount) possible books in view · verify after scan")
-          .font(.caption)
-      }
       if let message = audio.errorMessage {
         Text(message).font(.caption).foregroundStyle(.orange)
       }
@@ -68,12 +38,7 @@ struct RoomPassView: View {
         Button("Start Scan", systemImage: "record.circle", action: start)
           .buttonStyle(.borderedProminent)
       case .capturing:
-        HStack {
-          Button("Pause Scan", systemImage: "pause.fill", action: pause)
-            .buttonStyle(.bordered)
-          Button("Stop Scan", systemImage: "stop.fill", action: stop)
-            .buttonStyle(.borderedProminent)
-        }
+        capturingBar
       case .paused:
         HStack {
           Button("Resume Scan", systemImage: "play.fill", action: resume)
@@ -97,13 +62,32 @@ struct RoomPassView: View {
     }
   }
 
+  private var capturingBar: some View {
+    HStack {
+      Button("Pause Scan", systemImage: "pause.fill", action: pause)
+        .buttonStyle(.bordered)
+      Button("Finish Room Scan", systemImage: "stop.fill", action: stop)
+        .buttonStyle(.borderedProminent)
+    }
+  }
+
+  private var status: String {
+    switch store.state {
+    case .capturing: "Scanning room geometry"
+    case .paused: "Paused"
+    case .processing: "Processing scan"
+    case .captured: "Room captured"
+    default: ""
+    }
+  }
+
   private func start() {
     store.start()
     guard isCapturing else { return }
+    shelves.clearLiveAssist()
     if let session = store.arSession, !shelves.units.isEmpty {
       shelves.units[0].roomName = store.roomName
       shelves.attach(session: session)
-      shelves.startFace(unit: shelves.units[0], face: .a)
     }
     guard recordSpokenNotes else { return }
     let directory = FileManager.default.temporaryDirectory
@@ -112,23 +96,20 @@ struct RoomPassView: View {
   }
 
   private func pause() {
-    shelves.pauseFace()
     store.pause()
   }
 
   private func resume() {
     store.resume()
-    shelves.resumeFace()
   }
 
   private func stop() {
-    shelves.stopFace()
     store.stop()
   }
 
   private func reset() {
     audio.stop()
-    shelves.captures = []
+    shelves.clearLiveAssist()
     store.reset()
   }
 }

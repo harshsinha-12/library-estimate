@@ -75,7 +75,7 @@ struct Stage3ReviewView: View {
   private func load() async {
     do {
       let url = backendURL.appendingPathComponent("v1/surveys/\(surveyId.uuidString)/review")
-      let (data, response) = try await URLSession.shared.data(from: url)
+      let (data, response) = try await OperatorSession.data(from: url)
       guard (response as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }
@@ -99,7 +99,7 @@ struct Stage3ReviewView: View {
         Decision(surveyId: surveyId, action: action,
                  assetCopyId: action == "bind_note" ? selectedAssetId : nil)
       )
-      let (_, response) = try await URLSession.shared.data(for: request)
+      let (_, response) = try await OperatorSession.data(for: request)
       guard (response as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }

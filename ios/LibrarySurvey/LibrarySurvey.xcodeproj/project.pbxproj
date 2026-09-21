@@ -12,9 +12,11 @@
 		0B355A2F35A7DD5F9087199B /* ExceptionPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377DE562BC6AC869728262CC /* ExceptionPassView.swift */; };
 		0B6E0898B6984E202D586C88 /* Stage3ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360C071ABB5CA35E7906875D /* Stage3ReviewView.swift */; };
 		107526297493CEC5A2388720 /* ShelfPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC6429C1CE32DF6750D9A09 /* ShelfPassView.swift */; };
+		1A98AE08C40C75099AE5A499 /* ReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D017AA799189CEFBD441D5B /* ReportView.swift */; };
 		1F13171D603809AED9D252C9 /* RoomCaptureContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7CA864A25DCD9232388B09 /* RoomCaptureContainer.swift */; };
 		2250F04C823B49975660A454 /* PackagePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA3E3171F4FBD156129CF23 /* PackagePreviewView.swift */; };
 		23CB2C2671405F7E460DB5A9 /* AudioNoteRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */; };
+		255C16719F1B21171B7DF5B6 /* OperatorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43349E7F91B889372B4308B1 /* OperatorSession.swift */; };
 		32FF30380A5446D6967D8677 /* DeviceCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843442AA8496CF71010E8750 /* DeviceCheckService.swift */; };
 		3966D58A4F4FE36A05AF3A1D /* LivePriceAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF3BF2DEB90DE100D968CAB /* LivePriceAssist.swift */; };
 		3C2DF8E4D3581EAAC0763EC0 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 757102D4D5B886C269D47895 /* LocationService.swift */; };
@@ -36,12 +38,14 @@
 		A5A04F7312ECEAD720D264DB /* ShelfCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDF1750F429DD0A64CFA4B16 /* ShelfCaptureStore.swift */; };
 		A5DA9AC07CE5EC166617A6F5 /* DeviceCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0679AB62A14FA7F626E9C301 /* DeviceCheckView.swift */; };
 		AAF8888453427F2521E67269 /* Stage3Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55F8EF37AA1BE2D94515D1C /* Stage3Models.swift */; };
+		AB6A617FE9F28198F6EBBBE9 /* CaptureEvidenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F062CACFF7D1033A910AAC3 /* CaptureEvidenceView.swift */; };
 		B91C3518663C04FA695B4F38 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557BC7A7F45FE059787F4443 /* OverviewView.swift */; };
 		BBFC5F5F63A5C1CDEC89BF2C /* FrameSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0624716C2A2BD1A11D57662 /* FrameSampler.swift */; };
 		BCDBC5FA57B08DF108DA7271 /* InventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90148C626512CC85571CB1E /* InventoryView.swift */; };
 		C81024DCE1F30F16377EE250 /* ExceptionCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1EBBB8799553D6FFA1D044 /* ExceptionCaptureStore.swift */; };
 		CA31483B63673D5A56819A54 /* TaggedFloorPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87736FCC38F49BAA19136020 /* TaggedFloorPlanView.swift */; };
 		D215E2DD3727C89392C14BF7 /* RoomPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7034A4070A1337D36795C93 /* RoomPassView.swift */; };
+		D9B1EF65F9E18A493A91D79C /* ProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03AF8665FD9C224ECEB90E21 /* ProcessingView.swift */; };
 		DB63B7B55715ED98823D8A22 /* SurveyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1090F51E026F6CF4745FE7 /* SurveyModels.swift */; };
 		E1010DFB88F1C9144C01B9BE /* RoomCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA363AEF087E903C0E42ACE /* RoomCaptureStore.swift */; };
 		E42397EA59F1F142AFEA71A3 /* LiveQualityAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAEA0BFA0E112ED27C0548F2 /* LiveQualityAnalyzer.swift */; };
@@ -51,6 +55,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		03AF8665FD9C224ECEB90E21 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
 		0679AB62A14FA7F626E9C301 /* DeviceCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCheckView.swift; sourceTree = "<group>"; };
 		082CC6F89646262287DB3B7A /* JSONCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONCoding.swift; sourceTree = "<group>"; };
 		10D267CACD1ED23A8AA22182 /* ShelfMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfMapView.swift; sourceTree = "<group>"; };
@@ -60,11 +65,14 @@
 		360C071ABB5CA35E7906875D /* Stage3ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage3ReviewView.swift; sourceTree = "<group>"; };
 		377DE562BC6AC869728262CC /* ExceptionPassView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExceptionPassView.swift; sourceTree = "<group>"; };
 		389E41DB3F4CA92F31EC105B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		43349E7F91B889372B4308B1 /* OperatorSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorSession.swift; sourceTree = "<group>"; };
 		458A6CD3BBDA041B75801F97 /* ShelfCameraContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfCameraContainer.swift; sourceTree = "<group>"; };
+		4D017AA799189CEFBD441D5B /* ReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportView.swift; sourceTree = "<group>"; };
 		4D1090F51E026F6CF4745FE7 /* SurveyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurveyModels.swift; sourceTree = "<group>"; };
 		4F42100972258D04116CB6B3 /* SurveyDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurveyDraftStore.swift; sourceTree = "<group>"; };
 		557BC7A7F45FE059787F4443 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		5A97A391E71BABE79E8A649C /* RoomPlanSVGRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomPlanSVGRenderer.swift; sourceTree = "<group>"; };
+		5F062CACFF7D1033A910AAC3 /* CaptureEvidenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureEvidenceView.swift; sourceTree = "<group>"; };
 		6B666F2104D2E3966DF0492F /* LocalNetworkPrompter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkPrompter.swift; sourceTree = "<group>"; };
 		73E4DFF0696C6C92D7DC6F44 /* PriceEvidenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceEvidenceView.swift; sourceTree = "<group>"; };
 		757102D4D5B886C269D47895 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
@@ -121,6 +129,7 @@
 				DBF3BF2DEB90DE100D968CAB /* LivePriceAssist.swift */,
 				6B666F2104D2E3966DF0492F /* LocalNetworkPrompter.swift */,
 				757102D4D5B886C269D47895 /* LocationService.swift */,
+				43349E7F91B889372B4308B1 /* OperatorSession.swift */,
 				4F42100972258D04116CB6B3 /* SurveyDraftStore.swift */,
 				8618C4199B088D97355D25A8 /* SurveyUploadService.swift */,
 			);
@@ -174,6 +183,7 @@
 		AC0B0CAEF3F364EB80A395C3 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				5F062CACFF7D1033A910AAC3 /* CaptureEvidenceView.swift */,
 				D6CAB75C1A35A43B56F251AC /* CreateSurveyView.swift */,
 				0679AB62A14FA7F626E9C301 /* DeviceCheckView.swift */,
 				377DE562BC6AC869728262CC /* ExceptionPassView.swift */,
@@ -181,6 +191,8 @@
 				557BC7A7F45FE059787F4443 /* OverviewView.swift */,
 				9CA3E3171F4FBD156129CF23 /* PackagePreviewView.swift */,
 				73E4DFF0696C6C92D7DC6F44 /* PriceEvidenceView.swift */,
+				03AF8665FD9C224ECEB90E21 /* ProcessingView.swift */,
+				4D017AA799189CEFBD441D5B /* ReportView.swift */,
 				F7034A4070A1337D36795C93 /* RoomPassView.swift */,
 				389E41DB3F4CA92F31EC105B /* RootView.swift */,
 				10D267CACD1ED23A8AA22182 /* ShelfMapView.swift */,
@@ -307,6 +319,7 @@
 			files = (
 				7CF5E8EFDC34BCB4D02F4726 /* AppConfiguration.swift in Sources */,
 				23CB2C2671405F7E460DB5A9 /* AudioNoteRecorder.swift in Sources */,
+				AB6A617FE9F28198F6EBBBE9 /* CaptureEvidenceView.swift in Sources */,
 				6183DD440564177A251EC3D8 /* CapturePackageWriter.swift in Sources */,
 				89724C9FB95BCE34277E426E /* CreateSurveyView.swift in Sources */,
 				32FF30380A5446D6967D8677 /* DeviceCheckService.swift in Sources */,
@@ -324,10 +337,13 @@
 				49640AA29000F3DBEFAF1B02 /* LocalNetworkPrompter.swift in Sources */,
 				3C2DF8E4D3581EAAC0763EC0 /* LocationService.swift in Sources */,
 				4715B7F1AFC618946CFC1980 /* MonotonicClock.swift in Sources */,
+				255C16719F1B21171B7DF5B6 /* OperatorSession.swift in Sources */,
 				B91C3518663C04FA695B4F38 /* OverviewView.swift in Sources */,
 				2250F04C823B49975660A454 /* PackagePreviewView.swift in Sources */,
 				6E3DCDD7F48525DC448053D3 /* PortableRoomPlan.swift in Sources */,
 				891D2DB8372B58BE2150E9FC /* PriceEvidenceView.swift in Sources */,
+				D9B1EF65F9E18A493A91D79C /* ProcessingView.swift in Sources */,
+				1A98AE08C40C75099AE5A499 /* ReportView.swift in Sources */,
 				1F13171D603809AED9D252C9 /* RoomCaptureContainer.swift in Sources */,
 				E1010DFB88F1C9144C01B9BE /* RoomCaptureStore.swift in Sources */,
 				D215E2DD3727C89392C14BF7 /* RoomPassView.swift in Sources */,
