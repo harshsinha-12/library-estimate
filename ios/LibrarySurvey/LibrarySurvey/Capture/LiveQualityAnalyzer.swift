@@ -8,13 +8,43 @@ enum LiveQualityAnalyzer {
     guard let image = UIImage(data: jpeg)?.cgImage else { return [] }
     let request = VNDetectRectanglesRequest()
     request.minimumAspectRatio = 0.08
-    request.maximumAspectRatio = 0.65
-    request.minimumSize = 0.02
-    request.maximumObservations = 80
+    request.maximumAspectRatio = 1.05
+    request.minimumSize = 0.04
+    request.maximumObservations = 24
     try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-    return (request.results ?? [])
-      .filter { $0.confidence >= 0.5 && $0.boundingBox.height > $0.boundingBox.width * 1.25 }
-      .map(\.boundingBox)
+    return (request.results ?? []).compactMap { observation in
+      let box = observation.boundingBox
+      let tall = box.height > box.width * 1.4
+      let thin = box.width <= 0.22
+      let tallEnough = box.height >= 0.08
+      let notWall = box.width * box.height <= 0.16
+      guard observation.confidence >= 0.65, tall, thin, tallEnough, notWall else { return nil }
+      guard cropContainsText(image: image, box: box) else { return nil }
+      return box
+    }
+  }
+
+  static func cropContainsText(jpeg: Data, box: CGRect) -> Bool {
+    guard let image = UIImage(data: jpeg)?.cgImage else { return false }
+    return cropContainsText(image: image, box: box)
+  }
+
+  static func cropContainsText(image: CGImage, box: CGRect) -> Bool {
+    let rect = CGRect(
+      x: box.minX * CGFloat(image.width),
+      y: (1 - box.maxY) * CGFloat(image.height),
+      width: max(1, box.width * CGFloat(image.width)),
+      height: max(1, box.height * CGFloat(image.height))
+    ).integral
+    guard let crop = image.cropping(to: rect) else { return false }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .fast
+    request.minimumTextHeight = 0.08
+    try? VNImageRequestHandler(cgImage: crop, options: [:]).perform([request])
+    let letters = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+      .joined()
+      .filter(\.isLetter)
+    return letters.count >= 3
   }
 
   static func analyze(

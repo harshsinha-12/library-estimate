@@ -28,7 +28,6 @@ targets:
         NSLocalNetworkUsageDescription: Local network access uploads sealed survey packages to the development backend.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-          NSAllowsArbitraryLoads: true
         NSBonjourServices:
           - "_http._tcp"
         UILaunchScreen: {}

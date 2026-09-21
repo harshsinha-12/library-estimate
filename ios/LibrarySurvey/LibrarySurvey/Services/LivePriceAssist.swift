@@ -323,7 +323,7 @@ final class LivePriceSession: ObservableObject {
           assetCopyId: assetCopyId
         )
       )
-      let (data, response) = try await URLSession.shared.data(for: request)
+      let (data, response) = try await OperatorSession.data(for: request)
       guard (response as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }
@@ -350,7 +350,7 @@ final class LivePriceSession: ObservableObject {
         geography: draft.geography
       )
     )
-    let (_, response) = try await URLSession.shared.data(for: request)
+    let (_, response) = try await OperatorSession.data(for: request)
     let code = (response as? HTTPURLResponse)?.statusCode ?? 0
     guard (200..<300).contains(code) || code == 409 else {
       throw URLError(.badServerResponse)
@@ -382,7 +382,7 @@ final class LivePriceSession: ObservableObject {
         assetCopyId: nil
       )
     )
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await OperatorSession.data(for: request)
     guard (response as? HTTPURLResponse)?.statusCode == 200 else {
       throw URLError(.badServerResponse)
     }

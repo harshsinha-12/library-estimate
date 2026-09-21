@@ -11,7 +11,7 @@ struct InventoryView: View {
       if let overview {
         Section("Row roster") {
           Button("Search prices for every found edition") { Task { await queue() } }
-          Text("Detected/actual and priced/eligible stay visible. Drafts are not confirmed prices.")
+          Text("Detected/actual and priced/eligible stay visible. Drafts are not confirmed prices. Open a copy to run Fable, Astra, and Jev; their results stay on that copy and also under Report.")
             .font(.footnote)
         }
         ForEach(overview.rows) { row in
@@ -74,7 +74,7 @@ struct InventoryView: View {
   private func load() async {
     do {
       let url = backendURL.appendingPathComponent("v1/surveys/\(surveyId.uuidString)/overview")
-      let (data, response) = try await URLSession.shared.data(from: url)
+      let (data, response) = try await OperatorSession.data(from: url)
       guard (response as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }
@@ -91,7 +91,7 @@ struct InventoryView: View {
       request.httpMethod = "POST"
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
       request.httpBody = Data("{}".utf8)
-      let (_, response) = try await URLSession.shared.data(for: request)
+      let (_, response) = try await OperatorSession.data(for: request)
       guard (response as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }

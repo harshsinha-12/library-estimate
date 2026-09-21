@@ -301,7 +301,7 @@ struct ExceptionPassView: View {
     do {
       var request = URLRequest(url: base.appendingPathComponent("v1/operator-prompts/\(id)/speech"))
       request.httpMethod = "POST"
-      let (audio, response) = try await URLSession.shared.data(for: request)
+      let (audio, response) = try await OperatorSession.data(for: request)
       guard (response as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }

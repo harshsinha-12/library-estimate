@@ -56,7 +56,11 @@ final class ExceptionCaptureStore: ObservableObject {
       let recognized = text.results?.compactMap { $0.topCandidates(1).first } ?? []
       latestText = recognized.map(\.string).joined(separator: "\n")
       latestConfidence = Double(recognized.first?.confidence ?? 0)
-      candidateRegions = (rectangles.results ?? []).map(\.boundingBox)
+      candidateRegions = (rectangles.results ?? [])
+        .map(\.boundingBox)
+        .filter { box in
+          box.width * box.height <= 0.45 && box.width < 0.85 && box.height < 0.85
+        }
       let label = classifier.results?.first?.identifier.lowercased() ?? ""
       if label.contains("book") { suggestedCategory = .book }
       else if label.contains("portrait") || label.contains("picture frame") { suggestedCategory = .portrait }

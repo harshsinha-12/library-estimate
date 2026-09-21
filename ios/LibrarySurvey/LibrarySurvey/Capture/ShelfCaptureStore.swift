@@ -19,7 +19,7 @@ final class ShelfCaptureStore: ObservableObject {
   @Published var assistCount = 0
   @Published var highlightedSpines: [CGRect] = []
   @Published var imageSize: CGSize = .zero
-  private var rowSpines: [String: [AccumulatedSpine]] = []
+  private var rowSpines: [String: [AccumulatedSpine]] = [:]
   private var taggedCrops: [String: Data] = [:]
 
   private var session: ARSession?
@@ -33,6 +33,20 @@ final class ShelfCaptureStore: ObservableObject {
 
   func attach(session: ARSession) {
     self.session = session
+  }
+
+  func clearLiveAssist() {
+    capturing = false
+    highlightedSpines = []
+    assistCount = 0
+    quality = .idle
+    rowCoverage = []
+    recaptureRows = []
+    samples = []
+    rowSpines = [:]
+    taggedCrops = [:]
+    previousTransform = nil
+    previousTime = nil
   }
 
   func addUnit() {
@@ -49,6 +63,8 @@ final class ShelfCaptureStore: ObservableObject {
   func startFace(unit: ShelfUnit, face: ShelfFaceSide) {
     selectedUnitId = unit.id
     selectedFace = face
+    highlightedSpines = []
+    assistCount = 0
     rowCoverage = (1...max(1, unit.rowCount)).map { index in
       ShelfRowCoverage(
         rowId: String(format: "row_%02d", index),
@@ -198,7 +214,7 @@ final class ShelfCaptureStore: ObservableObject {
         list[match.offset].x = (list[match.offset].x + x) / 2
         list[match.offset].t = time
         list[match.offset].box = box
-      } else {
+      } else if LiveQualityAnalyzer.cropContainsText(jpeg: jpeg, box: box) {
         list.append(
           AccumulatedSpine(
             slot: list.count,

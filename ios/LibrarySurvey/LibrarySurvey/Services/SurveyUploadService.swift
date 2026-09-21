@@ -90,7 +90,7 @@ final class SurveyUploadService: ObservableObject {
     var request = URLRequest(url: try makeAPIURL(backendURL, path: "healthz"))
     request.timeoutInterval = 8
     request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-    let (_, response) = try await URLSession.shared.data(for: request)
+    let (_, response) = try await OperatorSession.data(for: request)
     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
       throw URLError(.badServerResponse)
     }
@@ -175,7 +175,7 @@ final class SurveyUploadService: ObservableObject {
     guard let url = try? Self.makeAPIURL(backendURL, path: "v1/surveys/\(surveyId.uuidString)") else {
       return false
     }
-    guard let (data, response) = try? await URLSession.shared.data(from: url),
+    guard let (data, response) = try? await OperatorSession.data(from: url),
           (response as? HTTPURLResponse)?.statusCode == 200,
           let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let status = payload["status"] as? String
@@ -187,9 +187,9 @@ final class SurveyUploadService: ObservableObject {
     let data: Data
     let response: URLResponse
     if let fileURL {
-      (data, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
+      (data, response) = try await OperatorSession.upload(for: request, fromFile: fileURL)
     } else {
-      (data, response) = try await URLSession.shared.data(for: request)
+      (data, response) = try await OperatorSession.data(for: request)
     }
     guard let http = response as? HTTPURLResponse else {
       throw URLError(.badServerResponse)

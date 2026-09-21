@@ -74,6 +74,7 @@ struct Stage4Copy: Decodable, Identifiable {
   let draftCount: Int
   let confirmedCount: Int
   let listingUrl: String?
+  let evidencePaths: [String]?
   let actions: [String]
 }
 
@@ -144,4 +145,64 @@ struct Stage4SearchResponse: Decodable {
   let reason: String?
   let search: Stage4Search?
   let drafts: [Stage4Draft]?
+}
+
+struct ModelReplayList: Decodable {
+  let runs: [ModelReplayRun]
+}
+
+struct ModelReplayRun: Decodable, Identifiable {
+  var id: String { runId.uuidString }
+  let runId: UUID
+  let surveyId: UUID
+  let assetCopyId: String
+  let assessments: ModelReplayAssessments?
+  let jev: ModelReplayJev?
+  let failures: [String: String]?
+  let decision: ModelReplayDecision?
+  let createdAt: String?
+}
+
+struct ModelReplayAssessments: Decodable {
+  let fable: ModelReplayAssessment?
+  let astraReplay: ModelReplayAssessment?
+}
+
+struct ModelReplayAssessment: Decodable {
+  let model: String?
+  let category: String?
+  let condition: String?
+  let confidence: Double?
+  let recommendedAction: String?
+  let rationale: String?
+  let identityCandidates: [ModelReplayIdentity]?
+}
+
+struct ModelReplayIdentity: Decodable {
+  let label: String
+  let confidence: Double?
+}
+
+struct ModelReplayJev: Decodable {
+  let model: String?
+  let choice: String?
+  let confidence: Double?
+}
+
+struct ModelReplayDecision: Decodable {
+  let action: String
+  let reason: String
+  let disagreement: Bool?
+}
+
+struct ModelPipelineStatus: Decodable {
+  let status: String
+  let role: String
+}
+
+struct ModelPipelines: Decodable {
+  let fable: ModelPipelineStatus?
+  let astra: ModelPipelineStatus?
+  let jev: ModelPipelineStatus?
+  let note: String?
 }
