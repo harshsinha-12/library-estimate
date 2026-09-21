@@ -21,7 +21,7 @@ The governing rule is:
 
 > Capture once, preserve original evidence, make deterministic claims where possible, use models only for ambiguity, and let a human see and correct every material uncertainty.
 
-The first deliverable is this architecture. Implementation should begin only after the decisions in [Section 19](#19-decisions-to-align-on-before-building) are accepted.
+The first deliverable is this architecture. Implementation follows the five stages in [`IMPLEMENTATION.md`](IMPLEMENTATION.md). Demo defaults in that file freeze enough of [Section 19](#19-decisions-to-align-on-before-building) to start Stage 1 without waiting.
 
 ## 2. Corrections to the initial ChatGPT plan
 
@@ -493,6 +493,8 @@ Generate both outputs from the same IR:
 - **2D:** vector floor plan with room labels, shelf footprints, asset pins, coverage overlays, damage markers, and per-shelf data-size labels;
 - **3D:** RoomPlan/USDZ base with selectable shelves/assets and evidence links.
 
+Stage 1 ships the wall/opening layer of that 2D plan now: numbered colored walls, lengths in centimetres, doors/windows drawn as gaps on the parent wall when RoomPlan reports them, a wall/door/window list, and a compass where **N is scan +Z, not magnetic north**. The sealed/upload screen shows that tagged plan plus the interactive USDZ. Visual spec from the prior Cosmo assignment: [`docs/cosmo-tagged-plan-reference.png`](docs/cosmo-tagged-plan-reference.png). Shelf footprints, coverage, and asset pins remain later overlays on the same geometry, not a second plan.
+
 ### Shelf data size
 
 The assignment’s “data in the shelves / data size” is interpreted as a first-class shelf-face measurement, not as a throwaway comment.
@@ -944,8 +946,8 @@ flowchart TB
 
   LS -->|"resumable signed upload"| OBJ["Object storage: immutable media"]
   UI --> API["API: auth, survey, upload, review"]
-  API --> DB["PostgreSQL: metadata and Survey IR"]
-  API --> WF["Durable workflow / job queue"]
+  API --> DB["Redis: metadata, Survey IR, state"]
+  API --> WF["Redis-backed durable job queue"]
   OBJ --> WF
 
   WF --> GEO["Geometry worker"]
@@ -999,14 +1001,13 @@ For the $50 demonstration, keep the logical boundaries but deploy simply:
 
 - SwiftUI iOS app;
 - Python FastAPI API and worker on the development Mac or one small hosted service;
-- SQLite for a single-user local demo, with repository interfaces compatible with PostgreSQL;
-- local filesystem or low-cost S3-compatible storage;
-- an in-process/durable local job table instead of adding Redis prematurely;
+- Redis for Survey IR, metadata, idempotency, state events, jobs, and cache, using namespaced/versioned keys with durable records that do not expire by accident;
+- S3-compatible object storage for immutable capture media; local filesystem is development-only until the Stage 2 storage migration;
 - OpenCV/PyTorch/Vision for local CV;
 - paid model calls only for uncertain evidence packages, plus one Fable and one Astra-replay pass on the ambiguous set;
 - local offline trainer on the labeled demo set (no cloud GPU).
 
-For production, swap SQLite/filesystem/local jobs for PostgreSQL, object storage, and a durable workflow engine without changing the IR or provider interfaces.
+Stage 1 currently has a temporary SQLite/filesystem implementation. Stage 2 replaces that implementation with Redis and object storage before additional inventory state is persisted; SQLite is not part of the target backend. Public deployment still requires the security controls in §22 and Stage 5.
 
 ### Suggested repository layout
 
@@ -1198,6 +1199,20 @@ These choices materially change implementation and must be confirmed:
 12. Proposed quantitative acceptance gates and the independent holdout procedure.
 
 ## 20. Implementation sequence with exit criteria
+
+Build the **entire project** in five stages on a **24-hour clock**. The A-to-Z checklist, hour windows, APIs, screens, RL home, eval, and demo script live in [`IMPLEMENTATION.md`](IMPLEMENTATION.md). Nothing is skipped.
+
+| Clock | Stage | Exit gate |
+| --- | --- | --- |
+| T+0–4h | Survey package and room | Sealed hashed package; location or manual geography; 2D + 3D |
+| T+4–8h | Count physical copies | Reverse rescan does not double-count; data size on the face |
+| T+8–12h | Identity, other assets, damage | Valid ISBN only; portrait note linked; mug excluded |
+| T+12–16h | Bing prices + building reconstruction | ISBN and name-only Bing evidence; labeled rebuild estimate |
+| T+16–24h | Fable, Astra live+replay, Jev, RL, report, eval, demo | Full product, RL home, demo script, spend ledger |
+
+A few hours over the clock is acceptable. Dropping a requirement is not.
+
+### Phase 0 — freeze contracts and benchmark
 
 ### Phase 0 — freeze contracts and benchmark
 
