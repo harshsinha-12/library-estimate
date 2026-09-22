@@ -113,7 +113,7 @@ Left:
 22. After seal, automatic A and B on every `AssetCopy` in the demo survey (same evidence bytes, neither sees the other). Button-only replay is not the pipeline.
 23. Jev emits a comparison record: A fields, B fields, disagreement, chosen route, confidence — and a separate policy layer may still veto. Jev must not write the count or the price.
 24. Failed or unavailable provider → disclosed partial, human review, no invented assessment.
-25. Confirm live model IDs (still open in `SESSION-RUN.md`) and actually spend against the ledger. Adapters with no live call do not count.
+25. Live model IDs for the Invertis run are in `logs/llm_calls.json` and `docs/invertis-library/llm-trace-excerpts.json`: Pipeline A `claude-fable-5.1` (Fable role), Astra Extra / Astra-live `gpt-6-astra`, Jev `jev-latest` (ledger `jev-1.13.0`). Spend is on the survey ledger (Invertis ~USD 2.74). Repo default is `FABLE_MODEL=claude-fable-5-1` if not overridden.
 26. Models still must not write geometry, ISBN, merge, or money.
 
 ---

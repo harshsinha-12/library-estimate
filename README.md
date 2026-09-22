@@ -2,7 +2,7 @@
 
 iOS capture + FastAPI backend for a **library replacement-cost survey**. A technician scans rooms and shelves on a LiDAR iPhone; the backend turns that sealed package into geometry, physical-copy inventory, identity, local price *drafts*, model comparison, and a signed report.
 
-Models classify and propose. They do **not** write count, ISBN, geometry, or money. Draft web prices stay drafts until an operator confirms a physical listing. Price and geography are not vision class labels.
+This is past scaffold. Stage 1–5 fixture gates passed. Invertis Library was walked on a phone: 45 physical-copy records, RoomPlan 2D/3D, web-search drafts, live Fable-role / Astra / Jev calls, and a signed PDF. Models classify and propose. They do **not** write count, ISBN, geometry, or money. Draft web prices stay drafts until an operator confirms a physical listing. Price and geography are not vision class labels. Price search is OpenAI Responses `web_search` (`user_location` from survey geography). Building value is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`, shown on the report summary next to estimated provider spend.
 
 Alignment contract: [`FINAL-PLAN.md`](FINAL-PLAN.md). Thresholds, schemas, and code map: [`docs/architecture.md`](docs/architecture.md). Build order: [`IMPLEMENTATION.md`](IMPLEMENTATION.md). USB install: [`INSTALLATION.md`](INSTALLATION.md). Clocks: [`CHECKPOINTS.md`](CHECKPOINTS.md).
 
@@ -12,31 +12,78 @@ Governing rule: never trust one frame, one model, or one signal. Combine geometr
 
 ---
 
-## Invertis Library report
+## Invertis Library field scan
 
-Live survey **2026-09-22** at Invertis Library, Bareilly (`en-IN`).
+Live survey **2026-09-22** at Invertis Library, Bareilly (`en-IN`). This is a successful device run, not a fixture: RoomPlan geometry sealed, 45 spine copies tracked, titles and object prices searched, Fable-role / Astra / Jev invoked on the sealed copies, PDF generated.
 
 - Survey ID: `4b9d7885-af80-42b8-b8c3-827c7a7f07fd`
-- PDF: [`docs/invertis-library-report.pdf`](docs/invertis-library-report.pdf)
+- PDF: [`docs/invertis-library-report.pdf`](docs/invertis-library-report.pdf) — the **summary table** is building reconstruction + provider spend, then objects, then books
 - Capture walkthrough: [YouTube](https://www.youtube.com/watch?v=ghjy6Jd-eqM)
 - Whiteboard: [tldraw](https://www.tldraw.com/p/QTbrFMOSMF3nAvXJ3s_dN?d=v-673.-2103.7064.3836.page)
-- Recorded copies: **45**
-- Unique book titles / copies: **5 / 45** (four named groups plus 27 untitled copies)
-- Confirmed / eligible books: **0 / 45** (no operator-confirmed listings)
-- Draft-priced / eligible books: **18 / 45** (named groups only; web-search unit prices × copy count)
-- Named draft titles:
-  - *Organization Theory: Management and Leadership Analysis* — 2 × 447 INR
-  - *Brand Management* — 5 × 176 INR
-  - *Organization Development* — 3 × 800 INR
-  - *Organizational Behavior* — 8 × 1,062 INR
-- Contents confirmed: none
-- Contents drafts (books): **12,670 INR** (not confirmed)
-- Other object drafts: mattress, cupboards, coffee table, study tables, split ACs, windows (operator/speech counts × unit price; not confirmed)
-- Building reconstruction: **37,761,129.14 INR** for **580.94 m²** (demo rebuild rates, **not** sale value)
-- Fable (A), Astra Extra (B / replay), Jev, and Astra-live Extra assist all **ran**
-- Inventory status: **partial**
 
-This does **not** close the 8–10 book physical row gate.
+### What the signed report actually scored
+
+| | Invertis |
+| --- | ---: |
+| Recorded physical copies | **45** |
+| Name-level identity (spine / vision title) | **18 / 45** |
+| Operator-confirmed identity (ISBN or accepted catalog) | **0 / 45** |
+| Untitled, Pass C still open | **27 / 45** |
+| Draft web prices (named copies) | **18 / 45** |
+| Operator-confirmed physical listings | **0 / 45** |
+| Book contents drafts | **12,670 INR** (not confirmed) |
+| Building reconstruction | **37,761,129.14 INR** for **580.94 m²** |
+| Estimated provider spend | **$4.73** |
+| Inventory | **partial** |
+
+Named draft titles (unit web price × copy count; still drafts):
+
+- *Organization Theory: Management and Leadership Analysis* — 2 × 447 INR
+- *Brand Management* — 5 × 176 INR
+- *Organization Development* — 3 × 800 INR
+- *Organizational Behavior* — 8 × 1,062 INR
+
+Other object drafts on the same PDF (quantity × unit web price, still unconfirmed):
+
+- Mattress — 1 × 16,049 = 16,049 INR
+- Cupboards — 30 × 10,990 = 329,700 INR
+- Coffee table — 1 × 3,490 = 3,490 INR
+- Study tables — 3 × 5,199 = 15,597 INR
+- Split air conditioners — 6 × 30,290 = 181,740 INR
+- Windows — 6 × 12,365 = 74,190 INR
+
+Draft objects **620,766 INR**. With the book drafts, contents are **633,436 INR**. Contents plus building reconstruction are **38,394,565.14 INR**.
+
+**Building number.** The top table’s “Building reconstruction” is `floor_area × demo_rebuild_rates_v1[IN]` with basis `replacement_cost`. It is **not** a real-estate market appraisal. Same table lists estimated provider cost. That is the asked “put a value on the place” plus the run’s spend.
+
+**Amazon.** The assignment’s scrape-Amazon path was refused. Alok said to ignore scraping. Price discovery is OpenAI Responses **`web_search`** (name queries here; no ISBN on this scan), market-scoped to Bareilly, IN. Listings in the PDF are Flipkart, Atlantic, Pearson, Sterling, IKEA, Croma — drafts until a technician confirms a physical offer.
+
+**Fable / Astra Extra / Jev.** They ran. Proof is [`docs/invertis-library/llm-trace-excerpts.json`](docs/invertis-library/llm-trace-excerpts.json) (sanitized from local `logs/llm_calls.json`; keys and image bytes omitted). Invertis subset: 330 records, 329 ok — 97 Pipeline A (`claude-fable-5.1`), 96 Astra Extra replay (`gpt-6-astra`), 96 Jev (`jev-latest` / ledger `jev-1.13.0`), plus vision titles and `web_search`.
+
+| Call in the excerpt file | Model | Status | Latency | What it returned |
+| --- | --- | --- | ---: | --- |
+| `fable_assessment` | `anthropic` / `claude-fable-5.1` | ok | 11135 ms | identity candidate *Management of Organizational Behavior* → `human_review` (0.35) |
+| `astra_replay` | `openai` / `gpt-6-astra` | ok | 10428 ms | *Organizational Behavior* (Robbins / Judge / Sanghi, 13th) → `accept_candidate` (0.90) |
+| `jev_route` | `typesafe` / `jev-latest` | ok | 1123 ms | `recapture` (confidence 1.0) |
+| `astra_live` | `openai` / `gpt-6-astra` | ok | 9233 ms | assist only: blur/glare, unreadable spines, recapture hint |
+| `web_search` | `openai` / `gpt-5.6-luna` | ok | 14414 ms | Organization Theory ₹447; Brand Management ₹176 (drafts) |
+
+From that file, Pipeline A:
+
+```json
+{
+  "operation": "fable_assessment",
+  "provider": "anthropic",
+  "model": "claude-fable-5.1",
+  "status": "ok",
+  "identity_candidates": [{ "title": "Management of Organizational Behavior" }],
+  "recommended_action": "human_review",
+  "confidence": 0.35
+}
+```
+
+Policy still sent copies to `human_review` or `recapture` (low confidence or A/B disagreement). Model agreement is not ground truth.
+
 
 ### Sealed package
 
@@ -77,9 +124,11 @@ curl -o ~/Downloads/library-survey.pdf \
 | --- | --- |
 | Stage 1 capture, seal, 2D/3D | Closed on device (`eb3f30fa` canonical) |
 | Stage 2–4 fixture/storage gates | Passed |
+| Invertis field scan | **Succeeded** — 45 copies, report + walkthrough; identity/prices still drafts |
 | Live Pass B count | On-device rectangles + shelf-face tracking; unread boxes are not minted; reverse sweep must not double |
-| Stage 4/5 physical 8–10 book row | **Open** |
-| Independent 50–100 copy holdout / policy promotion | **Open** |
+| Crochet / texture overcount (17 vs 4) | Patched in code (readable letters + NMS + no dump onto `row_01`); rebuild iOS before the next table-top check |
+| Independent 50–100 copy holdout / policy promotion | **Open** — RL is logged transitions + offline bandit, not a proven live loop |
+| $50 envelope | Spend is a **ledger**, not a runtime cap. Invertis estimated **$4.73** |
 
 **Storage:** Redis holds Survey IR, jobs, RL transitions, and state. Cloudflare R2 holds sealed media (`audio/survey.m4a`, frames, USDZ). SQLite is a Stage 1 archive only.
 
@@ -92,8 +141,8 @@ curl -o ~/Downloads/library-survey.pdf \
 3. **Voice.** AAC on the RoomPlan session clock. After seal, server STT; notes bind by tap / reticle / pose / time / semantics, or stay unbound.
 4. **Astra-live Extra** during Pass B/C is assist metadata, not inventory.
 5. **After seal.** Geometry → vision count → identity/notes/damage → `web_search` drafts → Fable (A) and Astra Extra (B) on the same sealed bytes → Jev + policy. Every decision appends an `RLTransition`.
-6. **Price search** once per unique edition + market via OpenAI Responses `web_search` (`user_location` from survey geography). ISBN first, else name. No Bing. No Amazon scrape.
-7. **Building value** is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`.
+6. **Price search** once per unique edition + market via OpenAI Responses `web_search` (`user_location` from survey geography). ISBN first, else name. No Bing. Amazon scraping was a deliberate refusal; web_search is the shipped path.
+7. **Building value** is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`, shown on the report summary next to estimated provider spend. Not a sale price.
 
 ---
 
@@ -124,7 +173,7 @@ backend/     FastAPI, Redis, R2, pricing, Fable/Astra Extra/Jev, RL, reports
 ios/          LibrarySurvey (SwiftUI, RoomPlan, Vision, live spine tracker)
 cv/           labeled-JSON shelf count helpers (shelf-count-v1)
 schemas/      Survey IR, evidence package, model assessment, RL transition
-docs/         architecture.md, gates, deployment, Invertis PDF and screenshots
+docs/         architecture.md, gates, Invertis PDF, screenshots, LLM-trace excerpts
 eval/         holdout/preflight (templates are not device accuracy)
 ```
 
@@ -302,7 +351,7 @@ flowchart TB
   ROW --> OBS["SpineFaceObservation in face metres"]
 ```
 
-Unread rectangles are **not** minted as copies. Crochet/table squares without title letters leave the row `partial`.
+Unread rectangles are **not** minted as copies. Crochet/table squares without title letters leave the row `partial`. Invertis stacks were a successful sweep (11 persistent candidates, ~87% coverage on one row). A later table-top frame boxed blanket texture as spines; that path is patched in `LiveQualityAnalyzer` + `assignRow`. Rebuild the iOS app before treating the texture filter as device-proven.
 
 ```mermaid
 flowchart TB
@@ -432,7 +481,7 @@ flowchart TB
   RARE -->|Yes| APP["requires_appraisal"]
 ```
 
-No Bing. No Amazon scrape. Drafts are not confirmed prices. Building value is `floor_area × demo_rebuild_rates_v1[country]`, basis `replacement_cost`, not sale value.
+No Bing. Amazon scrape was refused on purpose; OpenAI `web_search` is the price path. Drafts are not confirmed prices. Building value is `floor_area × demo_rebuild_rates_v1[country]`, basis `replacement_cost`, not sale value — it sits on the PDF summary next to estimated provider spend.
 
 ### Fable, Astra-live Extra, Astra Extra replay, Jev
 
@@ -446,7 +495,7 @@ flowchart TB
   end
 
   subgraph Seal["After seal — parallel evaluation"]
-    PKG["Same frozen evidence package bytes"] --> FA["Pipeline A Fable claude-fable-5-1"]
+    PKG["Same frozen evidence package bytes"] --> FA["Pipeline A Fable role claude-fable-5.1 live"]
     PKG --> AR["Pipeline B Astra Extra replay gpt-6-astra"]
     FA --> NA["ModelAssessment pipeline=fable"]
     AR --> NB["ModelAssessment pipeline=astra_replay"]
@@ -466,7 +515,7 @@ flowchart TB
 | --- | --- | --- |
 | On-device Vision | Pass B/C | Quality, rectangles, OCR, barcodes, live spine overlays |
 | **Astra-live Extra** | Pass B/C, ~2 s samples | Capture UX only. Never inventory. Never Pipeline B. |
-| **Fable (Pipeline A)** | After seal, every `AssetCopy` | Condition / category / damage / identity *candidates* |
+| **Fable (Pipeline A)** | After seal, every `AssetCopy` | Condition / category / damage / identity *candidates*. Invertis live model: `claude-fable-5.1`. Code default remains `claude-fable-5-1`. |
 | **Astra Extra (Pipeline B)** | After seal, same frozen bytes as A | Independent replay (`pipeline=astra_replay`) |
 | **Jev** | After A and B | Typed route proposal. Does not write count or price. |
 | Deterministic policy | Always | Vetoes high-value auto-accept, eBook-as-physical, ISBN-only merge, A/B disagreement |

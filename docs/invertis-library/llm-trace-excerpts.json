@@ -1,0 +1,128 @@
+{
+  "source": "logs/llm_calls.json (gitignored local trace; this file is a sanitized excerpt)",
+  "survey_id": "4b9d7885-af80-42b8-b8c3-827c7a7f07fd",
+  "survey_name": "Invertis Library",
+  "note": "API keys and image bytes are omitted. These records prove live provider access, not insurance-grade identity.",
+  "all_traces": {
+    "n": 1458,
+    "operations": {
+      "web_search": 153,
+      "astra_live": 48,
+      "stt": 10,
+      "vision_titles": 288,
+      "small_model:price_targets": 10,
+      "vision_object": 15,
+      "fable_assessment": 299,
+      "astra_replay": 298,
+      "jev_route": 297,
+      "small_model:report_objects": 10,
+      "vision_count": 30
+    },
+    "models": {
+      "gpt-5.6-luna": 351,
+      "gpt-6-astra": 346,
+      "gpt-4o-transcribe-diarize": 10,
+      "gpt-4o-mini": 155,
+      "claude-fable-5.1": 299,
+      "jev-latest": 297
+    },
+    "status": {
+      "ok": 1420,
+      "error": 38
+    }
+  },
+  "invertis": {
+    "n": 330,
+    "operations": {
+      "stt": 1,
+      "vision_titles": 36,
+      "small_model:price_targets": 1,
+      "web_search": 2,
+      "small_model:report_objects": 1,
+      "fable_assessment": 97,
+      "astra_replay": 96,
+      "jev_route": 96
+    },
+    "models": {
+      "gpt-4o-transcribe-diarize": 1,
+      "gpt-5.6-luna": 40,
+      "claude-fable-5.1": 97,
+      "gpt-6-astra": 96,
+      "jev-latest": 96
+    },
+    "status": {
+      "ok": 329,
+      "error": 1
+    }
+  },
+  "live_model_ids": {
+    "pipeline_a_fable_role": "claude-fable-5.1",
+    "pipeline_b_astra_extra": "gpt-6-astra",
+    "jev": "jev-latest requested; usage ledger recorded jev-1.13.0",
+    "astra_live": "gpt-6-astra",
+    "web_search": "gpt-5.6-luna + OpenAI Responses web_search",
+    "code_default_fable": "claude-fable-5-1 (not the Invertis live ID)"
+  },
+  "excerpts": {
+    "fable_assessment": {
+      "recorded_at": "2026-09-22T12:50:07.052958+00:00",
+      "survey_id": "4b9d7885-af80-42b8-b8c3-827c7a7f07fd",
+      "operation": "fable_assessment",
+      "provider": "anthropic",
+      "model": "claude-fable-5.1",
+      "status": "ok",
+      "latency_ms": 11135,
+      "reason": "Pipeline A: Anthropic Fable assessment of a sealed physical-copy evidence package",
+      "response_text": "```json\n{\n  \"category\": \"book\",\n  \"condition\": \"fair\",\n  \"damage\": {\n    \"present\": false,\n    \"types\": [],\n    \"description\": null\n  },\n  \"identity_candidates\": [\n    {\n      \"title\": \"Management of Organizational Behavior\",\n      \"evidence_refs\": [\"shelf_scans/crops/row_03_2B665594-2E37-4D57-993B-A6EB3CCF835B.jpg\"]\n    }\n  ],\n  \"recommended_action\": \"human_review\",\n  \"confidence\": 0.35,\n  \"rationale\": \"The crop shows at least two, possibly three, book spines pressed together at a slight lean, with the visible legible text 'MANAGEMENT OF ORGANIZATIONAL BEHAVIOR' repeated on what appear to be two adjacent copies. No target_identity.title was supplied to disambiguate which spine corresponds t…",
+      "error": null
+    },
+    "astra_replay": {
+      "recorded_at": "2026-09-22T12:49:13.832217+00:00",
+      "survey_id": "4b9d7885-af80-42b8-b8c3-827c7a7f07fd",
+      "operation": "astra_replay",
+      "provider": "openai",
+      "model": "gpt-6-astra",
+      "status": "ok",
+      "latency_ms": 10428,
+      "reason": "Pipeline B: independent OpenAI Astra replay of the same sealed evidence",
+      "response_text": "{\n  \"category\": \"book\",\n  \"condition\": \"worn\",\n  \"damage\": {\n    \"present\": false,\n    \"types\": [],\n    \"description\": null\n  },\n  \"identity_candidates\": [\n    {\n      \"label\": \"Organizational Behavior — Robbins, Judge, Sanghi, 13th edition\",\n      \"identifier_type\": null,\n      \"identifier_value\": null,\n      \"confidence\": 0.94,\n      \"evidence_refs\": [\n        \"shelf_scans/crops/row_02_B92D963D-DCF0-43E1-A1EE-4371081C27AE.jpg\"\n      ]\n    }\n  ],\n  \"recommended_action\": \"accept_candidate\",\n  \"confidence\": 0.9,\n  \"rationale\": \"The central copy's spine shows the title, authors, and edition. Visible spine scuffing and edge wear support a worn condition. Assessment is limited to this copy's vis…",
+      "error": null
+    },
+    "jev_route": {
+      "recorded_at": "2026-09-22T12:49:46.584167+00:00",
+      "survey_id": "4b9d7885-af80-42b8-b8c3-827c7a7f07fd",
+      "operation": "jev_route",
+      "provider": "typesafe",
+      "model": "jev-latest",
+      "status": "ok",
+      "latency_ms": 1123,
+      "reason": "Jev typed route proposal: what should happen next for this physical asset (deterministic policy still owns the final action)",
+      "response_text": "{\"route\": {\"type\": \"choice\", \"choice\": \"recapture\", \"confidence\": 1.0, \"probabilities\": {\"accept_candidate\": 0.0, \"human_review\": 0.0, \"recapture\": 1.0, \"alternate_resolver\": 0.0}}}",
+      "error": null
+    },
+    "astra_live": {
+      "recorded_at": "2026-09-22T12:52:28.257573+00:00",
+      "survey_id": null,
+      "operation": "astra_live",
+      "provider": "openai",
+      "model": "gpt-6-astra",
+      "status": "ok",
+      "latency_ms": 9233,
+      "reason": "Astra-live capture assist: quality, provisional count, and unreadable slots for this shelf or Pass C frame (not inventory truth)",
+      "response_text": "{\n  \"quality\": {\n    \"blur\": true,\n    \"glare\": true,\n    \"readable\": false,\n    \"notes\": \"Blurred, tilted frame dominated by floor and bright reflections. Books are partially cropped along the left edge; spine text is unreadable.\"\n  },\n  \"provisional_count\": null,\n  \"unreadable_slots\": [],\n  \"recapture_hint\": \"Aim directly at the shelf at spine height, include the full row, and hold steady until focused.\",\n  \"confidence\": 0.98,\n  \"rationale\": \"Visible book boundaries are too blurred and cropped for a reliable count or slot assignment. Empty slot labels do not indicate readable books.\"\n}",
+      "error": null
+    },
+    "web_search": {
+      "recorded_at": "2026-09-22T12:12:58.185055+00:00",
+      "survey_id": "4b9d7885-af80-42b8-b8c3-827c7a7f07fd",
+      "operation": "web_search",
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "status": "ok",
+      "latency_ms": 14414,
+      "reason": "Web search: find a current physical-copy purchase price for unpriced catalog items",
+      "response_text": "{\"results\":[{\"name\":\"Organization Theory\",\"citations\":[{\"title\":\"Organization Theory: Management and Leadership Analysis\",\"url\":\"https://atlanticbooks.com/products/organization-theory-management-and-leadership-analysis\",\"snippet\":\"Paperback physical book listed by Atlantic Books at ₹447.00; ships in 1–2 days.\",\"offer_type\":\"physical\",\"amount\":447,\"currency\":\"INR\",\"format\":\"paperback\",\"condition\":\"new\"}]},{\"name\":\"Brand Management\",\"citations\":[{\"title\":\"Brand Management - (USED-GOOD)\",\"url\":\"https://www.flipkart.com/brand-management-used-good/p/itm9223c8e213da1\",\"snippet\":\"Paperback physical book listed on Flipkart with a purchase price of ₹176.\",\"offer_type\":\"physical\",\"amount\":176,\"currenc…",
+      "error": null
+    }
+  }
+}

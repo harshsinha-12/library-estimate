@@ -701,7 +701,7 @@ flowchart TB
   end
 
   subgraph Seal["After seal — parallel evaluation"]
-    PKG["Same frozen evidence package bytes"] --> FA["Pipeline A Fable claude-fable-5-1"]
+    PKG["Same frozen evidence package bytes"] --> FA["Pipeline A Fable role claude-fable-5.1"]
     PKG --> AR["Pipeline B Astra replay gpt-6-astra"]
     FA --> NA["ModelAssessment pipeline=fable"]
     AR --> NB["ModelAssessment pipeline=astra_replay"]
@@ -748,7 +748,7 @@ Category aliases: computer/monitor/appliance/laptop → `electronics`; shelf/tab
 ### Pipeline A — Fable
 
 - Provider: Anthropic Messages API
-- Model: `FABLE_MODEL` default `claude-fable-5-1`
+- Model: `FABLE_MODEL` (repo default `claude-fable-5-1`; Invertis live call was `claude-fable-5.1`)
 - Images as `type: image` base64 source
 - Adapter accepts **only** `pipeline=fable`
 

@@ -30,7 +30,7 @@ RATES: dict[tuple[str, str], tuple[str, str, str, str]] = {
     ("openai", "gpt-4o-mini"): ("0.15", "0.60", "0.075", PRICE_SOURCE_OPENAI),
     ("openai", "gpt-4o"): ("2.50", "10", "1.25", PRICE_SOURCE_OPENAI),
     ("openai", "gpt-4.1"): ("2", "8", "0.50", PRICE_SOURCE_OPENAI),
-    ("anthropic", "claude-sonnet-5"): ("2", "10", "2", PRICE_SOURCE_SONNET),
+    ("anthropic", "claude-fable-5.1"): ("2", "10", "2", PRICE_SOURCE_SONNET),
     ("anthropic", "claude-fable-5-1"): ("10", "50", "0.25", PRICE_SOURCE_ANTHROPIC),
     ("typesafe", "jev-latest"): ("0.042", "0", "0.042", PRICE_SOURCE_JEV),
     ("typesafe", "jev-1.13.0"): ("0.042", "0", "0.042", PRICE_SOURCE_JEV),

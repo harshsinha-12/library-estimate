@@ -104,7 +104,9 @@ def build_report_snapshot(repository: SurveyRepository, survey_id: UUID) -> dict
             "After seal, Fable (A) and Astra replay (B) run on every AssetCopy independently. "
             "Jev scores A vs B and does not write count or price. "
             "Astra-live during Pass B/C is sampled assist metadata, not Pipeline B.",
-            "Configured default model IDs are not a live confirmation of provider access.",
+            "Invertis live model IDs (logs/llm_calls.json): Pipeline A claude-fable-5.1 "
+            "(Fable role), Pipeline B gpt-6-astra, Jev jev-latest / jev-1.13.0. "
+            "Code defaults are still FABLE_MODEL/ASTRA_MODEL/JEV_MODEL.",
         ],
     }
     repository.put_bytes(
