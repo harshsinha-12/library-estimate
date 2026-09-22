@@ -1,5 +1,7 @@
 # Library Survey and Valuation System — Final Architecture Plan
 
+**Implemented diagrams** (spine tracking, pricing, voice, non-books, Fable / Astra-live / Astra-replay / Jev, RL): [`docs/architecture.md`](docs/architecture.md).
+
 **Status:** proposed architecture for alignment before implementation  
 **Date:** 2026-09-20  
 **Inputs reviewed:** `question.md`, `initial-chatgpt-plan.md`, and the previous Cozmo FloorPlan assignment in `/Users/harshsinha/VS Code/assignment`

@@ -1,6 +1,6 @@
 # library-estimate
 
-**Start here:** [`IMPLEMENTATION.md`](IMPLEMENTATION.md) — entire project, A to Z, 24-hour clock. Architecture is in [`FINAL-PLAN.md`](FINAL-PLAN.md). USB install onto the iPhone: [`INSTALLATION.md`](INSTALLATION.md).
+**Start here:** [`IMPLEMENTATION.md`](IMPLEMENTATION.md) — entire project, A to Z, 24-hour clock. Alignment architecture is in [`FINAL-PLAN.md`](FINAL-PLAN.md). Implemented-system diagrams (RoomPlan, shelf/spine scan, voice, non-books, condition, pricing, Fable/Astra-live/Astra-replay/Jev, RL): [`docs/architecture.md`](docs/architecture.md). USB install onto the iPhone: [`INSTALLATION.md`](INSTALLATION.md).
 
 ## Current implementation
 
