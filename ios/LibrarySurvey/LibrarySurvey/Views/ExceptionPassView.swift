@@ -97,23 +97,28 @@ struct ExceptionPassView: View {
             .overlay {
               GeometryReader { geometry in
                 ForEach(Array(store.candidateRegions.enumerated()), id: \.offset) { index, box in
+                  let focused = index == 0 && store.highlightedRegion != nil
                   Button {
                     store.focus(on: box)
                   } label: {
                     RoundedRectangle(cornerRadius: 5)
-                      .stroke(.yellow, lineWidth: 3)
-                      .background(.yellow.opacity(0.08))
+                      .stroke(focused ? Color.cyan : Color.yellow, lineWidth: focused ? 4 : 3)
+                      .background((focused ? Color.cyan : Color.yellow).opacity(0.08))
                   }
                   .frame(width: max(44, box.width * geometry.size.width),
                          height: max(44, box.height * geometry.size.height))
                   .position(x: box.midX * geometry.size.width,
                             y: (1 - box.midY) * geometry.size.height)
-                  .accessibilityLabel("Candidate object \(index + 1). Tap to crop this still")
+                  .accessibilityLabel(focused
+                    ? "Selected spine. Tap to crop this still for OCR"
+                    : "Candidate object \(index + 1). Tap to crop this still")
                   .accessibilityHint("Creates a crop from the existing still; it does not zoom the camera")
                 }
               }
             }
-          Text("Tap an outlined object to crop this still. That is not a second camera and not optical zoom during RoomPlan.")
+          Text(store.highlightedRegion == nil
+            ? "Tap an outlined object to crop this still for OCR. Use Capture image for a separate close-up of the title or barcode."
+            : "This is the full viewfinder with the selected spine highlighted. Tap the highlight to crop for OCR, or capture a new close-up if the title or barcode is too small.")
             .font(.footnote)
         }
         if let suggested = store.suggestedCategory {

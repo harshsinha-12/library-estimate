@@ -21,7 +21,7 @@ enum LiveQualityAnalyzer {
     let request = VNDetectRectanglesRequest()
     request.minimumAspectRatio = 0.035
     request.maximumAspectRatio = 1.0
-    request.minimumSize = 0.012
+    request.minimumSize = 0.04
     request.minimumConfidence = 0.5
     request.maximumObservations = 100
     let textRequest = VNRecognizeTextRequest()
@@ -35,9 +35,12 @@ enum LiveQualityAnalyzer {
       let box = observation.boundingBox
       let tall = box.height > box.width * 1.4
       let stacked = box.width > box.height * 1.4
-      let narrow = tall ? box.width <= 0.25 : box.height <= 0.25
-      guard (tall || stacked), narrow, box.width * box.height <= 0.22,
-            max(box.width, box.height) >= 0.07 else { return nil }
+      let narrow = tall ? box.width <= 0.25 : box.height <= 0.45
+      let minSpan = stacked ? 0.18 : 0.07
+      let minArea = stacked ? 0.04 : 0.008
+      guard (tall || stacked), narrow, box.width * box.height <= 0.45,
+            max(box.width, box.height) >= minSpan,
+            box.width * box.height >= minArea else { return nil }
       let top = observation.topLeft
       let bottom = observation.bottomLeft
       let lean = tall && abs(top.x - bottom.x) > box.width * 0.4
@@ -48,15 +51,18 @@ enum LiveQualityAnalyzer {
       )
     }
     var selected: [SpineRegion] = []
-    for proposal in proposals.sorted(by: { $0.confidence > $1.confidence }) {
+    for proposal in proposals.sorted(by: {
+      $0.box.width * $0.box.height > $1.box.width * $1.box.height
+    }) {
       let nested = selected.contains { kept in
         let overlap = kept.box.intersection(proposal.box)
         let smaller = min(
           kept.box.width * kept.box.height,
           proposal.box.width * proposal.box.height
         )
-        return !overlap.isNull && smaller > 0 &&
-          overlap.width * overlap.height / smaller > 0.7
+        let contained = kept.box.contains(CGPoint(x: proposal.box.midX, y: proposal.box.midY))
+        return contained || (!overlap.isNull && smaller > 0 &&
+          overlap.width * overlap.height / smaller > 0.7)
       }
       if !nested { selected.append(proposal) }
     }

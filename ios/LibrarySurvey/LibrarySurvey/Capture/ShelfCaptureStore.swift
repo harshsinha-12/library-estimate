@@ -28,6 +28,7 @@ final class ShelfCaptureStore: ObservableObject {
   private var lastProcessedFrameId: UUID?
   private var faceWidthMeters = 1.2
   private var taggedCrops: [String: Data] = [:]
+  private var taggedFrames: [String: Data] = [:]
 
   private var session: ARSession?
   private let sampler = FrameSampler()
@@ -103,6 +104,7 @@ final class ShelfCaptureStore: ObservableObject {
     coveredBins = [:]
     lastProcessedFrameId = nil
     taggedCrops = [:]
+    taggedFrames = [:]
     previousTransform = nil
     previousTime = nil
   }
@@ -142,6 +144,7 @@ final class ShelfCaptureStore: ObservableObject {
     faceWidthMeters = max(0.35, unit.footprint(for: face).maxX - unit.footprint(for: face).minX)
     previousTransform = nil
     taggedCrops = [:]
+    taggedFrames = [:]
     guard let session else {
       capturing = false
       return
@@ -181,7 +184,8 @@ final class ShelfCaptureStore: ObservableObject {
   }
 
   func evidenceImage(for instance: SpineInstance) -> UIImage? {
-    taggedCrops[instance.evidenceRef].flatMap(UIImage.init(data:))
+    taggedFrames[instance.evidenceRef].flatMap(UIImage.init(data:))
+      ?? taggedCrops[instance.evidenceRef].flatMap(UIImage.init(data:))
   }
 
   func resumeFace() {
@@ -241,19 +245,8 @@ final class ShelfCaptureStore: ObservableObject {
     )
   }
 
-  func focusedImage(for region: CGRect) -> UIImage? {
-    guard let data = sampler.samples.last?.jpegData,
-          let image = UIImage(data: data)?.cgImage else { return nil }
-    let padding: CGFloat = 0.05
-    let expanded = CGRect(x: max(0, region.minX - padding), y: max(0, region.minY - padding),
-                          width: min(1 - max(0, region.minX - padding), region.width + padding * 2),
-                          height: min(1 - max(0, region.minY - padding), region.height + padding * 2))
-    let crop = CGRect(x: expanded.minX * CGFloat(image.width),
-                      y: (1 - expanded.maxY) * CGFloat(image.height),
-                      width: expanded.width * CGFloat(image.width),
-                      height: expanded.height * CGFloat(image.height)).integral
-    guard let cropped = image.cropping(to: crop) else { return nil }
-    return UIImage(cgImage: cropped)
+  func focusedImage(for _: CGRect) -> UIImage? {
+    currentImage()
   }
 
   func currentImage() -> UIImage? {
@@ -264,6 +257,18 @@ final class ShelfCaptureStore: ObservableObject {
   func currentJpeg() -> Data? { sampler.samples.last?.jpegData }
 
   func taggedEvidence() -> [String: Data] { taggedCrops }
+
+  private func crop(_ jpeg: Data, box: CGRect) -> Data? {
+    guard let image = UIImage(data: jpeg)?.cgImage else { return nil }
+    let rect = CGRect(
+      x: box.minX * CGFloat(image.width),
+      y: (1 - box.maxY) * CGFloat(image.height),
+      width: max(1, box.width * CGFloat(image.width)),
+      height: max(1, box.height * CGFloat(image.height))
+    ).integral
+    guard let cropped = image.cropping(to: rect) else { return nil }
+    return UIImage(cgImage: cropped).jpegData(compressionQuality: 0.82)
+  }
 
   func displayRect(for box: CGRect, in viewSize: CGSize) -> CGRect {
     guard imageSize.width > 1, imageSize.height > 1, viewSize.width > 1, viewSize.height > 1 else {
@@ -333,6 +338,7 @@ final class ShelfCaptureStore: ObservableObject {
       guard let self, let crop = self.crop(jpeg, box: box) else { return nil }
       let path = "shelf_scans/crops/\(self.activeRowId)_\(id.uuidString).jpg"
       self.taggedCrops[path] = crop
+      self.taggedFrames[path] = jpeg
       return path
     }
     let row = tracker.instances[activeRowId] ?? []
@@ -349,18 +355,6 @@ final class ShelfCaptureStore: ObservableObject {
       )
     }
     updateRowStatus(index)
-  }
-
-  private func crop(_ jpeg: Data, box: CGRect) -> Data? {
-    guard let image = UIImage(data: jpeg)?.cgImage else { return nil }
-    let rect = CGRect(
-      x: box.minX * CGFloat(image.width),
-      y: (1 - box.maxY) * CGFloat(image.height),
-      width: max(1, box.width * CGFloat(image.width)),
-      height: max(1, box.height * CGFloat(image.height))
-    ).integral
-    guard let cropped = image.cropping(to: rect) else { return nil }
-    return UIImage(cgImage: cropped).jpegData(compressionQuality: 0.82)
   }
 
   private func updateCoverage(detected: [SpineRegion], sample: FrameSample) {

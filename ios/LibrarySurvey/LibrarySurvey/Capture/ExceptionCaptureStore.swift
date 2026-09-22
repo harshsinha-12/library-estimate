@@ -20,6 +20,7 @@ final class ExceptionCaptureStore: ObservableObject {
   @Published var focusedFaceId: String?
   @Published var focusedRow: Int = 1
   @Published var focusedSlot: Int = 0
+  @Published var highlightedRegion: CGRect?
   var currentCameraPose: [Float]?
   var pointedAt: Double?
 
@@ -35,7 +36,7 @@ final class ExceptionCaptureStore: ObservableObject {
   func pointAtOther() { pointedAt = MonotonicClock.now }
   var images: [String: Data] = [:]
 
-  func capture(_ image: UIImage) {
+  func capture(_ image: UIImage, highlight: CGRect? = nil) {
     guard let cgImage = image.cgImage, let jpeg = image.jpegData(compressionQuality: 0.88) else {
       errorMessage = "Could not read captured image."
       return
@@ -44,6 +45,7 @@ final class ExceptionCaptureStore: ObservableObject {
     images[path] = jpeg
     latestImageRef = path
     latestImage = image
+    highlightedRegion = highlight
     do {
       let barcodes = VNDetectBarcodesRequest()
       let text = VNRecognizeTextRequest()
@@ -56,11 +58,17 @@ final class ExceptionCaptureStore: ObservableObject {
       let recognized = text.results?.compactMap { $0.topCandidates(1).first } ?? []
       latestText = recognized.map(\.string).joined(separator: "\n")
       latestConfidence = Double(recognized.first?.confidence ?? 0)
-      candidateRegions = (rectangles.results ?? [])
+      var regions = (rectangles.results ?? [])
         .map(\.boundingBox)
         .filter { box in
           box.width * box.height <= 0.45 && box.width < 0.85 && box.height < 0.85
         }
+      if let highlight {
+        regions.removeAll { $0.intersects(highlight) }
+        candidateRegions = [highlight] + regions
+      } else {
+        candidateRegions = regions
+      }
       let label = classifier.results?.first?.identifier.lowercased() ?? ""
       if label.contains("book") { suggestedCategory = .book }
       else if label.contains("portrait") || label.contains("picture frame") { suggestedCategory = .portrait }

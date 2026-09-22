@@ -156,13 +156,17 @@ enum LivePriceAssist {
   }
 
   private static func crop(_ image: CGImage, box: CGRect) -> CGImage? {
+    if box.width * box.height < 0.08 { return image }
     let width = CGFloat(image.width)
     let height = CGFloat(image.height)
+    let pad: CGFloat = 0.12
+    let x = max(0, box.minX - pad)
+    let y = max(0, box.minY - pad)
     let rect = CGRect(
-      x: box.minX * width,
-      y: (1 - box.maxY) * height,
-      width: max(1, box.width * width),
-      height: max(1, box.height * height)
+      x: x * width,
+      y: (1 - min(1, box.maxY + pad)) * height,
+      width: max(1, (min(1, box.maxX + pad) - x) * width),
+      height: max(1, (min(1, box.maxY + pad) - y) * height)
     ).integral
     return image.cropping(to: rect)
   }

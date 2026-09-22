@@ -51,6 +51,7 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     analyzer = (source_root / "Capture/LiveQualityAnalyzer.swift").read_text(encoding="utf-8")
     assert "maximumAspectRatio = 1.0" in analyzer
     assert "maximumObservations = 100" in analyzer
+    assert "minimumSize = 0.04" in analyzer
     assert "hasReadableText" in analyzer
     shelf = (source_root / "Views/ShelfPassView.swift").read_text(encoding="utf-8")
     capturing = shelf.split("if store.capturing")[1].split("} else {")[0]
@@ -59,6 +60,12 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "coverageHeatmap" not in capturing
     store = (source_root / "Capture/ShelfCaptureStore.swift").read_text(encoding="utf-8")
     assert "shelf_scans/crops/" in store
+    assert "self.taggedCrops[path] = crop" in store
+    assert "self.taggedFrames[path] = jpeg" in store
+    assert "func focusedImage(for _: CGRect) -> UIImage? {\n    currentImage()" in store
+    exceptions = (source_root / "Capture/ExceptionCaptureStore.swift").read_text(encoding="utf-8")
+    assert "func capture(_ image: UIImage, highlight: CGRect? = nil)" in exceptions
+    assert "candidateRegions = [highlight] + regions" in exceptions
     room = (source_root / "Views/RoomPassView.swift").read_text(encoding="utf-8")
     bar = room.split("private var capturingBar")[1].split("private var status")[0]
     assert "Finish Room Scan" in bar

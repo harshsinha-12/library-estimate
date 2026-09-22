@@ -93,11 +93,11 @@ struct RootView: View {
                 shelves.releaseCamera()
                 stage = .shelfMap
               },
-              onFocus: { image, faceId, row, slot in
+              onFocus: { image, box, faceId, row, slot in
                 exceptions.currentCameraPose = shelves.currentPose()
                 shelves.stopFace()
                 shelves.releaseCamera()
-                exceptions.capture(image)
+                exceptions.capture(image, highlight: box)
                 exceptions.focusedFaceId = faceId
                 exceptions.focusedRow = row
                 exceptions.focusedSlot = slot

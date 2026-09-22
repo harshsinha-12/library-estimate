@@ -8,7 +8,7 @@ struct ShelfPassView: View {
   let face: ShelfFaceSide
   let draft: SurveyDraft
   let onFinished: () -> Void
-  let onFocus: (UIImage, String, Int, Int) -> Void
+  let onFocus: (UIImage, CGRect, String, Int, Int) -> Void
   let onOther: (UIImage?) -> Void
   @AppStorage("backendURL") private var backendURLString = "http://192.168.29.178:8000"
   @StateObject private var livePrices = LivePriceSession()
@@ -39,7 +39,7 @@ struct ShelfPassView: View {
             }()
             Button {
               guard let image = store.focusedImage(for: spine.box) else { return }
-              onFocus(image, face == .a ? unit.faceAId : unit.faceBId,
+              onFocus(image, spine.box, face == .a ? unit.faceAId : unit.faceBId,
                       Int(spine.rowId.replacingOccurrences(of: "row_", with: "")) ?? 1,
                       spine.slot)
             } label: {
@@ -104,8 +104,8 @@ struct ShelfPassView: View {
             HStack(spacing: 8) {
               ForEach(Array(store.instances(for: store.activeRowId).enumerated()), id: \.element.id) { slot, instance in
                 Button {
-                  guard let image = store.evidenceImage(for: instance) else { return }
-                  onFocus(image, face == .a ? unit.faceAId : unit.faceBId,
+                  guard let image = store.evidenceImage(for: instance) ?? store.currentImage() else { return }
+                  onFocus(image, instance.box, face == .a ? unit.faceAId : unit.faceBId,
                           Int(instance.rowId.replacingOccurrences(of: "row_", with: "")) ?? 1,
                           slot)
                 } label: {
