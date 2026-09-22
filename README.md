@@ -129,6 +129,22 @@ eval/         holdout/preflight (templates are not device accuracy)
 
 ## Architecture
 
+The product is two programs and two stores. The iPhone app captures, hashes, and uploads a sealed package. It holds **no provider keys**. FastAPI turns that package into Survey IR: geometry, physical copies, identity, price *drafts*, model comparison, and a signed report. Redis holds IR, jobs, RL transitions, and caches. Cloudflare R2 holds immutable media (frames, `audio/survey.m4a`, USDZ).
+
+Models classify and propose. They do **not** write count, ISBN, geometry, copy merge, currency, or money. Draft web prices stay drafts until an operator confirms a physical listing. Astra-live Extra during Pass B/C is capture assist, not inventory and not Pipeline B.
+
+| Layer | Owns | Must not |
+| --- | --- | --- |
+| **iOS LibrarySurvey** | Three camera passes, live Vision overlays, spoken audio, local SHA-256 seal | Provider keys, inventing ISBNs, minting copies from unread boxes or Astra-live |
+| **Seal workers** | Geometry → vision count → Stage 3 identity/notes/damage → pricing drafts → A/B replay | Merge copies on ISBN; treat a draft listing as a confirmed price |
+| **Fable (A) / Astra Extra replay (B) / Jev** | Condition, category, damage *candidates*; a typed route *proposal* | Count, checksums, money, or inventory truth |
+| **Deterministic policy** | Final accept / recapture / human / alternate action; vetoes | Learning from one live survey |
+| **RL home** | Append-only `RLTransition` log, independent labels, offline trainer, shadow scores | Per-survey live weight updates |
+
+Order of truth after seal: capture quality → physical count (ISBN is **not** a merge key) → identity → price evidence → Fable vs Astra Extra on identical frozen bytes → Jev proposal → policy veto → human review → valuation / report. Every policy or human decision appends an `RLTransition`. Learned routing is trained offline and scored in shadow; the live router stays `route_v0_log_only`.
+
+Thresholds, schemas, and code map: [`docs/architecture.md`](docs/architecture.md).
+
 ### System context
 
 ```mermaid
@@ -454,6 +470,8 @@ flowchart TB
 
 ### RL feedback loop
 
+This is a real MDP home, not “log and hope.” Production weights **do not** update from one live survey. Insurance output has to be reproducible; online learning after each scan is unsafe. A log without a state / action / reward / next-state record is not an RL loop either.
+
 ```mermaid
 flowchart TB
   DEC["Every Jev/policy/human decision"] --> TR["Append-only RLTransition"]
@@ -468,7 +486,65 @@ flowchart TB
   SHADOW -.->|"no live write"| LIVE["Live router still route_v0_log_only"]
 ```
 
-**No** per-survey live weight update. Rewards come from independent labels, never from “Jev agreed with Fable”.
+#### What one episode is
+
+One **episode** is one survey, including recapture cycles. Recapture is the sequential case: the action changes later evidence.
+
+| Piece | Implementation |
+| --- | --- |
+| **State** | Compact dict on the transition: `asset_copy_id`, `category`, A/B `disagreement`, `appraisal_required`, `evidence_package_hash`, `policy_reason`, optional `logging_propensity` and specialist prediction. Not raw video. |
+| **Action** | `accept`, `recapture`, `alternate_resolver`, `human_review`, `use_specialist_head`, `use_frontier` |
+| **Policy at capture** | Live: `route_v0_log_only`. Human Stage 3 / identity: `human_review_v1`. Price review: `price_review_v1`. |
+| **Reward** | `null` until an independent label is posted. Then `reward_from_outcome` from the §13 table. Never from “Jev agreed with Fable”. |
+| **Next state** | Only for `recapture`. `POST /v1/surveys/{id}/rl-successor-states` binds new evidence once; the hash **must** differ from the predecessor. |
+
+`RLTransition` rows live in Redis (`…:survey:{id}:rl_transitions`). Code: `backend/app/rl/transitions.py`, `backend/app/rl/offline.py`. Schema: `schemas/rl-transition.schema.json`.
+
+#### What actually writes a transition
+
+| Decision | Source | Action logged |
+| --- | --- | --- |
+| After-seal Fable + Astra Extra + Jev + `_route` | `action_source=policy`, `policy_id=route_v0_log_only` | Policy action (`accept` if the route was `accept_candidate`). Auto-accepts also append `auto_accept_audit` (copy, evidence hash, A/B/Jev, who can still overturn). |
+| Bind note / keep unresolved / identity correction | `action_source=human` | `human_review` |
+| Rescan barcode | `action_source=human` | `recapture` with a reserved `next_state_id` |
+| Confirm or manual price | `action_source=human` | `accept` |
+| No comparable | `action_source=human` | `human_review` |
+
+Offline fitting **excludes** human-selected actions. Only `policy` / `jev+policy` / `baseline` rows with `logging_propensity ∈ (0, 1]` enter the bandit.
+
+#### How reward is computed
+
+An operator or gold set posts `POST /v1/surveys/{id}/independent-labels`. The label is append-once (a second label on the same `transition_id` is rejected). Flags are independent observations, not model agreement:
+
+| Outcome flag | Reward |
+| --- | ---: |
+| Correct keep-or-merge | +1 |
+| False merge | −5 |
+| False split | −2 |
+| Correct ISBN/edition | +2 |
+| Wrong ISBN/edition | −3 |
+| Missed high-value | −8 |
+| Correct mug exclusion | +0.2 |
+| Valued a mug / eBook as physical | −4 |
+| Recapture recovered a row | +1.5 |
+| Unnecessary recapture | −0.5 |
+| Correct specialist routing | +1 |
+
+If the transition stored a specialist prediction, credit is forced to match gold for that head (`condition`, `eligibility`, `damage`, `duplicate_features`, `quality`). “Fewer human reviews” is not a reward.
+
+#### Offline trainer and specialist heads
+
+`POST /v1/policies/train` fits a policy artifact in Redis. Requirements: disjoint train vs holdout survey IDs, at least 10 independently labeled transitions with a known logging propensity.
+
+- **Router (our first learned policy):** offline contextual bandit. Propensity-weighted linear reward regression, 200 steps, lr 0.02, only actions with ≥ 3 examples. Features: bias, category, disagreement, appraisal, Fable/Astra confidence.
+- **Specialist heads (our models):** Laplace-smoothed naive Bayes on the same features, one head each for condition, eligibility, damage, duplicate-features, and quality. They are then one of the router’s actions (`use_specialist_head`). Frontier A/B stay on ambiguous, high-value, or novel cases.
+- Artifact `stage` is `shadow`. `approved_at` stays `null` until a promotion that does not exist yet. Technique string is stored on the artifact so reports name the method, not a slogan.
+
+`POST /v1/policies/{id}/shadow` scores that artifact on the holdout surveys. Inverse-propensity reward is reported only on **matched** logged actions, with an overlap warning. Shadow does not change live routing.
+
+Staged path: log-only → offline bandit → sequential recapture RL → specialist heads → shadow → canary. Rollback = pin the previous `policy_id`. **No** single survey updates live model weights or thresholds.
+
+**Current honesty:** the log, replay buffer, trainer, specialist fit, successor-state API, and shadow endpoint exist and are exercised on synthetic labels. There is no frozen 50–100 copy gold zone, no physical independent labels on Invertis, no phone auto-bind of recapture evidence, and no approved/canary router. The live path is still `route_v0_log_only`.
 
 ### Survey IR
 
