@@ -413,7 +413,14 @@ class Stage3Worker:
             if catalog.get("status") != "candidate" or not identity.get("valid"):
                 continue
             isbn = identity["normalized"]
-            edition_id = f"edition_{isbn}"
+            asset = next(
+                (item for item in assets if item["asset_copy_id"] == identity["asset_copy_id"]),
+                None,
+            )
+            edition_id = (asset.get("book_edition_ref") if asset else None) or (
+                f"edition_{identity.get('scope', 'volume')}_{isbn}_"
+                f"{identity.get('format', 'unknown')}"
+            )
             work_key = (catalog.get("work_refs") or [catalog.get("title", isbn)])[0]
             work_id = "work_" + sha256_bytes(str(work_key).encode())[:12]
             works[work_id] = {
@@ -431,6 +438,8 @@ class Stage3Worker:
                 "publisher": catalog.get("publisher"),
                 "edition": catalog.get("edition"),
                 "scope": identity.get("scope", "volume"),
+                "format": identity.get("format", "unknown"),
+                "identifier_kind": identity.get("identifier_kind"),
                 "catalog_source": catalog["source"],
                 "evidence_ref": identity.get("evidence_ref"),
             }

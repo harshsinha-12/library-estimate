@@ -1706,6 +1706,8 @@ class PricingWorker:
             physical_format = identity.get("format")
             if physical_format and physical_format != "unknown":
                 edition = " ".join(filter(None, [edition, physical_format.replace("_", " ")]))
+            if identity.get("scope") == "set":
+                edition = " ".join(filter(None, [edition, "boxed set"]))
         elif identity and identity.get("title"):
             title = identity.get("title")
             catalog = identity.get("catalog") or {}

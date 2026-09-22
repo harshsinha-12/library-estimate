@@ -46,7 +46,9 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "static func identities(from jpeg: Data)" in assist
     assert "func considerObject(" in assist
     analyzer = (source_root / "Capture/LiveQualityAnalyzer.swift").read_text(encoding="utf-8")
-    assert "maximumAspectRatio = 1.05" in analyzer
+    assert "maximumAspectRatio = 1.0" in analyzer
+    assert "maximumObservations = 100" in analyzer
+    assert "hasReadableText" in analyzer
     shelf = (source_root / "Views/ShelfPassView.swift").read_text(encoding="utf-8")
     capturing = shelf.split("if store.capturing")[1].split("} else {")[0]
     assert "Finish face" in capturing
@@ -97,7 +99,7 @@ def test_ios_camera_session_is_sequential() -> None:
     shelf_container = (source_root / "Capture/ShelfCameraContainer.swift").read_text(
         encoding="utf-8"
     )
-    assert "automaticallyConfiguredSession = false" in shelf_container
+    assert "automaticallyConfigureSession = false" in shelf_container
     assert "dismantleUIView" in shelf_container
     assert "tryAcquire(.shelfAR)" in shelf_container
 

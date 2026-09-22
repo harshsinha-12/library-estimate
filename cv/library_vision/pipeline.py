@@ -53,6 +53,9 @@ class SpineDetection:
     isbn: str | None
     evidence_ref: str
     quality: QualityComponents
+    readable: bool | None = None
+    stacked: bool = False
+    leaning: bool = False
     coverage: float = 1.0
     occupied_m: float = 0.04
     evidence_bytes: int = 0
@@ -133,6 +136,9 @@ def _detections_from_labeled(payload: dict) -> list[SpineDetection]:
                             spine.get("evidence_ref") or scan.get("evidence_ref") or "shelf"
                         ),
                         quality=quality,
+                        readable=spine.get("readable"),
+                        stacked=bool(spine.get("stacked", False)),
+                        leaning=bool(spine.get("leaning", False)),
                         coverage=coverage,
                         occupied_m=float(spine.get("occupied_m", 0.04)),
                         evidence_bytes=int(
@@ -265,6 +271,9 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
             "face_normal": list(item.face_normal),
             "isbn": item.isbn,
             "pass_id": item.pass_id,
+            "readable": item.readable,
+            "stacked": item.stacked,
+            "leaning": item.leaning,
         }
         for item in detections
     ]

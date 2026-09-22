@@ -190,6 +190,9 @@ class Observation(StrictModel):
     face_normal: list[float] | None = None
     isbn: str | None = None
     pass_id: str | None = None
+    readable: bool | None = None
+    stacked: bool = False
+    leaning: bool = False
 
 
 class Track(StrictModel):
