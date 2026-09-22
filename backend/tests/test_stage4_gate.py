@@ -55,6 +55,41 @@ def test_vision_model_defaults_to_luna(monkeypatch) -> None:
     assert vision_model() == "gpt-5.6-luna"
 
 
+def test_luna_vision_omits_temperature(monkeypatch) -> None:
+    from io import BytesIO
+
+    from backend.app.providers.pricing.vision_titles import extract_book_titles
+
+    captured: dict = {}
+
+    class _Response(BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=0):
+        del timeout
+        captured["body"] = json.loads(request.data.decode())
+        payload = {
+            "choices": [{"message": {"content": json.dumps({"books": []})}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            "model": "gpt-5.6-luna",
+        }
+        return _Response(json.dumps(payload).encode())
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "gpt-5.6-luna")
+    monkeypatch.setattr(
+        "backend.app.providers.pricing.vision_titles.urlopen",
+        fake_urlopen,
+    )
+    extract_book_titles(b"\xff\xd8fakejpeg", model="gpt-5.6-luna")
+    assert captured["body"]["model"] == "gpt-5.6-luna"
+    assert "temperature" not in captured["body"]
+
+
 def _web_result(title: str, amount: str, *, currency: str = "INR", url: str | None = None) -> dict:
     listing = url or "https://www.amazon.in/dp/example"
     return {
@@ -1366,6 +1401,8 @@ def test_store_search_survives_report_stub_without_searches() -> None:
     assert stored["search_id"]
     assert any(item["search_id"] == stored["search_id"] for item in state["searches"])
     assert state["found_prices"]
+    persisted = repository.get_json(survey_id, "pricing")
+    assert any(item["search_id"] == stored["search_id"] for item in persisted["searches"])
 
 
 def test_report_object_cache_does_not_clobber_searches() -> None:
@@ -1415,4 +1452,7 @@ def test_after_seal_replays_when_spoken_search_raises(monkeypatch) -> None:
         result = worker.after_seal(app.state.survey_workflow.repository, survey_id)
     assert replayed["survey_id"] == str(survey_id)
     assert result["replayed"]["copy_count"] == 2
+    saved = app.state.survey_workflow.repository.get_json(survey_id, "pricing")
+    assert saved is not None
+    assert "searches" in saved
 

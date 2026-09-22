@@ -781,6 +781,15 @@ class PricingWorker:
                 error=error.__class__.__name__,
                 detail=str(error)[:240],
             )
+            try:
+                state = self._state(repository, survey_id)
+                repository.save_json(survey_id, "pricing", state)
+            except Exception as persist_error:
+                pricing_log.warning(
+                    "pricing_after_seal persist failed",
+                    survey_id=str(survey_id),
+                    error=persist_error.__class__.__name__,
+                )
         replayed: dict = {"copy_count": 0, "runs": []}
         try:
             from backend.app.workflows.models import replay_survey
@@ -1382,6 +1391,7 @@ class PricingWorker:
                 "result": search,
             },
         )
+        repository.save_json(survey_id, "pricing", state)
         return search
 
     def _attach_drafts(self, state: dict, search: dict | None, geography: dict) -> None:
@@ -1646,8 +1656,11 @@ class PricingWorker:
             search = next(
                 (
                     item
-                    for item in state["searches"]
-                    if item.get("edition_key") == edition_key or item.get("query") == query
+                    for item in (state.get("searches") or [])
+                    if isinstance(item, dict)
+                    and (
+                        item.get("edition_key") == edition_key or item.get("query") == query
+                    )
                 ),
                 None,
             )

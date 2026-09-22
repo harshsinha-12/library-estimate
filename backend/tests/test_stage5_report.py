@@ -121,6 +121,34 @@ def test_report_snapshot_does_not_render_pdf() -> None:
     assert not repository.exists_bytes(survey_id, "derived/report.pdf")
 
 
+def test_report_during_ingest_validation_does_not_wipe_searches() -> None:
+    repository = SurveyRepository(
+        fakeredis.FakeRedis(decode_responses=True),
+        MemoryObjectStore(),
+        key_prefix="test:report-ingest",
+    )
+    survey_id = uuid4()
+    repository.create(SurveyRecord(
+        survey_id=survey_id, display_name="Ingest report",
+        geography=SurveyGeography(
+            country_code="IN", city="Bareilly", currency="INR",
+            market="en-IN", source="manual",
+        ),
+        status="ingest_validation", created_at=utc_now(),
+        sealed_at=utc_now(), package_hash="c" * 64,
+    ))
+    repository.save_json(survey_id, "inventory", {"asset_copies": []})
+    repository.save_json(survey_id, "overview", {"copies": []})
+    repository.save_json(
+        survey_id,
+        "pricing",
+        {"searches": [{"search_id": "keep-me"}], "live_searches": [], "found_prices": []},
+    )
+    build_report_snapshot(repository, survey_id)
+    saved = repository.get_json(survey_id, "pricing")
+    assert saved["searches"] == [{"search_id": "keep-me"}]
+
+
 def test_report_does_not_turn_unbound_searches_into_inventory() -> None:
     repository = SurveyRepository(
         fakeredis.FakeRedis(decode_responses=True), MemoryObjectStore(), key_prefix="test:report"

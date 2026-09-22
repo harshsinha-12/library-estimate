@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import os
 import UIKit
 
 struct AstraLiveQuality: Decodable {
@@ -29,17 +30,23 @@ struct AstraLiveResponse: Decodable {
   let review: String?
   let invented: Bool?
   let assist: AstraLiveAssistPayload?
+  let detail: String?
 }
 
 @MainActor
 final class AstraLiveSession: ObservableObject {
   static let minInterval: TimeInterval = 2
+  private static let logger = Logger(
+    subsystem: "dev.harshsinha.LibrarySurvey",
+    category: "astra-live"
+  )
 
   @Published var status = ""
   @Published var latest: AstraLiveResponse?
   private var lastAttempt = Date.distantPast
   private var prepared = false
   private var sampledFace = false
+  private var inFlight = false
 
   func resetFace() {
     sampledFace = false
@@ -48,17 +55,19 @@ final class AstraLiveSession: ObservableObject {
   var caption: String {
     if let assist = latest?.assist {
       let count = assist.provisionalCount.map(String.init) ?? "?"
-      let hint = assist.recaptureHint ?? assist.rationale ?? "sampled"
-      return "Astra-live assist · about \(count) in frame · \(hint) · not inventory"
+      return "Astra-live assist · about \(count) in frame · not inventory"
     }
     if let latest, latest.status == "skipped" {
       return "Astra-live skipped (\(latest.reason ?? "sampled")) · not inventory"
+    }
+    if status.isEmpty {
+      return "Astra-live assist · connecting · not inventory"
     }
     return status
   }
 
   func consider(
-    jpeg: Data,
+    jpeg: Data?,
     capturePass: String,
     draft: SurveyDraft,
     backendURL: URL?,
@@ -68,18 +77,27 @@ final class AstraLiveSession: ObservableObject {
     force: Bool = false
   ) async {
     guard let backendURL else {
-      status = "Astra-live waiting for backend URL · assist only, not inventory"
+      status = "Astra-live: backend URL missing in Settings · not inventory"
+      Self.logger.error("Astra-live skipped: backend URL missing")
       return
     }
+    guard !inFlight else { return }
     let due = Date().timeIntervalSince(lastAttempt) >= Self.minInterval
     guard force || due else { return }
-    guard let compact = Self.sampledJpeg(jpeg), compact.count > 32 else { return }
+    guard let jpeg, let compact = Self.sampledJpeg(jpeg), compact.count > 32 else {
+      status = "Astra-live waiting for a frame · not inventory"
+      return
+    }
     lastAttempt = Date()
     sampledFace = true
+    inFlight = true
+    defer { inFlight = false }
+    status = "Astra-live assist · posting · not inventory"
     do {
       try await prepare(draft: draft, backendURL: backendURL)
-      let url = backendURL.appendingPathComponent(
-        "v1/surveys/\(draft.id.uuidString)/astra-live"
+      let url = try OperatorSession.apiURL(
+        backendURL,
+        path: "v1/surveys/\(draft.id.uuidString)/astra-live"
       )
       var request = URLRequest(url: url)
       request.httpMethod = "POST"
@@ -97,19 +115,31 @@ final class AstraLiveSession: ObservableObject {
       let (data, response) = try await OperatorSession.data(for: request)
       let code = (response as? HTTPURLResponse)?.statusCode ?? 0
       guard (200..<300).contains(code) else {
-        status = "Astra-live unavailable · assist only, not inventory"
+        let body = String(data: data, encoding: .utf8) ?? ""
+        let snippet = String(body.prefix(180)).replacingOccurrences(of: "\n", with: " ")
+        status = "Astra-live HTTP \(code)\(snippet.isEmpty ? "" : ": \(snippet)") · not inventory"
+        Self.logger.error("Astra-live HTTP \(code, privacy: .public) \(snippet, privacy: .public)")
         return
       }
-      latest = try JSONCoding.decoder().decode(AstraLiveResponse.self, from: data)
-      status = caption
+      do {
+        latest = try JSONCoding.decoder().decode(AstraLiveResponse.self, from: data)
+        status = caption
+      } catch {
+        let snippet = String(data: data, encoding: .utf8).map { String($0.prefix(180)) } ?? ""
+        status = "Astra-live decode failed: \(error.localizedDescription) · not inventory"
+        Self.logger.error(
+          "Astra-live decode \(error.localizedDescription, privacy: .public) \(snippet, privacy: .public)"
+        )
+      }
     } catch {
-      status = "Astra-live paused · keep scanning. Assist is not inventory."
+      status = "Astra-live failed: \(error.localizedDescription) · not inventory"
+      Self.logger.error("Astra-live \(error.localizedDescription, privacy: .public)")
     }
   }
 
   private func prepare(draft: SurveyDraft, backendURL: URL) async throws {
     if prepared { return }
-    var request = URLRequest(url: backendURL.appendingPathComponent("v1/surveys"))
+    var request = URLRequest(url: try OperatorSession.apiURL(backendURL, path: "v1/surveys"))
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("create-\(draft.id.uuidString)", forHTTPHeaderField: "Idempotency-Key")

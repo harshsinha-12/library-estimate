@@ -20,7 +20,7 @@ enum LiveQualityAnalyzer {
     guard let image = UIImage(data: jpeg)?.cgImage else { return [] }
     let request = VNDetectRectanglesRequest()
     request.minimumAspectRatio = 0.035
-    request.maximumAspectRatio = 1.0
+    request.maximumAspectRatio = 1.2
     request.minimumSize = 0.04
     request.minimumConfidence = 0.5
     request.maximumObservations = 100
@@ -36,15 +36,18 @@ enum LiveQualityAnalyzer {
       let tall = box.height > box.width * 1.4
       let stacked = box.width > box.height * 1.4
       let narrow = tall ? box.width <= 0.25 : box.height <= 0.45
-      let minSpan = stacked ? 0.18 : 0.07
-      let minArea = stacked ? 0.04 : 0.008
-      guard (tall || stacked), narrow, box.width * box.height <= 0.45,
+      let minSpan = stacked ? 0.12 : 0.07
+      let minArea = stacked ? 0.02 : 0.008
+      guard (tall || stacked), narrow, box.width * box.height <= 0.55,
             max(box.width, box.height) >= minSpan,
             box.width * box.height >= minArea else { return nil }
       let top = observation.topLeft
       let bottom = observation.bottomLeft
       let lean = tall && abs(top.x - bottom.x) > box.width * 0.4
-      let readable = textBoxes.contains { $0.intersects(box) }
+      let readable = textBoxes.contains { Self.boxesOverlap($0, box) }
+      // Crochet / table squares and nested inner cover boxes have no unique
+      // title letters. Do not mint those as copies; unread stays partial.
+      if !readable { return nil }
       return SpineRegion(
         box: box, hasReadableText: readable, confidence: observation.confidence,
         isStacked: stacked, isLeaning: lean
@@ -54,19 +57,22 @@ enum LiveQualityAnalyzer {
     for proposal in proposals.sorted(by: {
       $0.box.width * $0.box.height > $1.box.width * $1.box.height
     }) {
-      let nested = selected.contains { kept in
-        let overlap = kept.box.intersection(proposal.box)
-        let smaller = min(
-          kept.box.width * kept.box.height,
-          proposal.box.width * proposal.box.height
-        )
-        let contained = kept.box.contains(CGPoint(x: proposal.box.midX, y: proposal.box.midY))
-        return contained || (!overlap.isNull && smaller > 0 &&
-          overlap.width * overlap.height / smaller > 0.7)
-      }
-      if !nested { selected.append(proposal) }
+      if selected.contains(where: { Self.boxesOverlap($0.box, proposal.box) }) { continue }
+      selected.append(proposal)
     }
     return selected
+  }
+
+  static func boxesOverlap(_ a: CGRect, _ b: CGRect) -> Bool {
+    let overlap = a.intersection(b)
+    guard !overlap.isNull, overlap.width > 0, overlap.height > 0 else { return false }
+    let smaller = min(a.width * a.height, b.width * b.height)
+    if smaller > 0 && overlap.width * overlap.height / smaller >= 0.35 { return true }
+    if a.contains(CGPoint(x: b.midX, y: b.midY)) || b.contains(CGPoint(x: a.midX, y: a.midY)) {
+      return true
+    }
+    return abs(a.midX - b.midX) < max(0.024, min(a.width, b.width) * 0.5)
+      && overlap.height > min(a.height, b.height) * 0.3
   }
 
   static func cropContainsText(jpeg: Data, box: CGRect) -> Bool {

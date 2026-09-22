@@ -221,6 +221,67 @@ def test_adjacent_thin_copies_keep_distinct_ids_across_reverse_scan() -> None:
     assert all(len(row["observation_refs"]) == 2 for row in copies)
 
 
+def test_tracker_reverse_sweep_does_not_double_in_labeled_json() -> None:
+    stable = "obs-spine-a"
+    other = "obs-spine-b"
+    face = {
+        "room_id": "library",
+        "shelf_id": "shelf_01",
+        "face_id": "shelf_01.face_A",
+        "face_normal": [0, 0, 1],
+    }
+
+    def spines(pass_t: float) -> list[dict]:
+        return [
+            {
+                "slot": 0,
+                "x": 0.300 if pass_t < 5 else 0.301,
+                "t": pass_t,
+                "appearance": stable,
+                "observation_id": stable,
+                "evidence_ref": f"crop_{stable}",
+                "readable": True,
+            },
+            {
+                "slot": 1,
+                "x": 0.325 if pass_t < 5 else 0.324,
+                "t": pass_t + 0.1,
+                "appearance": other,
+                "observation_id": other,
+                "evidence_ref": f"crop_{other}",
+                "readable": True,
+                "stacked": True,
+            },
+        ]
+
+    result = count_labeled_shelf({
+        "passes": [
+            {
+                **face,
+                "pass_id": "face-forward",
+                "rows": [{
+                    "row_id": "row_01",
+                    "coverage": 0.4,
+                    "spines": spines(1.0),
+                }],
+            },
+            {
+                **face,
+                "pass_id": "face-reverse",
+                "rows": [{
+                    "row_id": "row_01",
+                    "coverage": 0.7,
+                    "spines": list(reversed(spines(8.0))),
+                }],
+            },
+        ]
+    })
+    copies = [row for row in result.asset_copies if row["row_id"] == "row_01"]
+    assert len(copies) == 2
+    ids = {item for row in copies for item in row["observation_refs"]}
+    assert ids == {stable, other}
+
+
 def test_manual_count_mismatch_keeps_row_partial_with_interval() -> None:
     result = count_labeled_shelf({"passes": [{
         "pass_id": "one", "face_id": "face_A", "room_id": "room",
