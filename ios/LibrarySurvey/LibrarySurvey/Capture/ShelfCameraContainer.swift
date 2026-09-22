@@ -12,7 +12,7 @@ struct ShelfCameraContainer: UIViewRepresentable {
 
   func makeUIView(context: Context) -> ARView {
     let view = ARView(frame: .zero)
-    view.automaticallyConfiguredSession = false
+    view.automaticallyConfigureSession = false
     context.coordinator.view = view
     context.coordinator.startIfAllowed()
     return view
