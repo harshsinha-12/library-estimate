@@ -106,14 +106,14 @@ Left:
 
 ## 4. RL while mentioning the model/technicque used
 
-`backend/app/rl/offline.py` has a reward table (false merge −5, missed high-value −8, mug exclusion +0.2, and the rest of the §13 weights). Live transitions keep `reward: null` until independent labels arrive. Model auto-accepts now have a separate evidence-hash/A/B/Jev/policy audit, and recapture decisions reserve a `next_state_id` that the successor-state API can bind once to verified new evidence. No physical independent labels have been posted, the phone does not bind recapture evidence automatically, `approved_at` remains null, and specialist heads have only synthetic exercise.
+`backend/app/rl/offline.py` has a reward table (false merge −5, missed high-value −8, mug exclusion +0.2, and the rest of the §13 weights). Live transitions keep `reward: null` until independent labels arrive. Model auto-accepts now have a separate evidence-hash/A/B/Jev/policy audit, and recapture decisions reserve a `next_state_id` that the successor-state API can bind once to verified new evidence. Invertis logged **96** policy transitions and **0** independent labels. No gold freeze (`freeze_gold_set` requires 50–100 copies; Invertis has 45). Live `route_v0_log_only` does not set `logging_propensity`, so those rows cannot enter the bandit fit. `approved_at` remains null. Specialist heads have only synthetic exercise.
 
 Left:
 
-27. Write an `RLTransition` for every material decision: accept, recapture, human, specialist, frontier, price confirm, barcode rescan — not only the model-replay button.
-28. Apply the §13 reward from independent labels, never from “Jev agreed with Fable.”
-29. Keep the implemented auto-accept audit complete for every live auto-accept: copy id, evidence hash, A/B/Jev, policy reason, and who could still overturn it. Exercise it on the physical zone.
-30. Gold set: the labeled 50–100 book zone with every demo case (two same-ISBN copies, reverse scan, no ISBN, ambiguous edition, moved book, damaged book, portrait + spoken damage, mug, appraisal item). Freeze it before any training.
+27. Done in code: `RLTransition` for model routing, Stage 3 bind/keep/rescan, identity correction, and Stage 4 price confirm/manual/no-comparable. Invertis exercised the model-routing path only (no price confirms on that survey).
+28. Done in code: §13 reward from independent labels, never from “Jev agreed with Fable.” No physical labels posted yet.
+29. Done in code: auto-accept audit. Invertis had 0 auto-accepts (policy sent every copy to `human_review`).
+30. Gold set: the labeled 50–100 book zone with every demo case (two same-ISBN copies, reverse scan, no ISBN, ambiguous edition, moved book, damaged book, portrait + spoken damage, mug, appraisal item). Freeze it before any training. Invertis cannot freeze (45 copies).
 31. Classification credit: condition / eligibility / damage / keep-vs-merge heads are scored against gold, and that score is part of reward. A router-only bandit is not “your own models.”
 32. Finish sequential recapture on the phone: action → reserved `next_state_id` → new verified evidence. The backend successor-state path exists; automatic capture binding and a physical run remain open.
 33. Promotion gate: train on survey IDs disjoint from holdout; shadow; report reward and calibration with numerator/denominator; **approve** a `policy_id`; pin the previous id to roll back. Shadow-only with `approved_at: None` is not promotion.
@@ -174,5 +174,5 @@ Code/readiness pass completed 2026-09-22: the repo now has a Caddy HTTPS deploym
 3. Identity / edition per copy (Invertis name-level + Pass C queue)
 4. Price status per copy (Invertis name `web_search` drafts)
 5. Fable and Astra on every copy in that survey; Jev as scorer (section 3)
-6. RL with gold, reward, audit, promotion (section 4)
+6. RL with gold, reward, audit, promotion (section 4). Invertis logged the MDP (96 transitions, 0 labels); freeze/labels/promotion remain.
 7. Product, security, accessibility, recorded demo (sections 5–6)

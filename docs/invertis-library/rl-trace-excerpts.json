@@ -1,0 +1,69 @@
+{
+  "source": "Redis rl_transitions for Invertis Library (not gitignored logs/llm_calls.json)",
+  "survey_id": "4b9d7885-af80-42b8-b8c3-827c7a7f07fd",
+  "window_utc": {
+    "first": "2026-09-22T12:13:46.104023+00:00",
+    "last": "2026-09-22T12:49:48.965396+00:00"
+  },
+  "note": "These records prove the log-only MDP home ran after seal. reward is null; no independent labels, gold set, or trained policy exist for this survey. Live route_v0_log_only does not set logging_propensity, so these rows cannot enter the offline bandit even if labeled. 96 rows cover 45 copies because most copies were replayed (37×2, 7×3, 1×1).",
+  "counts": {
+    "transitions": 96,
+    "unique_copies": 45,
+    "copy_replay": {"once": 1, "twice": 37, "thrice": 7},
+    "independent_labels": 0,
+    "gold_set": false,
+    "trained_policies": 0,
+    "auto_accept_audit": 0,
+    "specialist_prediction_logged": 0,
+    "actions": {"human_review": 96},
+    "action_source": {"policy": 96},
+    "policy_id": {"route_v0_log_only": 96},
+    "policy_reason": {"low_confidence": 81, "model_disagreement": 15},
+    "fable_recommended_action": {"human_review": 71, "recapture": 25},
+    "astra_recommended_action": {"recapture": 78, "accept_candidate": 16, "human_review": 2},
+    "jev_choice": {"recapture": 78, "human_review": 18},
+    "reward_null": 96,
+    "logging_propensity_set": 0,
+    "next_state_reserved": 0
+  },
+  "sample": {
+    "transition_id": "ea1e3c1e-472a-4e5a-9645-22d8615a36ab",
+    "created_at": "2026-09-22T12:13:46.104023+00:00",
+    "policy_id": "route_v0_log_only",
+    "action": "human_review",
+    "action_source": "policy",
+    "reward": null,
+    "state": {
+      "appraisal_required": false,
+      "asset_copy_id": "copy_53ae531518",
+      "category": "book",
+      "disagreement": false,
+      "evidence_package_hash": "c83b6771b5ced808919653a35e2fa748ce7f176e606d626eb3770329a5cbbda2",
+      "policy_reason": "low_confidence"
+    },
+    "fable": {
+      "pipeline": "fable",
+      "category": "book",
+      "condition": "unknown",
+      "confidence": 0.0,
+      "recommended_action": "recapture"
+    },
+    "astra": {
+      "pipeline": "astra_replay",
+      "category": "book",
+      "condition": "unknown",
+      "confidence": 0.0,
+      "recommended_action": "recapture"
+    },
+    "jev": {
+      "choice": "recapture",
+      "confidence": 1.0
+    }
+  },
+  "what_this_is_not": [
+    "Not a trained policy.",
+    "Not independent ground truth.",
+    "Not a 50–100 copy gold freeze (Invertis has 45 copies; freeze API requires 50–100).",
+    "Not a live weight update."
+  ]
+}

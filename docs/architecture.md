@@ -859,6 +859,8 @@ Never from “Jev agreed with Fable”.
 
 Staged path: log-only → offline bandit → sequential recapture RL → specialist heads → shadow → canary. Rollback = pin previous `policy_id`.
 
+Invertis Library (survey `4b9d7885-…`): 96 log-only transitions on 45 copies, 0 labels, 0 gold freeze, 0 trained policies. Live router is still `route_v0_log_only`. Excerpt: `docs/invertis-library/rl-trace-excerpts.json`.
+
 ---
 
 ## 15. Canonical Survey IR

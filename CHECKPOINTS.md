@@ -136,7 +136,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 
 ### RL home
 
-- [ ] `RLTransition` on every decision, have RL feedback layer to improve on things.
+- [x] `RLTransition` on model replay, Stage 3 review, barcode rescan, and price review (Invertis: 96 policy rows, reward null).
+- [ ] RL feedback that *improves* routing: independent labels, disjoint holdout, trained shadow policy, then approve/canary.
 - [x] Replay buffer.
 - [x] Offline bandit trainer exercised on a synthetic label fixture; physical labeled set remains in Eval and demo.
 - [x] Recapture decisions reserve `next_state_id`; verified successor-state API binds hashed evidence once.

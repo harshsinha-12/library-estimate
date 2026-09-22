@@ -127,7 +127,7 @@ curl -o ~/Downloads/library-survey.pdf \
 | Invertis field scan | **Succeeded** — 45 copies, report + walkthrough |
 | Live Pass B count | On-device rectangles + shelf-face tracking; unread boxes are not minted; reverse sweep must not double |
 | Crochet / texture overcount (17 vs 4) | Patched in code (readable letters + NMS + no dump onto `row_01`); rebuild iOS before the next table-top check |
-| Independent 50–100 copy holdout / policy promotion | **Open** — RL is logged transitions + offline bandit, not a proven live loop |
+| Independent 50–100 copy holdout / policy promotion | **Open** — Invertis logged 96 transitions, 0 labels. Offline bandit exists; live router is still `route_v0_log_only` |
 | $50 envelope | Spend is a **ledger**, not a runtime cap. Invertis estimated **$4.73** |
 
 **Storage:** Redis holds Survey IR, jobs, RL transitions, and state. Cloudflare R2 holds sealed media (`audio/survey.m4a`, frames, USDZ). SQLite is a Stage 1 archive only.
@@ -596,7 +596,9 @@ If the transition stored a specialist prediction, credit is forced to match gold
 
 Staged path: log-only → offline bandit → sequential recapture RL → specialist heads → shadow → canary. Rollback = pin the previous `policy_id`. **No** single survey updates live model weights or thresholds.
 
-**Current honesty:** the log, replay buffer, trainer, specialist fit, successor-state API, and shadow endpoint exist and are exercised on synthetic labels. There is no frozen 50–100 copy gold zone, no physical independent labels on Invertis, no phone auto-bind of recapture evidence, and no approved/canary router. The live path is still `route_v0_log_only`.
+**Invertis field log:** 96 `RLTransition` rows after seal covering 45 copies (most copies replayed). `policy_id=route_v0_log_only`; every logged action is `human_review` (`low_confidence` 81, `model_disagreement` 15). Astra proposed `accept_candidate` 16 times; the policy never accepted. All `reward: null`. Zero independent labels, no gold freeze, no trained policy, no specialist prediction, no reserved recapture successor. Live log-only decisions do **not** set `logging_propensity`, so they cannot enter the bandit even if labeled later. Excerpt: [`docs/invertis-library/rl-trace-excerpts.json`](docs/invertis-library/rl-trace-excerpts.json).
+
+**Current honesty:** the log, replay buffer, trainer, specialist fit, successor-state API, and shadow endpoint exist and are exercised on synthetic labels. Invertis proved the log in the field. There is no frozen 50–100 copy gold zone (Invertis has 45 copies; freeze requires 50–100), no physical independent labels, no phone auto-bind of recapture evidence, and no approved/canary router. The live path is still `route_v0_log_only`.
 
 ### Survey IR
 

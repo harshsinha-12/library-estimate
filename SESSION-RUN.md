@@ -311,3 +311,11 @@ Operator: Invertis Library (45 copies) is the book pass. Remove the controlled 8
 
 - CHECKPOINTS extra phone-row gates removed. Stage 4 clock closed.
 - `IMPLEMENTATION.md` / `FINAL-PLAN.md` / `LEFTOVER.md` / `docs/stage-5-validation.md` no longer require a separate 8–10 walkthrough.
+
+## 2026-09-22 evening — Invertis RL log inspected
+
+Operator: look at the reinforcement learning part. No gold freeze, no trainer run, no PDF edit.
+
+- Redis Invertis (`4b9d7885-…`): 96 `RLTransition` rows, 45 unique copies, all `human_review` / `route_v0_log_only`, reward null, `logging_propensity` unset. 0 independent labels, 0 gold set, 0 trained policies, 0 auto-accepts.
+- Plumbing is exercised; the loop did not learn. Leftover 27–29 marked done in code. Gold freeze (50–100 copies), independent labels, phone recapture bind, and approve/canary remain open.
+- Excerpt: `docs/invertis-library/rl-trace-excerpts.json`. README / CHECKPOINTS / architecture honesty updated.
