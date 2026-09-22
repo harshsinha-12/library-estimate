@@ -8,6 +8,8 @@ Alignment contract: [`FINAL-PLAN.md`](FINAL-PLAN.md). Thresholds, schemas, and c
 
 Governing rule: never trust one frame, one model, or one signal. Combine geometry, tracking, visual evidence, OCR, speech, and metadata, and keep confidence and provenance at every step.
 
+![Library Survey / Insurance Valuation — simplified architecture](docs/library-architecture-simple.jpg)
+
 ---
 
 ## Invertis Library report
