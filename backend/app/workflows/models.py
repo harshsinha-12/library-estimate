@@ -341,16 +341,8 @@ def replay_survey(
     copies = list(inventory.get("asset_copies") or [])
     runs: list[dict] = []
     partials: list[dict] = []
-    budget_exhausted = False
     for asset in copies:
         copy_id = str(asset.get("asset_copy_id") or "")
-        if budget_exhausted:
-            row = _disclosed_partial(
-                repository, survey_id, copy_id, "budget_cap",
-            )
-            partials.append(row)
-            runs.append(row)
-            continue
         try:
             result = replay_asset(
                 repository, survey_id, copy_id,
@@ -365,10 +357,6 @@ def replay_survey(
             runs.append(row)
             continue
         runs.append(result)
-        if result.get("budget_exhausted") or result.get("failures", {}).get("fable") == (
-            "BudgetExceededError"
-        ) or result.get("failures", {}).get("astra_replay") == "BudgetExceededError":
-            budget_exhausted = True
         if result.get("partial"):
             partials.append(result)
     status = "complete" if copies and not partials else (

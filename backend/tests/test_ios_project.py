@@ -74,7 +74,8 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "after seal" in report.lower() or "After seal" in report
     live = (source_root / "Services/AstraLiveAssist.swift").read_text(encoding="utf-8")
     assert "astra-live" in live
-    assert "maxCalls = 6" in live
+    assert "minInterval: TimeInterval = 2" in live
+    assert "maxCalls" not in live
     assert "not inventory" in live.lower() or "assist_metadata" in live
     assert "astraLive" in shelf or "AstraLiveSession" in shelf
     exception = (source_root / "Views/ExceptionPassView.swift").read_text(encoding="utf-8")

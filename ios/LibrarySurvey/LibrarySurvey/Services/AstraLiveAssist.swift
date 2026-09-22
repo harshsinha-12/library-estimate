@@ -33,12 +33,10 @@ struct AstraLiveResponse: Decodable {
 
 @MainActor
 final class AstraLiveSession: ObservableObject {
-  static let maxCalls = 6
-  static let minInterval: TimeInterval = 8
+  static let minInterval: TimeInterval = 2
 
   @Published var status = ""
   @Published var latest: AstraLiveResponse?
-  private var calls = 0
   private var lastAttempt = Date.distantPast
   private var prepared = false
   private var sampledFace = false
@@ -69,11 +67,9 @@ final class AstraLiveSession: ObservableObject {
     unreadableSlots: [String],
     force: Bool = false
   ) async {
-    guard let backendURL, calls < Self.maxCalls else { return }
+    guard let backendURL else { return }
     let due = Date().timeIntervalSince(lastAttempt) >= Self.minInterval
-    let uncertain = !qualityMessages.isEmpty || !unreadableSlots.isEmpty
-    let first = !sampledFace
-    guard force || (due && (uncertain || first)) else { return }
+    guard force || due else { return }
     guard let compact = Self.sampledJpeg(jpeg), compact.count > 32 else { return }
     lastAttempt = Date()
     sampledFace = true
@@ -102,7 +98,6 @@ final class AstraLiveSession: ObservableObject {
         return
       }
       latest = try JSONCoding.decoder().decode(AstraLiveResponse.self, from: data)
-      if latest?.status == "assist" { calls += 1 }
       status = caption
     } catch {
       status = "Astra-live paused · keep scanning. Assist is not inventory."

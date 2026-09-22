@@ -157,7 +157,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Shelf-row inventory detail with expected/detected count, selectable copy outlines and evidence, identity/unresolved action, and per-copy price/condition status; barcode rescan, correction, and search actions.
 - [ ] Auth, encryption, signed URLs or local equivalent, retention, redaction, access log.
 - [ ] Accessibility requirements.
-- [x] $50 ledger with stop-at-cap.
+- [x] Spend ledger with no stop-at-cap.
 - [ ] Every §17 failure row as status + operator action.
 - [x] Remaining APIs: jobs, inventory, review, report, shelves, evidence, policies, shadow.
 

@@ -250,7 +250,8 @@ Sequential camera ownership is now productized in the iOS capture flow. No physi
 
 Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs remain unconfirmed.
 
-- Astra-live: `POST /v1/surveys/{id}/astra-live` on Pass B/C, sampled (max 6/survey, 8s interval, `$50` reservation). Stored as `authority: assist_metadata`. Not Pipeline B and not inventory. Unavailable provider returns a disclosed skip, not an invented assessment. iOS `AstraLiveSession` samples during shelf sweep and Pass C stills.
-- After seal: `replay_survey` runs Pipeline A (Fable) and Pipeline B (Astra replay) on **every** `AssetCopy` with the same evidence bytes. The inventory button is optional replay. Missing keys or budget produce disclosed partial + human review.
+- Astra-live: `POST /v1/surveys/{id}/astra-live` on Pass B/C, debounced (~2s) with no per-survey dollar stop. Stored as `authority: assist_metadata`. Not Pipeline B and not inventory. Unavailable provider returns a disclosed skip, not an invented assessment. iOS `AstraLiveSession` calls it throughout the shelf sweep and Pass C stills.
+- After seal: `replay_survey` runs Pipeline A (Fable) and Pipeline B (Astra replay) on **every** `AssetCopy` with the same evidence bytes. The inventory button is optional replay. Missing keys produce disclosed partial + human review.
+- Spend ledger still records reservations and estimated USD. There is no per-survey dollar stop, so Astra-live and sealed A/B are not cut off at $50.
 - Jev writes a comparison record (A fields, B fields, disagreement, chosen route, confidence) separate from policy. Jev cannot write count or price. Geometry, ISBN, merge, and money keys are dropped from assessments.
 - Settings expose `FABLE_MODEL` / `ASTRA_MODEL` / `JEV_MODEL` defaults (`claude-fable-5-1`, `gpt-6-astra`, `jev-latest`). Confirming live IDs and spending against the ledger is still open below.

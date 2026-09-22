@@ -1,4 +1,4 @@
-"""Sampled Astra-live capture assist. Not Pipeline B and not inventory truth."""
+"""Astra-live capture assist. Not Pipeline B and not inventory truth."""
 
 from __future__ import annotations
 
@@ -16,8 +16,7 @@ from backend.app.providers.usage import BudgetExceededError
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.json_codec import canonical_json_bytes
 
-ASTRA_LIVE_MAX_PER_SURVEY = 6
-ASTRA_LIVE_MIN_INTERVAL_S = 8
+ASTRA_LIVE_MIN_INTERVAL_S = 2
 ASTRA_LIVE_MAX_BYTES = 400_000
 ASSIST_LIST_KEY = "astra_live"
 
@@ -50,8 +49,6 @@ def record_astra_live(
     repository.get(survey_id)
     inventory_before = deepcopy(repository.get_json(survey_id, "inventory"))
     existing = list_astra_live(repository, survey_id)["assists"]
-    if len(existing) >= ASTRA_LIVE_MAX_PER_SURVEY:
-        return _skip(survey_id, "sample_cap")
     if _too_soon(existing):
         return _skip(survey_id, "sample_interval")
     image_b64 = str(payload.get("image_base64") or "").strip()
