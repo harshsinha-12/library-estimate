@@ -35,7 +35,7 @@ The initial plan has a strong foundation: a common IR, `Asset` versus `Observati
 | Arbitrary weighted deduplication scores are suggested. | Start with constrained rules and calibrated features; learn thresholds from labeled double-pass scans. Never merge solely because ISBNs match. |
 | A single median web price becomes replacement value. | Preserve individual offers, edition/format/condition/geography, shipping/tax, retrieval time, and source. Produce a range plus an insurer-defined valuation basis. |
 | Fixed condition multipliers are shown. | Condition adjustment is policy/configuration data validated by the insurer, not a guessed table embedded in code. Prefer comparable offers of the same condition. |
-| Amazon scraping is treated mainly as an engineering inconvenience. | **Deliberate refusal of the specified method.** Do not scrape. Discover listings with **Bing search** (ISBN first, else name), then human-confirm. See [§11.2](#112-bing-search-is-the-price-discovery-path). |
+| Amazon scraping is treated mainly as an engineering inconvenience. | **Deliberate refusal of the specified method.** Do not scrape. Discover listings with the OpenAI Responses API **`web_search`** tool (ISBN first, else name), then human-confirm. See [§11.2](#112-openai-web_search-is-the-price-discovery-path). |
 | Fable and Astra are described as two parallel end-to-end pipelines, with Astra also called real-time. | **Deliberate split into two Astra runtimes.** Live assist during capture is not the evaluation pipeline. After seal, Fable and Astra replay the same package so Jev can compare them. See [Section 12](#12-two-model-pipelines-and-jev). |
 | Fable, Astra, and Jev are allowed near factual fields. | Deterministic barcode checks, geometry, counts, currency arithmetic, and fetched prices remain code-owned. Models emit candidates and classifications only. Price and geography are not vision class labels. |
 | Jev is close to being described as ground-truth evaluation. | Jev is a typed decision/router. Evaluation uses manually labeled inventory, independent measurements, and verified price references. |
@@ -58,7 +58,7 @@ This section is the alignment contract. Engineering choices that differ from a l
 - Multi-copy and repeat-pass deduplication.
 - Books, paintings/portraits, electronics, furniture, shelves, cups, and `other`.
 - Condition/damage evidence with an explicit review state.
-- Geography-aware book price evidence via Bing search (ISBN first, else name), with **device location** to set the local market.
+- Geography-aware book price evidence via OpenAI Responses API `web_search` (ISBN first, else name), with **device location** to set `user_location`.
 - Building **reconstruction** value from measured area × labeled demo local rates (country from location or manual override).
 - 2D plan, 3D RoomPlan model, inventory, review queue, and evidence report.
 - Two isolated post-scan model pipelines, a separate live-assist path, and a Jev decision layer.
@@ -75,8 +75,8 @@ These are kept on purpose. They are not missed requirements.
 | An RL feedback loop for your own models. | A real MDP with logged transitions from day one; contextual bandit, then offline RL, then specialist models; shadow → canary. **No** per-survey online weight update. | Insurance output must be reproducible. Online learning after each survey is unsafe. Logs without a state/action/reward home are not an RL loop either. |
 | Count every book. | Count every **visible physical copy on covered shelf faces**. Uncovered rows stay `unresolved`, never silently zero. Pass A does not count books. | “Every book in the building” is only true if every face was scanned. The product promise is complete count of covered area plus disclosed gaps. |
 | Put a value on the place. | Ship a **reconstruction** estimate: measured floor/wall area × labeled demo local rates. Not a real-estate market appraisal from RoomPlan. | RoomPlan cannot price a sale. The assignment still gets a building value number, with the basis on the report. |
-| Classifier that labels books by old/new, price, and geography. | Vision/models classify category and condition. **Price** is a Bing lookup. **Geography** comes from device location (country/city) plus manual override, not from a spine class. | Price and country are not visual labels. Location tells the system *which market* to query. |
-| Scrape Amazon; do not use the web API because APIs are expensive. | **Refuse scraping.** Price via **Bing search** by ISBN or name, then human-confirmed listings. Amazon Creators API is optional if access exists; the demo must not depend on it. | Unauthorized scraping is brittle, against typical retailer terms, and a worse $50 risk than cached Bing lookups. The ask for book prices still ships. |
+| Classifier that labels books by old/new, price, and geography. | Vision/models classify category and condition. **Price** uses `web_search`. **Geography** comes from device location (country/city) plus manual override, not from a spine class. | Price and country are not visual labels. Location scopes the search market. |
+| Scrape Amazon; do not use the web API because APIs are expensive. | **Refuse scraping.** Price via OpenAI Responses API `web_search` by ISBN or name, then human-confirmed listings. The demo does not depend on Amazon access. | Unauthorized scraping is brittle and unsafe. Cached, batched searches plus human confirmation still ship the requested book prices. |
 | “Data size” on the shelves. | Each shelf face reports occupied length, item count, fill ratio, and evidence payload bytes. | The phrase is ambiguous. Occupancy of the contents plus audit payload is the defensible reading. |
 
 ### Ask-to-landing map
@@ -90,9 +90,9 @@ Every requirement in `question.md` lands somewhere. `Shipped` means the architec
 | RoomPlan → 2D sketch and 3D model | Pass A + §10 | Shipped. RoomPlan is the geometry processor, not the processor of all media. |
 | Count all books; spines both sides; no double-count of the same face; copies in different areas count | §7.3, demo cases | Shipped |
 | Count every book in the library | Covered-face complete count + unresolved coverage | Shipped with disclosed gaps. Not a silent 100% building count. |
-| ISBN → price; Italy vs Japan local prices | Device location → country/city → Bing `market`; §11 search by ISBN or name | Shipped. GPS proposes the market; technician can override. |
+| ISBN → price; Italy vs Japan local prices | Device location → country/city → `user_location`; §11 search by ISBN or name | Shipped. GPS proposes the market; technician can override. |
 | Classifier: condition old/new | Condition/damage models + review | Shipped |
-| Classifier: by price and geography | Bing in the location-derived market; survey locale | Split on purpose. Location is the geography signal. |
+| Classifier: by price and geography | `web_search` in the location-derived market; survey locale | Split on purpose. Location is the geography signal. |
 | Count everything, including portraits and coffee cups | Closed taxonomy; mug `valuation_required=false` | Shipped |
 | Price only books, valuables, and the place | Policy engine + building reconstruction | Shipped |
 | Zoom in on damage | Pass C close-up queue | Shipped |
@@ -105,7 +105,7 @@ Every requirement in `question.md` lands somewhere. `Shipped` means the architec
 | RL feedback loop for your own models | §13 MDP, replay buffer, trainer, specialist heads | Shipped as staged RL. Online per-survey learning refused. |
 | Align on backend architecture, then build systems and app | This document is deliverable 1 | Shipped |
 | $50, run models, scan a local library, show it in a mobile app | §21–§23 | Staged to a 50–100 book zone |
-| Amazon scrape, not API | Refused. Replacement: **Bing search** by ISBN or name (§11.2), then confirmed listing | Refused method, shipped pricing via Bing |
+| Amazon scrape, not API | Refused. Replacement: OpenAI Responses API **`web_search`** by ISBN or name (§11.2), then confirmed listing | Refused method, shipped pricing via reviewed web citations |
 
 ### True non-goals
 
@@ -130,7 +130,7 @@ On-device **live assist** (quality, coverage, provisional counts) runs during Pa
 
 ### Pass A — property and room geometry
 
-The technician creates a survey, records country/city/currency and property metadata, then scans each room with RoomPlan. The app requests **When In Use** location on this screen so geography is not typed from memory. A reverse-geocode fills country, region, city, currency suggestion, and Bing market (Italy vs Japan vs India). The technician must see and can override those fields before capture starts — a demo in one city can still be valued as another market, and a denied permission must not block the scan.
+The technician creates a survey, records country/city/currency and property metadata, then scans each room with RoomPlan. The app requests **When In Use** location on this screen so geography is not typed from memory. A reverse-geocode fills country, region, city, currency suggestion, and search market (Italy vs Japan vs India). The technician must see and can override those fields before capture starts — a demo in one city can still be valued as another market, and a denied permission must not block the scan.
 
 The app preserves the raw room result, processed room result, transforms, and exported USDZ. Multiple room scans are merged into a `CapturedStructure` when supported.
 
@@ -190,7 +190,7 @@ sequenceDiagram
   participant Store as Local Capture Store
 
   T->>App: Create survey; allow location; confirm country/city/currency
-  App->>App: Reverse-geocode to Bing market and rebuild-rate country
+  App->>App: Reverse-geocode to search market and rebuild-rate country
   T->>App: Start room pass
   App->>RP: Run room scan with shared AR session
   RP-->>Store: Raw/processed rooms, poses, sampled RGB
@@ -240,7 +240,7 @@ survey_<id>/
 
 - schema version, survey/session/device IDs, app/build version;
 - locale, country, currency, timezone, and consent/retention policy;
-- location permission state, reverse-geocoded country/city, Bing market, and whether geography was GPS, manual, or mixed;
+- location permission state, reverse-geocoded country/city, search market, and whether geography was GPS, manual, or mixed;
 - start/end times and monotonic-clock anchor;
 - files, MIME types, byte sizes, and SHA-256 hashes;
 - capture modes and device capabilities;
@@ -292,7 +292,7 @@ erDiagram
 - **Valuation:** the policy-driven conclusion from accepted price evidence.
 - **ShelfFaceDataSize:** occupied length, capacity length, fill ratio, physical-copy count, unresolved count, and evidence payload bytes for one face.
 - **BuildingValuation:** reconstruction estimate from measured area × local rate table, with basis and rate version labeled.
-- **SurveyGeography:** country, region, city, currency, Bing market, and location source (`gps` / `manual` / `mixed`). Precise coordinates are optional and separately consented.
+- **SurveyGeography:** country, region, city, currency, search market, and location source (`gps` / `manual` / `mixed`). Precise coordinates are optional and separately consented.
 - **RLTransition:** one state/action/reward/next-state record for the routing or recapture policy.
 
 An ISBN is never the primary key of `AssetCopy`.
@@ -565,7 +565,7 @@ For each resolved edition and market, the pricing service gathers normalized `Pr
   "isbn13": "9780132350884",
   "market": "IN",
   "currency": "INR",
-  "source": "bing_search",
+  "source": "openai_web_search",
   "listing_url": "https://...",
   "listing_id": "...",
   "edition_match": "exact",
@@ -581,13 +581,17 @@ For each resolved edition and market, the pricing service gathers normalized `Pr
 }
 ```
 
-### 11.2 Bing search is the price-discovery path
+### 11.2 OpenAI `web_search` is the price-discovery path
 
-The inventory **Search Bing** action is a Bing search, not a retailer scrape and not a generic unspecified web API.
+The inventory price-search action uses the OpenAI Responses API `web_search` tool. It
+does not call a Bing API, scrape Bing result pages, or scrape Amazon/retailer pages.
 
-For every detected book, search Bing using a validated ISBN when one exists; otherwise search by the recognized book name (plus author, publisher, edition/format, language, and country when known). Bing results are how we find local listing URLs and candidate prices. A human still confirms edition and condition before a candidate becomes a `PriceObservation`.
-
-The classic Bing Search API v7 was retired on 11 August 2025. The current Bing-backed product is **Grounding with Bing Search** (Azure AI Foundry / Foundry `web_search`). Design against that, not the dead v7 endpoint. It charges per search transaction (listed at $14 per 1,000 as of 2026), supports `market` / `set_lang` / `count`, and requires the UI to show both the Bing query URL and the citation URLs.
+For every detected book, search with a validated ISBN when one exists; otherwise search
+by the recognized book name plus author, publisher, edition/format, language, and country
+when known. Send unique unpriced objects in batches of at most five and retain at most
+five listing URLs per item. Search citations find local listing evidence; a human still
+confirms edition, physical format, condition, and price before a draft becomes a
+`PriceObservation`.
 
 #### Query construction
 
@@ -606,11 +610,12 @@ insufficient name evidence
   → request a closer spine/title-page scan or leave pricing unresolved
 ```
 
-Pass Bing `market` from **device location**, not from a typed guess, so Italy and Japan do not share a US result set.
+Pass OpenAI `web_search` `user_location` from **device location**, not from a typed guess,
+so Italy and Japan do not share a US result set.
 
 The app requests Core Location **When In Use** at survey creation. One reading is enough; do not track the technician for the whole walkthrough. Reverse-geocode to country / admin area / city, then map:
 
-| Survey country | How it is set | Bing `market` | `set_lang` |
+| Survey country | How it is set | Survey market | Search language |
 | --- | --- | --- | --- |
 | India | GPS reverse-geocode or manual | `en-IN` | `en` |
 | Italy | GPS reverse-geocode or manual | `it-IT` | `it` |
@@ -627,7 +632,7 @@ Store on the survey:
   "admin_area": "Lombardia",
   "locality": "Milan",
   "currency": "EUR",
-  "bing_market": "it-IT",
+  "market": "it-IT",
   "set_lang": "it",
   "rebuild_rate_key": "IT",
   "coordinates": { "lat": 45.4642, "lon": 9.1900, "accuracy_m": 12, "stored": false }
@@ -636,17 +641,18 @@ Store on the survey:
 
 Default is **coarse geography** (country, city, market). Precise lat/lon is stored only if the technician consents to pin the property; otherwise keep it on-device for the reverse-geocode and drop it. If location is denied, timed out, or clearly wrong (VPN, indoor GPS jump), the survey still proceeds with a required manual country/city. `source` becomes `manual` or `mixed` when the human overrides GPS.
 
-The same country key selects the building reconstruction-rate row. Bing queries include that country so “local prices of the books” follow where the library actually is.
+The same country key selects the building reconstruction-rate row. Search context includes
+that country/city so “local prices of the books” follow where the library actually is.
 
 Keep the exact `q`, `market`, location source, and whether the query was ISBN-based or name-based on the evidence record.
 
-#### What Bing returns, and how a price is taken
+#### What `web_search` returns, and how a price is taken
 
 ```text
 ISBN or name
-  → BookPriceProvider.BingSearch
-  → Grounding with Bing Search (count ≤ 10, market, set_lang)
-  → citations + snippets + bing.com query URL
+  → BookPriceProvider.OpenAIWebSearch
+  → OpenAI Responses API web_search (user_location from survey geography)
+  → citation URLs + snippets
   → candidate PriceObservation drafts
   → filter eBook / rental / bundle / wrong edition
   → Price Evidence screen
@@ -654,7 +660,9 @@ ISBN or name
   → saved PriceObservation
 ```
 
-The backend may parse obvious prices from titles and snippets (`₹825`, `€31.99`, `¥2,640`) into drafts. That is search-result extraction, not fetching and scraping the retailer HTML. If the snippet is ambiguous, open the Bing result (or the Bing results page) in the in-app browser and let the technician confirm the visible price.
+The backend may parse obvious prices from returned titles and snippets (`₹825`, `€31.99`,
+`¥2,640`) into drafts. If a result is ambiguous, leave it pending or let the technician
+open the cited listing and confirm visible evidence; do not add a separate scraper.
 
 Name-based hits have lower identity confidence than an exact-ISBN hit. They must match the captured spine/cover before they contribute to valuation.
 
@@ -662,31 +670,36 @@ Name-based hits have lower identity confidence than an exact-ISBN hit. They must
 
 The **Price Evidence** screen:
 
-1. **Search Bing** on one book, or queue every found book (deduped by edition + market).
-2. Shows the Bing query string, the [bing.com search URL](https://www.bing.com/search?q=), and each citation’s title, URL, snippet, and any parsed price.
+1. **Search price evidence** on one book, or queue every found book (deduped by edition + market).
+2. Shows whether the query used ISBN or name, survey market, and each citation’s title, URL, snippet, and any parsed price.
 3. Lets the technician confirm edition, format, condition, and landed price.
-4. Saves the selected offer, Bing query, citation URL, retrieval timestamp, and evidence hash.
-5. Allows manual entry with a reason when Bing has no usable listing.
+4. Saves the selected offer, search query, citation URL, retrieval timestamp, and evidence hash.
+5. Allows manual entry with a reason when search has no usable listing.
 
-Bing’s use-and-display rules require showing the Bing query URL and the citation URLs in this UI. Do not hide that this was a Bing search.
+The UI preserves source attribution and citation URLs. Draft evidence is never displayed as
+a confirmed physical-book price.
 
 #### Budget and fallback
 
-Cache Bing responses by `sha256(q + market)` with a short TTL. A 50–100 book demo with ~40–80 unique editions is well under the $5 search line at $14 / 1,000 transactions.
+Cache responses by `sha256(q + market)` with a short TTL and reuse edition+market evidence
+across physical copies without merging those copies. The usage ledger records actual model,
+tool-call, token, latency, and estimated-cost metadata. There is no runtime dollar
+stop-at-cap; the operator reviews disclosed spend and failures.
 
-If an Azure Grounding-with-Bing resource cannot be created inside the $50 cap, the same query builder still runs: open `https://www.bing.com/search?q=...` in the in-app browser (`mkt` on the URL), and the technician confirms a listing. That is still Bing search; it is just not an automated transaction.
-
-**Deliberate refusal of “scrape Amazon, don’t use the API.”** The assignment asked for scraping because APIs are expensive. This plan still prices books. Bing is the search layer that finds Amazon and other retailer listings in the local market. The app will not scrape those pages, bypass CAPTCHAs, or depend on the Amazon Creators API.
+**Deliberate refusal of “scrape Amazon, don’t use the API.”** The assignment asked for
+scraping because APIs are expensive. This plan still prices books through search citations
+and human review. It will not scrape pages, bypass CAPTCHAs, or depend on Amazon access.
 
 Provider order for the MVP:
 
 1. catalog metadata: Open Library and/or Google Books (identity, not physical-copy price);
-2. **Bing search by ISBN, else by name**, market-scoped;
-3. technician-confirmed retailer listing opened from a Bing citation;
-4. Amazon Creators API **only if** access already exists — optional, not required;
-5. manual appraisal / unavailable.
+2. OpenAI Responses API **`web_search` by ISBN, else by name**, market-scoped;
+3. technician-confirmed physical retailer listing opened from a returned citation;
+4. manual appraisal / unavailable.
 
-Google Books `saleInfo` is country-dependent and often describes an eBook offer, so it must not automatically price a physical copy. Amazon's Creators API is optional. Cached Bing lookups are the default paid search spend.
+Google Books `saleInfo` is country-dependent and often describes an eBook offer, so it must
+not automatically price a physical copy. Cached OpenAI `web_search` calls are the paid
+search path.
 
 ### 11.3 Estimation rule
 
@@ -717,20 +730,20 @@ With one weak offer, return a low-confidence range or review request—not a pre
 flowchart TD
   A["AssetCopy"] --> B{"Edition or usable title?"}
   B -- No --> U["Identity review / unpriced"]
-  B -- Yes --> C["Cache: ISBN-or-name + Bing market"]
-  C -->|miss| D["Bing search: ISBN first, else name"]
-  C -->|hit| E["Cached Bing citations"]
+  B -- Yes --> C["Cache: ISBN-or-name + survey market"]
+  C -->|miss| D["OpenAI web_search: ISBN first, else name"]
+  C -->|hit| E["Cached web-search citations"]
   D --> E
   E --> F["Draft PriceObservations from snippets/citations"]
   F --> G["Filter edition, format, language, condition, eBook/rental"]
   G --> H{"Enough comparable evidence?"}
-  H -- No --> I["Open Bing results in-app / manual price"]
+  H -- No --> I["Open cited listing in-app / manual price"]
   H -- Yes --> J["Technician confirm + robust range"]
   I --> K{"Rare/high-value?"}
   K -- Yes --> L["Specialist appraisal"]
   K -- No --> J
   J --> M["Apply insurer valuation policy"]
-  M --> N["Valuation with Bing query URL, citation, timestamp"]
+  M --> N["Valuation with search query, citation, timestamp"]
 ```
 
 ## 12. Two model pipelines and Jev
@@ -962,7 +975,7 @@ flowchart TB
   STT --> IR
 
   IR --> CAT["Catalog identity service"]
-  CAT --> PRICE["Pricing: Bing search + catalog"]
+  CAT --> PRICE["Pricing: OpenAI web_search + catalog"]
   IR --> BVAL["Building valuation: area × rate table"]
   IR --> PA["Pipeline A Fable adapter"]
   IR --> PB["Pipeline B Astra replay adapter"]
@@ -992,7 +1005,7 @@ flowchart TB
 | Geometry worker | RoomPlan normalization, 2D/3D geometry, shelf capacity length | asset identity or value |
 | CV worker | quality, shelves, detections, tracking, crops, OCR/barcodes, occupied length | catalog truth or valuation policy |
 | Identity service | deterministic identifier validation and catalog candidates | physical-copy deduplication |
-| Pricing service | Bing query builder, Grounding-with-Bing adapter, cache, offer drafts, FX snapshot | insurer policy, Amazon HTML scrape, or appraisal |
+| Pricing service | OpenAI `web_search` query builder/adapter, cache, offer drafts, FX snapshot | insurer policy, retailer scraping, or appraisal |
 | Building valuation | area × versioned rate table, basis label | market appraisal |
 | Model adapters | bounded ambiguous classification; Pipeline B is Astra replay | live-assist UX, arithmetic, hard rules |
 | Policy engine | confidence/value gates and allowed transitions | perception |
@@ -1022,7 +1035,7 @@ backend/app/domain/
 backend/app/workflows/
 backend/app/providers/catalog/
 backend/app/providers/pricing/
-backend/app/providers/pricing/bing_search.py
+backend/app/providers/pricing/web_search.py
 backend/app/providers/models/
 backend/app/policy/
 backend/app/rl/
@@ -1052,8 +1065,8 @@ GET    /v1/surveys/{id}/jobs
 GET    /v1/surveys/{id}/inventory
 GET    /v1/surveys/{id}/review
 POST   /v1/reviews/{id}/decision
-POST   /v1/assets/{id}/price-search          # Bing: ISBN first, else name
-POST   /v1/surveys/{id}/price-search-queue   # one Bing query per unique edition+market
+POST   /v1/assets/{id}/price-search          # OpenAI web_search: ISBN first, else name
+POST   /v1/surveys/{id}/price-search-queue   # one search per unique edition+market
 POST   /v1/assets/{id}/price-observations
 GET    /v1/surveys/{id}/report
 GET    /v1/surveys/{id}/shelves
@@ -1095,7 +1108,7 @@ Store both overall survey status and each stage's status. An individual asset ca
 
 ## 16. Mobile product flow
 
-1. **Create Survey** — request **When In Use** location; reverse-geocode country/city; suggest currency and Bing market; technician confirms or overrides; valuation basis; consent.
+1. **Create Survey** — request **When In Use** location; reverse-geocode country/city; suggest currency and search market; technician confirms or overrides; valuation basis; consent.
 2. **Device Check** — LiDAR/support, storage, battery, camera/mic/location permission, network optional.
 3. **Room Pass** — RoomPlan guidance, name rooms, confirm joins.
 4. **Shelf Map** — detect/confirm shelf units and sides.
@@ -1107,8 +1120,8 @@ Store both overall survey status and each stage's status. An individual asset ca
 10. **Processing** — stage-specific progress and actionable failures.
 11. **Overview** — room/area, coverage, physical-copy count, shelf data size, resolved editions, contents range, building reconstruction estimate, survey city/market, unresolved material items.
 12. **2D/3D** — select shelf/asset and open evidence; shelf label shows occupied metres and copy count.
-13. **Inventory** — distinguish physical copies from unique editions; filter by room/shelf/status; **Search Bing** for any book by ISBN or name, or queue every found book.
-    A shelf-row detail lists all physical copies against the captured row and expected/detected count. Selecting one highlights its spine and opens source images, identity status, Pass C action, condition, Bing search/price evidence, and reviewed range or explicit pending/no-comparable reason. Editing or rescanning one copy must retain its physical-copy ID and must not merge neighboring copies.
+13. **Inventory** — distinguish physical copies from unique editions; filter by room/shelf/status; search price evidence by ISBN or name, or queue every found book.
+    A shelf-row detail lists all physical copies against the captured row and expected/detected count. Selecting one highlights its spine and opens source images, identity status, Pass C action, condition, web-search price evidence, and reviewed range or explicit pending/no-comparable reason. Editing or rescanning one copy must retain its physical-copy ID and must not merge neighboring copies.
 14. **Review** — merge/keep separate, choose edition, rescan barcode, bind note, confirm price, request appraisal.
 15. **Report** — signed-off JSON/PDF plus evidence manifest, rate-table version, policy_id, and limitations.
 
@@ -1129,9 +1142,9 @@ Accessibility requirements include Dynamic Type, VoiceOver labels, high-contrast
 | Repeat pass appears duplicated | Cross-pass review candidate | Merge only with strong spatial/visual evidence or human decision |
 | Book moved mid-scan | `possibly_moved` | Confirm one moved copy versus two copies |
 | Audio names several visible objects | Note remains unbound | Technician selects target asset |
-| Location denied, timed out, or indoor GPS jump | Geography `source=manual`; Bing market not auto-set | Technician enters country/city; scan continues |
-| Location country conflicts with typed address | `source=mixed`; review flag | Confirm which market to use for Bing and rebuild rates |
-| Price source unavailable/rate-limited | Cached Bing result labeled stale, or no estimate | Retry Bing, open bing.com in-app, or manual evidence |
+| Location denied, timed out, or indoor GPS jump | Geography `source=manual`; search market not auto-set | Technician enters country/city; scan continues |
+| Location country conflicts with typed address | `source=mixed`; review flag | Confirm which market to use for web search and rebuild rates |
+| Price source unavailable/rate-limited | Cached result labeled stale, or no estimate | Retry `web_search`, open a cited listing in-app, or add manual evidence |
 | Only eBook price found | Reject for physical replacement basis | Search physical format |
 | One extreme marketplace listing | Low confidence; not central value | Add comparables or appraisal |
 | Potentially valuable art/rare book | No automated precise value | Specialist appraisal |
@@ -1196,7 +1209,7 @@ These choices materially change implementation and must be confirmed:
 4. Valuation basis for books: new replacement, like-for-like used replacement, actual cash value, or another insurer rule.
 5. Countries/currencies required in the demo.
 6. Whether technicians may pull books out for barcode/title-page capture.
-7. Which external sources are legally/contractually approved for automated price extraction — **default in this plan: Bing search** (Grounding with Bing Search, or in-app bing.com fallback). Retailer pages are opened from Bing citations, not scraped.
+7. Which external sources are legally/contractually approved for automated price evidence — **default in this plan: OpenAI Responses API `web_search`**. Retailer pages may be opened from returned citations for human review, not scraped.
 8. Whether shelf/furniture value belongs to building, contents, or a configurable policy category.
 9. Retention, data residency, face/person redaction, and consent requirements.
 10. Who supplies building reconstruction-rate data and who signs off high-value appraisals.
@@ -1212,7 +1225,7 @@ Build the **entire project** in five stages on a **24-hour clock**. The A-to-Z c
 | T+0–4h | Survey package and room | Sealed hashed package; location or manual geography; 2D + 3D |
 | T+4–8h | Count physical copies | Reverse rescan does not double-count; data size on the face |
 | T+8–12h | Identity, other assets, damage | Valid ISBN only; portrait note linked; mug excluded |
-| T+12–16h | Bing prices + building reconstruction | ISBN and name-only Bing evidence; labeled rebuild estimate |
+| T+12–16h | Web-search prices + building reconstruction | ISBN and name-only citation evidence; labeled rebuild estimate |
 | T+16–24h | Fable, Astra live+replay, Jev, RL, report, eval, demo | Full product, RL home, demo script, spend ledger |
 
 A few hours over the clock is acceptable. Dropping a requirement is not.
@@ -1263,12 +1276,12 @@ A few hours over the clock is acceptable. Dropping a requirement is not.
 ### Phase 5 — price evidence and valuation
 
 - Catalog metadata for identity (Open Library / Google Books).
-- Bing query builder: ISBN first, else name; `market` from device location (overridable); cache by query hash.
-- Grounding with Bing Search adapter, plus in-app bing.com fallback.
-- Price Evidence UI: Bing query URL, citations, confirm offer.
+- OpenAI `web_search` query builder: ISBN first, else name; `user_location` from device geography (overridable); cache by query hash.
+- Responses API `web_search` adapter with batched unique unpriced objects.
+- Price Evidence UI: query basis, citations, and confirmed offer.
 - Building replacement: area × labeled demo rate table.
 
-**Exit:** a book with an ISBN and a book with only a name both produce Bing evidence; each estimated value exposes the Bing query, citation, timestamp, market, basis, range, and exclusions; rare/high-value cases remain appraisal items.
+**Exit:** a book with an ISBN and a book with only a name both produce web-search evidence; each estimated value exposes the query basis, citation, timestamp, market, basis, range, and exclusions; rare/high-value cases remain appraisal items.
 
 ### Phase 6 — model A, model B, and Jev
 
@@ -1297,7 +1310,9 @@ A few hours over the clock is acceptable. Dropping a requirement is not.
 
 ## 21. $50 demo budget
 
-Use a hard per-survey ledger and stop expensive stages at the cap.
+Use a per-survey ledger that discloses actual provider usage and estimated spend. The demo
+does not silently skip Fable/Astra/Jev work at a runtime dollar threshold; the operator
+controls the run scope and reports any overage or provider failure.
 
 | Area | Target cap | Strategy |
 | --- | ---: | --- |
@@ -1305,7 +1320,7 @@ Use a hard per-survey ledger and stop expensive stages at the cap.
 | Pipeline A | $15 | best crops only; no raw long video |
 | Pipeline B | $15 | sampled uncertain/high-value cases; cache replay |
 | Jev/evaluation calls | $5 | compact structured state only |
-| Search/catalog/misc. | $5 | Bing Grounding (~$14/1k txns), cache by ISBN/name+market; Open Library/Google Books free |
+| Search/catalog/misc. | $5 | OpenAI `web_search`, cached by ISBN/name+market; Open Library/Google Books for identity |
 | Contingency | $5 | failed calls or final rerun |
 
 This is a planning allocation, not a claim about current provider prices. Verify live pricing before implementation. The app records per-run input/output usage and estimated cost. Local barcode/OCR/quality/deduplication should handle the bulk of evidence; paid models see only the small ambiguous set.
@@ -1316,7 +1331,7 @@ This is a planning allocation, not a claim about current provider prices. Verify
 - Use signed, short-lived upload/download URLs and least-privilege service roles.
 - Keep secrets server-side; never ship retailer/model keys in the app.
 - Capture consent for video, audio, and **When In Use** location; show recording and location state clearly.
-- Use location to set survey geography (country, city, Bing market, rebuild-rate key). One reading at create-survey; no continuous tracking during the walkthrough.
+- Use location to set survey geography (country, city, search market, rebuild-rate key). One reading at create-survey; no continuous tracking during the walkthrough.
 - Default to coarse geography. Store precise coordinates only with extra consent for a property pin. Reverse-geocode on-device when possible.
 - Detect/redact bystanders/faces where policy requires it.
 - Separate customer/tenant data and log evidence access.
@@ -1348,7 +1363,7 @@ Show, in order:
 4. The repeat scan not doubling the count.
 5. Same-ISBN copies remaining separate.
 6. Barcode/ISBN validation and catalog candidate evidence.
-7. **Search Bing** by ISBN, then by name if needed; show query URL, citations, confirmed price range.
+7. Use OpenAI `web_search` by ISBN, then by name if needed; show query basis, citations, and confirmed physical-book price range.
 8. Portrait audio note linked to the correct damage close-up.
 9. Mug deliberately excluded and art deliberately routed to appraisal.
 10. Pipeline A/B disagreement, Jev proposal, deterministic gate, and human review.
@@ -1361,8 +1376,7 @@ Show, in order:
 - Apple Vision [framework](https://developer.apple.com/documentation/vision), [barcode detection](https://developer.apple.com/documentation/vision/vndetectbarcodesrequest), and [text recognition](https://developer.apple.com/documentation/vision/recognizing-text-in-images)
 - Google Books API [usage](https://developers.google.com/books/docs/v1/using) and [volume/sale fields](https://developers.google.com/books/docs/v1/reference/volumes)
 - Open Library [developer APIs](https://openlibrary.org/developers/api), [Books API](https://openlibrary.org/dev/docs/api/books), and [Search API](https://openlibrary.org/dev/docs/api/search)
-- Bing Search APIs [retired 11 August 2025](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement); successor [Grounding with Bing Search](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/bing-tools) (`market`, `set_lang`, `count`) and [Foundry web search](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/web-search)
-- Grounding with Bing [pricing](https://www.microsoft.com/en-us/bing/apis) and [display requirements](https://www.microsoft.com/en-us/bing/apis) (show Bing query URL and citation URLs)
+- OpenAI Responses API [`web_search`](https://platform.openai.com/docs/guides/tools-web-search) tool and source-citation guidance
 - Amazon [Creators API onboarding](https://affiliate-program.amazon.com/creatorsapi/docs/en-us/onboarding) — optional, not the demo path
 - International ISBN Agency [ISBN Users' Manual](https://www.isbn-international.org/content/isbn-users-manual)
 
@@ -1380,8 +1394,8 @@ flowchart LR
   V --> IR
   N --> IR
   IR --> ID["Physical copy + edition resolution"]
-  ID --> BING["Bing search: ISBN or name"]
-  BING --> PR["Price evidence + valuation policy"]
+  ID --> SEARCH["OpenAI web_search: ISBN or name"]
+  SEARCH --> PR["Price evidence + valuation policy"]
   IR --> MA["Pipeline A"]
   IR --> MB["Pipeline B"]
   MA --> J["Jev + policy gates"]

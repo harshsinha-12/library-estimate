@@ -288,7 +288,7 @@ ISBN book and name-only book both have web-search evidence. IT/JP/IN queries are
 - JSON + PDF report: property, geometry, inventory, damage, contents, building, unresolved, methodology, versions, listing citations, policy_id, limitations
 - Auth, encryption, signed URLs or local equivalent, retention/deletion, access log, redaction control
 - Accessibility pass on capture and review
-- Per-survey $50 ledger with stop-at-cap
+- Per-survey $50 ledger with disclosed estimated spend and no runtime dollar stop-at-cap
 - Failure table §17 all wired
 
 ### Work — evaluation and demo

@@ -4,7 +4,12 @@
 
 ## Current implementation
 
-Stage 1 device gate is closed. Canonical sealed capture is `eb3f30fa`. Stage 2 gate is closed: Redis + Cloudflare R2, shelf Pass B, labeled count without double-counting a reverse rescan. Next is Stage 3 identity / non-books / damage.
+Stage 1's device gate is closed; the canonical sealed capture is `eb3f30fa`. Stage 2–4
+fixture/storage gates pass, and Stage 5 now has security, accessibility, evaluation, and
+demo-readiness tooling. The physical 8–10-book row, live Fable/Astra/Jev confirmation,
+independent 50–100-book holdout, policy promotion, and recorded LiDAR demo remain open.
+See [`LEFTOVER.md`](LEFTOVER.md) and [`CHECKPOINTS.md`](CHECKPOINTS.md) for the current
+operator boundary instead of treating fixture results as device accuracy.
 
 Storage decision: Redis holds Survey IR, metadata, idempotency, jobs, and state. Cloudflare R2 (S3-compatible) holds sealed media. SQLite is an archive of Stage 1 demo data only; it is not a runtime dependency.
 

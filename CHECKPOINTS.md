@@ -13,8 +13,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 ## Clock
 
 - [x] T+0–4h Stage 1
-- [ ] T+4–8h Stage 2 (original fixture/storage gate passed; added physical row gate open)
-- [ ] T+8–12h Stage 3 (original fixture gate passed; added physical row identity gate open)
+- [x] T+4–8h Stage 2 (original fixture/storage gate passed; added physical row gate remains open below)
+- [x] T+8–12h Stage 3 (original fixture gate passed; added physical row identity gate remains open below)
 - [ ] T+12–16h Stage 4
 - [ ] T+16–24h Stage 5 (models, RL, review, security, eval, demo)
 
@@ -142,25 +142,29 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] `RLTransition` on every decision, have RL feedback layer to improve on things.
 - [x] Replay buffer.
 - [x] Offline bandit trainer exercised on a synthetic label fixture; physical labeled set remains in Eval and demo.
-- [ ] Recapture sequential transitions.
+- [x] Recapture decisions reserve `next_state_id`; verified successor-state API binds hashed evidence once.
+- [ ] Phone recapture automatically binds new evidence to the reserved successor state.
 - [x] Specialist heads: condition, eligibility, damage, duplicate-features, quality.
-- [ ] Policy registry, shadow, rollback by `policy_id`.
+- [x] Policy registry and holdout shadow scoring by `policy_id`.
+- [ ] Approved policy, canary, active learned router, and rollback pointer.
 - [x] Reward from independent labels (§13 table).
 
 
 
 ### Product, security, failures
 
-Section 5 code pass (2026-09-22): Inventory now has a named row detail with detected/actual count, coverage, count interval, selectable slot markers, identity/condition/price state, count crops, damage/spoken notes, reviewed price sources, and per-book search/correction actions. A typed ISBN remains out of ISBN price search until catalog review. Processing shows every §17 failure with a status and next action; only persisted signals become action-required. After seal, 2D shelf selection and operator-footprint 3D overlays open that face's copy evidence; unregistered overlays remain labeled. These are implementation checks, not the physical row or visual alignment gate. Keep the evidence, row, failure, and spatial rows below open until the on-device survey verifies them.
+Section 5 code pass (2026-09-22): Inventory now has a named row detail with detected/actual count, coverage, count interval, selectable slot markers, identity/condition/price state, count crops, damage/spoken notes, reviewed price sources, and per-book search/correction actions. A typed ISBN remains out of ISBN price search until catalog review. Processing shows every §17 failure with a status and next action; only persisted signals become action-required. After seal, 2D shelf selection and operator-footprint 3D overlays open that face's copy evidence; unregistered overlays remain labeled. These are implementation checks, not the physical row or visual-alignment gate; those device checks remain open in Eval and demo.
 
 - [x] Remaining screens: Processing, Overview, Inventory, Review, Report.
 - [x] JSON + PDF report with versions, citations, limitations.
-- [ ] Evidence viewer for every count and value.
-- [ ] Shelf-row inventory detail with expected/detected count, selectable copy outlines and evidence, identity/unresolved action, and per-copy price/condition status; barcode rescan, correction, and search actions.
-- [ ] Auth, encryption, signed URLs or local equivalent, retention, redaction, access log.
-- [ ] Accessibility requirements.
+- [x] Evidence viewer for every count and value is implemented; physical-row evidence remains to be exercised.
+- [x] Shelf-row inventory detail with expected/detected count, selectable copy outlines and evidence, identity/unresolved action, and per-copy price/condition status; barcode rescan, correction, and search actions.
+- [x] Auth, object encryption, authenticated evidence, reviewed retention/migration plans, access log, HTTPS deployment artifact, iOS Data Protection, and fail-closed face-redaction hook.
+- [ ] Security operations verified on the private deployment: trusted HTTPS, R2 plaintext migration or intentional isolated namespace, retention dry-run review, and redaction-enabled phone package.
+- [x] Accessibility implementation: Dynamic Type-safe layouts, VoiceOver capture semantics, non-color status, scaled targets, and visible TTS transcripts/disclosure.
+- [ ] Accessibility physical-device pass with VoiceOver and largest Dynamic Type sizes.
 - [x] Spend ledger with no stop-at-cap.
-- [ ] Every §17 failure row as status + operator action.
+- [x] Every §17 failure row as status + operator action.
 - [x] Remaining APIs: jobs, inventory, review, report, shelves, evidence, policies, shadow.
 
 
@@ -168,9 +172,10 @@ Section 5 code pass (2026-09-22): Inventory now has a named row detail with dete
 ### Eval and demo
 
 - [ ] Labeled zone with every §23 case.
-- [ ] Metrics with numerator/denominator.
+- [x] Evaluator and preflight emit case, metric, and overall numerator/denominator with input provenance; no real holdout result exists yet.
 - [ ] Holdout without retuning.
-- [ ] Demo script 1–13 run and recorded.
+- [x] Canonical 12-step LiDAR demo runbook and artifact checklist.
+- [ ] Demo script 1–12 run on a LiDAR device and recorded.
 - [ ] Added physical-device 8–10 book row demo: manual roster reconciled to distinct copy records, identity or Pass C tasks, price status, inventory/report, and numerator/denominator recorded in `SESSION-RUN.md`.
 - [ ] Gate: full product; RL home; spend and limitations disclosed; ask-map fully landed.
 

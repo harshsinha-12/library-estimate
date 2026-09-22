@@ -120,16 +120,16 @@ Left:
 
 ## 4. RL while mentioning the model/technicque used
 
-`backend/app/rl/offline.py` has a reward table (false merge −5, missed high-value −8, mug exclusion +0.2, and the rest of the §13 weights). Every live transition is stored with `reward: null`. Independent labels are a POST that has not been done on a real survey. Auto-accepts are not audited. `approved_at` is always null. Specialist heads (condition, eligibility, damage, duplicate-features, quality) train on synthetic labels and are never used or credited live.
+`backend/app/rl/offline.py` has a reward table (false merge −5, missed high-value −8, mug exclusion +0.2, and the rest of the §13 weights). Live transitions keep `reward: null` until independent labels arrive. Model auto-accepts now have a separate evidence-hash/A/B/Jev/policy audit, and recapture decisions reserve a `next_state_id` that the successor-state API can bind once to verified new evidence. No physical independent labels have been posted, the phone does not bind recapture evidence automatically, `approved_at` remains null, and specialist heads have only synthetic exercise.
 
 Left:
 
 27. Write an `RLTransition` for every material decision: accept, recapture, human, specialist, frontier, price confirm, barcode rescan — not only the model-replay button.
 28. Apply the §13 reward from independent labels, never from “Jev agreed with Fable.”
-29. Audit log of auto-accepted items: copy id, evidence hash, A/B/Jev, policy reason, who could still overturn it.
+29. Keep the implemented auto-accept audit complete for every live auto-accept: copy id, evidence hash, A/B/Jev, policy reason, and who could still overturn it. Exercise it on the physical zone.
 30. Gold set: the labeled 50–100 book zone with every demo case (two same-ISBN copies, reverse scan, no ISBN, ambiguous edition, moved book, damaged book, portrait + spoken damage, mug, appraisal item). Freeze it before any training.
 31. Classification credit: condition / eligibility / damage / keep-vs-merge heads are scored against gold, and that score is part of reward. A router-only bandit is not “your own models.”
-32. Recapture is sequential: action → new evidence → `next_state_id`. Today `next_state_id` is always null.
+32. Finish sequential recapture on the phone: action → reserved `next_state_id` → new verified evidence. The backend successor-state path exists; automatic capture binding and a physical run remain open.
 33. Promotion gate: train on survey IDs disjoint from holdout; shadow; report reward and calibration with numerator/denominator; **approve** a `policy_id`; pin the previous id to roll back. Shadow-only with `approved_at: None` is not promotion.
 34. One live survey must not change production weights. That constraint is already true; keep it.
 
@@ -149,9 +149,11 @@ Needed to see sections 1–4, not as a separate product track.
 
 ## 6. Security, accessibility, eval, demo
 
-40. HTTPS in front of the API before an operator token is used. Phone packages encrypted at rest. Existing R2 plaintext migrated or left on a non-encrypted namespace on purpose. Face/bystander redaction hook. Retention execute path only after dry-run review.
-41. Accessibility: Dynamic Type, VoiceOver through capture, status not color-only, large one-handed targets, transcripts for TTS.
-42. Holdout survey, never used for training, metrics with numerator/denominator via `scripts/evaluate_stage5.py` on a real report plus an independent roster.
+Code/readiness pass completed 2026-09-22: the repo now has a Caddy HTTPS deployment artifact; iOS Data Protection and backup exclusion for sealed packages; a configurable, fail-closed Vision face-redaction hook with a package audit; reviewed-plan-only R2 encryption migration and retention execution; Dynamic Type-safe layouts, scaled targets, non-color status, VoiceOver semantics/announcements, and visible TTS transcripts with AI disclosure; strict holdout preflight/evaluation provenance; and one canonical 12-step runbook. These artifacts do not prove a private deployment or physical-device result.
+
+40. Operate HTTPS in front of the API before an operator token is used. On the private environment, enable and verify phone redaction, migrate existing R2 plaintext or intentionally leave it in an isolated non-encrypted namespace, and execute retention only after reviewing the exact dry-run plan ID.
+41. Run the implemented accessibility flow on-device with VoiceOver and the largest Dynamic Type sizes; verify focus/announcement order, contrast, camera/AR fallback descriptions, one-handed controls, and TTS transcript/audio behavior.
+42. Capture a holdout survey never used for training, freeze an independent 50–100-copy roster, pass `eval.preflight`, and archive real numerator/denominator metrics from `scripts/evaluate_stage5.py`. Templates and fixture results are not accuracy.
 43. Demo script, in order, on a LiDAR device, recorded:
 
     1. RoomPlan + location market
