@@ -38,15 +38,25 @@ enum OperatorCredentials {
 }
 
 enum OperatorSession {
+  static func apiURL(_ backendURL: URL, path: String) throws -> URL {
+    guard var components = URLComponents(url: backendURL, resolvingAgainstBaseURL: false) else {
+      throw URLError(.badURL)
+    }
+    let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    let base = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    components.path = "/" + [base, trimmed].filter { !$0.isEmpty }.joined(separator: "/")
+    guard let url = components.url else { throw URLError(.badURL) }
+    return url
+  }
+
   private static func authorized(_ request: URLRequest) throws -> URLRequest {
     var request = request
     let token = OperatorCredentials.load()
-    if !token.isEmpty {
-      guard request.url?.scheme?.lowercased() == "https" else {
-        throw URLError(.secureConnectionFailed)
-      }
-      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    guard !token.isEmpty else { return request }
+    guard request.url?.scheme?.lowercased() == "https" else {
+      return request
     }
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     return request
   }
 

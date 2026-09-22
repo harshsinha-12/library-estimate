@@ -95,6 +95,8 @@ flowchart LR
 
 The iOS app holds **no provider keys**. Secrets stay in `.env.local` on the server. Live Astra during capture is **not** Pipeline B.
 
+Report copy uses **Astra Extra** for Pipeline B and **Astra-live Extra** for capture assist. The stored pipeline ids remain `astra_replay` and `astra_live`.
+
 ---
 
 ## 2. End-to-end flow
@@ -255,7 +257,7 @@ A freestanding double-sided shelf is two identities, e.g. `shelf_1.face_A` and `
 | Text height | Apple Vision OCR box height in pixels | Move closer if `0 < height < 14` |
 | Occlusion | **Not** inferred from pixel count; stays `0.0` until an independent actual count exists | — |
 
-Coverage only advances when quality messages are empty, at least one spine is detected, and at least half of detections have readable text.
+Coverage advances from **readable** detections only (8 cm bins on their projected `faceX`). Blur/glare/speed still warn the operator; they no longer gate binning. Unread detections never mint copies.
 
 ### 5.2 How a spine is identified in a frame
 
@@ -267,22 +269,23 @@ flowchart TB
   OCR --> TXT["Text boxes with ≥3 letters"]
   FILT --> PROP["SpineRegion: box, stacked, leaning, readable"]
   TXT --> PROP
-  PROP --> NMS["Drop nested / >70% overlap"]
-  NMS --> BAND["Keep boxes whose midY is in 0.28–0.72"]
-  BAND --> PROJ["Unproject box onto assumed shelf plane"]
-  PROJ --> OBS["SpineFaceObservation in face metres"]
+  PROP --> NMS["Drop overlapping boxes (boxesOverlap ≥35%)"]
+  NMS --> PROJ["Unproject box onto assumed shelf plane, else image-x fallback"]
+  PROJ --> ROW["assignRow by faceY band"]
+  ROW --> OBS["SpineFaceObservation in face metres"]
 ```
 
 Rectangle gates (`LiveQualityAnalyzer.spineCandidates`):
 
-- `minimumAspectRatio = 0.035`, `maximumAspectRatio = 1.0`
+- `minimumAspectRatio = 0.035`, `maximumAspectRatio = 1.2`
 - `minimumSize = 0.04`, `minimumConfidence = 0.5`, max 100 observations
 - Tall = `height > width * 1.4`; stacked = `width > height * 1.4`
 - Narrow: tall width `≤ 0.25` or stacked height `≤ 0.45`
-- Min span 0.07 (tall) / 0.18 (stacked); min area 0.008 / 0.04
-- Max area 0.45 of the frame
+- Min span 0.07 (tall) / 0.12 (stacked); min area 0.008 / 0.02
+- Max area 0.55 of the frame
 - Leaning: tall spine whose top-left and bottom-left x differ by `> 0.4 * width`
-- Readable: a letter-bearing OCR box intersects the rectangle
+- Readable: a letter-bearing OCR box overlaps the rectangle (`boxesOverlap`, ≥35% of the smaller area or centre-in-box)
+- **Unread rectangles are dropped.** Crochet/table squares and nested inner covers without unique title letters are not minted as copies; the row stays `partial`
 
 ### 5.3 Projecting a box onto the shelf face
 
@@ -292,7 +295,7 @@ Rectangle gates (`LiveQualityAnalyzer.spineCandidates`):
 - Normal = `up × right`
 - Plane origin = camera position + `normal * 0.65 m` (`trackingMode: ar_local_plane_assumed_0.65m`)
 
-Each rectangle is unprojected to face-local metres `(faceX, faceY)` plus width/height. Detections outside `width ∈ [0.003, 0.2]` (stacked up to 0.6) or `height ∈ [0.003, 0.8]` mark the row **uncertain**.
+Each rectangle is unprojected to face-local metres `(faceX, faceY)` plus width/height. Accepted projected size is `width ∈ [0.003, 0.25]` (stacked up to 0.8) and `height ∈ [0.003, 0.9]`. If unprojection fails those bounds, the store falls back to image-normalised `midX * faceWidthMeters`. `assignRow` then maps `faceY` onto per-row bands (expanded from readable detections).
 
 ### 5.4 Live instance tracking (within the sweep)
 
@@ -300,27 +303,29 @@ Each rectangle is unprojected to face-local metres `(faceX, faceY)` plus width/h
 
 ```mermaid
 flowchart TB
-  OBS["New SpineFaceObservation sorted by faceX"] --> MATCH{"Existing instance within X and Y gates?"}
-  MATCH -->|"0 matches"| NEW["Create SpineInstance + save JPEG crop"]
-  MATCH -->|"1 unused match"| UPD["EMA update pose 3:1, keep ID"]
-  MATCH -->|">1 matches"| UNC["Mark row uncertain; do not merge"]
-  UPD --> CROP["Refresh crop when text is readable or 2nd observation"]
-  NEW --> SORT["Sort row by faceX then faceY"]
+  OBS["New SpineFaceObservation sorted by faceX"] --> MATCH{"Overlap or X/Y gate vs existing instance?"}
+  MATCH -->|"0 matches and readable"| NEW["Create SpineInstance + save JPEG crop"]
+  MATCH -->|"0 matches and unread"| DROP["Do not mint; mark row uncertain"]
+  MATCH -->|"best unused match"| UPD["EMA update pose 3:1, keep ID, refresh crop"]
+  MATCH -->|">1 matches"| UNC["Mark row uncertain; still take the closest"]
+  UPD --> SORT["Sort row by faceX then faceY"]
+  NEW --> SORT
 ```
 
-Match gates:
+Match gates (`SpineInstanceTracker`):
 
-- `limitX = clamp(min(widths) * 0.42, 0.012, 0.025)`
-- `limitY = clamp(min(heights) * 0.2, 0.02, 0.05)`
-- Stacked flag must agree
+- Overlap: ≥35% of the smaller box, or centre-in-box, or close midX with 30% height overlap
+- Else `limitX = clamp(max(widths) * 0.9, 0.018, 0.04)` and `limitY = clamp(max(heights) * 0.35, 0.03, 0.08)`
+- Same stacked flag, or Euclidean `Δx+Δy < 0.015`
+- New instances require readable text
 
-Live overlays (`visibleSpines`) map the current-frame box to the closest instance if `Δx ≤ 0.03 m` and `Δy ≤ 0.05 m`.
+Live overlays (`visibleSpines`) are the persistent instances for every row, not only the current frame.
 
 Crops are stored as `shelf_scans/crops/{rowId}_{uuid}.jpg`.
 
 ### 5.5 Coverage heatmap
 
-Horizontal bins of **8 cm** along the face. A quality-clean frame that sees from 8% to 92% of the image width unions those bins. Coverage ≈ `binCount * 0.08 / faceWidthMeters`.
+Horizontal bins of **8 cm** along the face, from the min…max `faceX` of **readable** observations (at most 30 bins in one frame). Coverage ≈ `binCount * 0.08 / faceWidthMeters`.
 
 A row is `ok` only if:
 
@@ -330,9 +335,9 @@ A row is `ok` only if:
 
 Otherwise it stays `partial` and is listed for recapture. Uncovered rows are **never silent zeros**.
 
-### 5.6 Astra-live during Pass B/C (assist only)
+### 5.6 Astra-live Extra during Pass B/C (assist only)
 
-Optional sampled Astra (`POST /v1/surveys/{id}/astra-live`):
+Optional sampled Astra Extra live assist (`POST /v1/surveys/{id}/astra-live`):
 
 - Debounced **2 s**
 - JPEG compressed to ≤ ~350 KB
@@ -747,13 +752,14 @@ Category aliases: computer/monitor/appliance/laptop → `electronics`; shelf/tab
 - Images as `type: image` base64 source
 - Adapter accepts **only** `pipeline=fable`
 
-### Pipeline B — Astra replay
+### Pipeline B — Astra Extra (stored as `astra_replay`)
 
 - Provider: OpenAI Responses API
 - Model: `ASTRA_MODEL` default `gpt-6-astra`
 - Strict `json_schema` `model_assessment`
-- Independent of Astra-live; live results are **not** reused as B
+- Independent of Astra-live Extra; live results are **not** reused as B
 - Adapter accepts **only** `pipeline=astra_replay`
+- PDF/report label: **Astra Extra (Pipeline B)**
 
 If a provider fails, the copy is a **disclosed partial** that routes to human review. Adapters do not invent assessments.
 

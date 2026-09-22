@@ -49,10 +49,12 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "static func identities(from jpeg: Data)" in assist
     assert "func considerObject(" in assist
     analyzer = (source_root / "Capture/LiveQualityAnalyzer.swift").read_text(encoding="utf-8")
-    assert "maximumAspectRatio = 1.0" in analyzer
+    assert "maximumAspectRatio = 1.2" in analyzer
     assert "maximumObservations = 100" in analyzer
     assert "minimumSize = 0.04" in analyzer
     assert "hasReadableText" in analyzer
+    assert "if !readable { return nil }" in analyzer
+    assert "boxesOverlap" in analyzer
     shelf = (source_root / "Views/ShelfPassView.swift").read_text(encoding="utf-8")
     capturing = shelf.split("if store.capturing")[1].split("} else {")[0]
     assert "Finish face" in capturing
@@ -62,6 +64,12 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "shelf_scans/crops/" in store
     assert "self.taggedCrops[path] = crop" in store
     assert "self.taggedFrames[path] = jpeg" in store
+    assert "rebuildVisibleSpines" in store
+    assert "rowBands" in store
+    assert "rowBands[activeRowId] == nil" in store
+    assert "observations.filter(\\.hasReadableText).map(\\.faceY)" in store
+    assert "0.28...0.72" not in store
+    assert "quality.messages.isEmpty" not in store
     assert "func focusedImage(for _: CGRect) -> UIImage? {\n    currentImage()" in store
     exceptions = (source_root / "Capture/ExceptionCaptureStore.swift").read_text(encoding="utf-8")
     assert "func capture(_ image: UIImage, highlight: CGRect? = nil)" in exceptions
@@ -88,7 +96,14 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "minInterval: TimeInterval = 2" in live
     assert "maxCalls" not in live
     assert "not inventory" in live.lower() or "assist_metadata" in live
+    assert "backend URL missing" in live
+    assert "Astra-live failed" in live
+    assert "Astra-live paused" not in live
+    assert "OperatorSession.apiURL" in live
+    assert "about" in live.lower()
     assert "astraLive" in shelf or "AstraLiveSession" in shelf
+    assert "astraLive.consider" in shelf
+    assert "backendURL: backendURL" in shelf
     exception = (source_root / "Views/ExceptionPassView.swift").read_text(encoding="utf-8")
     assert "AstraLiveSession" in exception
     assert "astra-live" in exception or "astraLive" in exception
@@ -131,6 +146,10 @@ def test_ios_camera_session_is_sequential() -> None:
     assert "case stillCamera" in coordinator
     assert "func tryAcquire" in coordinator
     assert "Optical zoom is not available" in coordinator
+
+    session = (source_root / "Services/OperatorSession.swift").read_text(encoding="utf-8")
+    assert "static func apiURL" in session
+    assert "secureConnectionFailed" not in session
 
     room_store = (source_root / "Capture/RoomCaptureStore.swift").read_text(encoding="utf-8")
     assert "func releaseGeometrySession" in room_store

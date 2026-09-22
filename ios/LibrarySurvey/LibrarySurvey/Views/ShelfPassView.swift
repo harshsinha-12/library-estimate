@@ -135,7 +135,7 @@ struct ShelfPassView: View {
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         .padding()
-        if !astraLive.status.isEmpty {
+        if store.capturing {
           AccessibleStatusLabel(text: astraLive.caption, kind: .progress)
             .font(.caption2)
             .padding(8)
@@ -161,10 +161,8 @@ struct ShelfPassView: View {
           if store.assistCount > 0 {
             AccessibleStatusLabel(text: "About \(store.assistCount) visible copies", kind: .neutral)
           }
-          if !astraLive.status.isEmpty {
-            AccessibleStatusLabel(text: astraLive.caption, kind: .progress)
-              .font(.caption)
-          }
+          AccessibleStatusLabel(text: astraLive.caption, kind: .progress)
+            .font(.caption)
           Text("Coverage marks distinct readable regions of the selected row. Confirm the actual count before sealing; any mismatch stays partial.")
             .font(.caption)
           coverageHeatmap
@@ -193,11 +191,13 @@ struct ShelfPassView: View {
     .accessibilityStatusAnnouncements(accessibilityCaptureStatus)
     .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
       store.ingestCurrentFrame()
-      if store.capturing, let jpeg = store.currentJpeg(), let backendURL {
-        Task { await livePrices.consider(jpeg: jpeg, draft: draft, backendURL: backendURL) }
+      if store.capturing {
+        if let jpeg = store.currentJpeg(), let backendURL {
+          Task { await livePrices.consider(jpeg: jpeg, draft: draft, backendURL: backendURL) }
+        }
         Task {
           await astraLive.consider(
-            jpeg: jpeg,
+            jpeg: store.currentJpeg(),
             capturePass: "B",
             draft: draft,
             backendURL: backendURL,

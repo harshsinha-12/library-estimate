@@ -287,3 +287,22 @@ Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs r
 - Documentation reconciliation: Stage 2/3 original clocks remain complete while their added phone-row gates stay open. Implemented product/security/accessibility/evaluator/runbook artifacts are checked separately from operational/device gates. `FINAL-PLAN.md` now matches the OpenAI Responses API `web_search` path and no-runtime-stop spend behavior; earlier Bing entries in this chronological log are historical and superseded.
 - Verification: focused security tests passed 6/6, evaluation tests 7/7, and iOS source-contract tests 4/4. The complete `make check` run passed Ruff, Python compilation, and **93 tests**. `git diff --check` and IDE diagnostics were clean. A generic iOS Simulator build passed; physical VoiceOver focus/announcement timing, largest Dynamic Type layouts, redaction-enabled package inspection, trusted HTTPS, R2 migration/namespace isolation, retention execution, holdout metrics, and demo recording were not run.
 - **Still open for Harsh/device/operator:** physical 8–10-book row; live provider/model confirmation and ledger spend; approved policy/canary/rollback; private HTTPS deployment and storage migration decision; accessibility/redaction device pass; independent 50–100-copy holdout; recorded 12-step LiDAR demo.
+
+## 2026-09-22 — Shelf sweep + seal pipeline (code; no phone)
+
+Last implementation pass for leftover shelf-sweep/seal items. No physical device was used. The 8–10 book row gate stays open.
+
+- **Pass B.** Start sweep stays on for the face. Spine candidates persist in shelf-face X/Y across frames (not last-frame JPEG Y). Reverse sweep updates the same instance IDs. Blur/glare no longer zero coverage or drop copies. Table-top/stacked detections still mint slots; a failed AR unproject falls back to image-mapped face coordinates. Coverage of a named row increases only when that row was in view and readable.
+- **Astra-live.** Pass B posts `POST /v1/surveys/{id}/astra-live` about every 2s from AppStorage backend URL, with no extra button. Missing URL, HTTP status, and decode/network errors are shown and logged (`Astra-live failed: … · not inventory`). Caption is `Astra-live assist · about N in frame · not inventory`. Local HTTP no longer throws when an operator token is stored; the token is sent only on HTTPS. Rebuild iOS for this.
+- **After seal.** Vision titles / web_search / small_model stay `gpt-5.6-luna` with no `temperature=0`. GET `/report` during `ingest_validation` cannot wipe Redis `searches`. Each web search is saved to the pricing key immediately. If spoken search raises, Fable + Astra replay + Jev still run on every copy. Restart uvicorn for this.
+- **Tests.** Report stub does not wipe searches; Luna vision omits temperature; after_seal still replays if spoken search raises; tracker reverse sweep does not double in labeled JSON. Focused stage 4/5 + iOS contract tests: 54 passed. Swift tracker fixture passed. Ruff, compileall, `git diff --check` passed.
+- **Still needs Harsh on the phone:** confirm detected/actual count on one row, reverse sweep, seal, gold labels. Do not treat this as closing the physical row gate.
+
+## 2026-09-22 — Pass B overcount (code; rebuild iOS)
+
+Live table-top frame showed **17 persistent candidates vs 4 physical copies**. Detector boxed crochet/blanket rectangles (Slot 11/14) and nested inner cover boxes, then dumped every unmatched detection onto `row_01`.
+
+- Candidates without readable title letters are dropped (no unread mint). Nested boxes are NMS'd; the tracker associates by box overlap and does not remint.
+- After the selected row has a readable band, texture above/below it is not assigned to that row.
+- Reverse sweep still updates the same IDs. Unread covers stay partial until recapture or Actual count.
+- Swift tracker fixture passed; focused iOS contract + shelf-count tests passed. Rebuild the iOS app before the next sweep. The 8–10 book row gate stays open.

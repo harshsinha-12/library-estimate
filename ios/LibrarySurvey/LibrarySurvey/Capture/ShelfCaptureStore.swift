@@ -25,6 +25,7 @@ final class ShelfCaptureStore: ObservableObject {
   private var tracker = SpineInstanceTracker()
   private var facePlane: simd_float4x4?
   private var coveredBins: [String: Set<Int>] = [:]
+  private var rowBands: [String: (min: Double, max: Double)] = [:]
   private var lastProcessedFrameId: UUID?
   private var faceWidthMeters = 1.2
   private var taggedCrops: [String: Data] = [:]
@@ -102,6 +103,7 @@ final class ShelfCaptureStore: ObservableObject {
     tracker.reset()
     facePlane = nil
     coveredBins = [:]
+    rowBands = [:]
     lastProcessedFrameId = nil
     taggedCrops = [:]
     taggedFrames = [:]
@@ -139,6 +141,7 @@ final class ShelfCaptureStore: ObservableObject {
     tracker.reset()
     facePlane = nil
     coveredBins = [:]
+    rowBands = [:]
     lastProcessedFrameId = nil
     activeRowId = rowCoverage[0].rowId
     faceWidthMeters = max(0.35, unit.footprint(for: face).maxX - unit.footprint(for: face).minX)
@@ -163,8 +166,7 @@ final class ShelfCaptureStore: ObservableObject {
   func selectRow(_ rowId: String) {
     guard rowCoverage.contains(where: { $0.rowId == rowId }) else { return }
     activeRowId = rowId
-    highlightedSpines = []
-    visibleSpines = []
+    if capturing { rebuildVisibleSpines() }
   }
 
   func confirmActualCount(for rowId: String) {
@@ -202,9 +204,7 @@ final class ShelfCaptureStore: ObservableObject {
     lastProcessedFrameId = frame.id
     let now = frame.monotonicSeconds
     let dt = previousTime.map { now - $0 } ?? 0.4
-    let detected = LiveQualityAnalyzer.spineCandidates(jpeg: frame.jpegData).filter {
-      (0.28...0.72).contains($0.box.midY)
-    }
+    let detected = LiveQualityAnalyzer.spineCandidates(jpeg: frame.jpegData)
     quality = LiveQualityAnalyzer.analyze(
       jpeg: frame.jpegData,
       previousTransform: previousTransform,
@@ -212,13 +212,12 @@ final class ShelfCaptureStore: ObservableObject {
       dt: dt,
       provisionalCount: detected.count
     )
-    assistCount = quality.provisionalCount
-    highlightedSpines = detected.map(\.box)
     if let image = UIImage(data: frame.jpegData) { imageSize = image.size }
     mergeSpines(detected, sample: frame)
+    assistCount = rowCoverage.reduce(0) { $0 + $1.copyCount }
+    highlightedSpines = visibleSpines.map(\.box)
     previousTransform = frame.cameraTransform
     previousTime = now
-    updateCoverage(detected: detected, sample: frame)
   }
 
   func stopFace() {
@@ -306,76 +305,132 @@ final class ShelfCaptureStore: ObservableObject {
   }
 
   private func mergeSpines(_ detected: [SpineRegion], sample: FrameSample) {
-    guard let index = rowCoverage.firstIndex(where: { $0.rowId == activeRowId }),
-          let projection = sampler.projections[sample.id], imageSize.width > 0 else { return }
-    if facePlane == nil { facePlane = makeFacePlane(camera: projection.camera) }
-    let observations = detected.compactMap { region -> SpineFaceObservation? in
-      guard let center = project(region.box.midX, region.box.midY,
-                                 camera: projection.camera, orientation: projection.orientation),
-            let left = project(region.box.minX, region.box.midY,
-                               camera: projection.camera, orientation: projection.orientation),
-            let right = project(region.box.maxX, region.box.midY,
-                                camera: projection.camera, orientation: projection.orientation),
-            let top = project(region.box.midX, region.box.maxY,
-                              camera: projection.camera, orientation: projection.orientation),
-            let bottom = project(region.box.midX, region.box.minY,
-                                 camera: projection.camera, orientation: projection.orientation)
-      else { return nil }
-      let width = abs(right.x - left.x)
-      let height = abs(top.y - bottom.y)
-      guard width >= 0.003, width <= (region.isStacked ? 0.6 : 0.2),
-            height >= 0.003, height <= 0.8 else { return nil }
-      return SpineFaceObservation(
-        faceX: center.x, faceY: center.y,
-        widthMeters: width, heightMeters: height, box: region.box,
-        hasReadableText: region.hasReadableText,
-        isStacked: region.isStacked, isLeaning: region.isLeaning,
-        time: sample.monotonicSeconds, jpeg: sample.jpegData
+    let projection = sampler.projections[sample.id]
+    if let projection, facePlane == nil {
+      facePlane = makeFacePlane(camera: projection.camera)
+    }
+    var byRow: [String: [SpineFaceObservation]] = [:]
+    for region in detected {
+      let point = facePoint(region.box, stacked: region.isStacked, projection: projection)
+      guard let rowId = assignRow(faceY: point.y) else { continue }
+      byRow[rowId, default: []].append(
+        SpineFaceObservation(
+          faceX: point.x, faceY: point.y,
+          widthMeters: point.width, heightMeters: point.height, box: region.box,
+          hasReadableText: region.hasReadableText,
+          isStacked: region.isStacked, isLeaning: region.isLeaning,
+          time: sample.monotonicSeconds, jpeg: sample.jpegData
+        )
       )
     }
-    if observations.count < detected.count { tracker.markUncertain(activeRowId) }
-    tracker.ingest(rowId: activeRowId, observations: observations) { [weak self] id, box, jpeg in
-      guard let self, let crop = self.crop(jpeg, box: box) else { return nil }
-      let path = "shelf_scans/crops/\(self.activeRowId)_\(id.uuidString).jpg"
-      self.taggedCrops[path] = crop
-      self.taggedFrames[path] = jpeg
-      return path
+    for (rowId, observations) in byRow {
+      tracker.ingest(rowId: rowId, observations: observations) { [weak self] id, box, jpeg in
+        guard let self else { return nil }
+        let path = "shelf_scans/crops/\(rowId)_\(id.uuidString).jpg"
+        if let crop = self.crop(jpeg, box: box) {
+          self.taggedCrops[path] = crop
+        }
+        self.taggedFrames[path] = jpeg
+        return path
+      }
+      expandBand(rowId, faceYs: observations.filter(\.hasReadableText).map(\.faceY))
+      updateCoverage(rowId: rowId, observations: observations)
     }
-    let row = tracker.instances[activeRowId] ?? []
-    rowCoverage[index].copyCount = row.count
-    visibleSpines = observations.compactMap { observation in
-      guard let closest = row.enumerated().min(by: {
-        abs($0.element.faceX - observation.faceX) + abs($0.element.faceY - observation.faceY) <
-        abs($1.element.faceX - observation.faceX) + abs($1.element.faceY - observation.faceY)
-      }), abs(closest.element.faceX - observation.faceX) <= 0.03,
-            abs(closest.element.faceY - observation.faceY) <= 0.05 else { return nil }
-      return ShelfVisibleSpine(
-        id: closest.element.id, box: observation.box, rowId: activeRowId,
-        slot: closest.offset, hasReadableText: closest.element.hasReadableText
-      )
+    for index in rowCoverage.indices {
+      rowCoverage[index].copyCount = (tracker.instances[rowCoverage[index].rowId] ?? []).count
+      updateRowStatus(index)
     }
-    updateRowStatus(index)
+    rebuildVisibleSpines()
   }
 
-  private func updateCoverage(detected: [SpineRegion], sample: FrameSample) {
-    guard let index = rowCoverage.firstIndex(where: { $0.rowId == activeRowId }),
-          let projection = sampler.projections[sample.id],
-          quality.messages.isEmpty,
-          detected.count > 0,
-          detected.filter(\.hasReadableText).count * 2 >= detected.count,
-          let left = project(0.08, 0.5, camera: projection.camera,
-                             orientation: projection.orientation),
-          let right = project(0.92, 0.5, camera: projection.camera,
-                              orientation: projection.orientation)
-    else { return }
-    let lower = Int(floor(min(left.x, right.x) / 0.08))
-    let upper = Int(floor(max(left.x, right.x) / 0.08))
+  private func rebuildVisibleSpines() {
+    visibleSpines = rowCoverage.flatMap { row in
+      (tracker.instances[row.rowId] ?? []).enumerated().map { slot, spine in
+        ShelfVisibleSpine(
+          id: spine.id, box: spine.box, rowId: row.rowId,
+          slot: slot, hasReadableText: spine.hasReadableText
+        )
+      }
+    }
+  }
+
+  private func updateCoverage(rowId: String, observations: [SpineFaceObservation]) {
+    guard let index = rowCoverage.firstIndex(where: { $0.rowId == rowId }) else { return }
+    let readable = observations.filter(\.hasReadableText)
+    guard !readable.isEmpty else { return }
+    let xs = readable.map(\.faceX)
+    let lower = Int(floor((xs.min() ?? 0) / 0.08))
+    let upper = Int(floor((xs.max() ?? 0) / 0.08))
     guard upper >= lower, upper - lower <= 30 else { return }
-    coveredBins[activeRowId, default: []].formUnion(lower...upper)
+    coveredBins[rowId, default: []].formUnion(lower...upper)
     rowCoverage[index].coverage = min(
-      1, Double(coveredBins[activeRowId, default: []].count) * 0.08 / faceWidthMeters
+      1, Double(coveredBins[rowId, default: []].count) * 0.08 / faceWidthMeters
     )
-    updateRowStatus(index)
+  }
+
+  private func facePoint(
+    _ box: CGRect,
+    stacked: Bool,
+    projection: (camera: ARCamera, orientation: UIInterfaceOrientation)?
+  ) -> (x: Double, y: Double, width: Double, height: Double) {
+    if let projection,
+       let center = project(box.midX, box.midY, camera: projection.camera,
+                            orientation: projection.orientation),
+       let left = project(box.minX, box.midY, camera: projection.camera,
+                          orientation: projection.orientation),
+       let right = project(box.maxX, box.midY, camera: projection.camera,
+                           orientation: projection.orientation),
+       let top = project(box.midX, box.maxY, camera: projection.camera,
+                         orientation: projection.orientation),
+       let bottom = project(box.midX, box.minY, camera: projection.camera,
+                            orientation: projection.orientation)
+    {
+      let width = abs(right.x - left.x)
+      let height = abs(top.y - bottom.y)
+      if width >= 0.003, width <= (stacked ? 0.8 : 0.25),
+         height >= 0.003, height <= 0.9
+      {
+        return (center.x, center.y, width, height)
+      }
+    }
+    return (
+      Double(box.midX) * faceWidthMeters,
+      Double(box.midY),
+      max(0.01, Double(box.width) * faceWidthMeters),
+      max(0.01, Double(box.height))
+    )
+  }
+
+  private func assignRow(faceY: Double) -> String? {
+    for row in rowCoverage {
+      if let band = rowBands[row.rowId],
+         faceY >= band.min - 0.05,
+         faceY <= band.max + 0.05
+      {
+        return row.rowId
+      }
+    }
+    let count = max(1, rowCoverage.count)
+    if count > 1, let minY = rowBands.values.map({ $0.min }).min(),
+       let maxY = rowBands.values.map({ $0.max }).max(), maxY - minY > 0.08
+    {
+      let t = (faceY - minY) / (maxY - minY)
+      let index = min(count - 1, max(0, Int((1 - t) * Double(count))))
+      return rowCoverage[index].rowId
+    }
+    // First readable detections bootstrap the selected row. Later texture
+    // boxes above/below that band must not dump onto row_01.
+    if rowBands[activeRowId] == nil { return activeRowId }
+    return nil
+  }
+
+  private func expandBand(_ rowId: String, faceYs: [Double]) {
+    guard let low = faceYs.min(), let high = faceYs.max() else { return }
+    if let band = rowBands[rowId] {
+      rowBands[rowId] = (min(band.min, low), max(band.max, high))
+    } else {
+      rowBands[rowId] = (low, high)
+    }
   }
 
   private func updateRowStatus(_ index: Int) {
@@ -467,7 +522,7 @@ final class ShelfCaptureStore: ObservableObject {
         )
       },
       placement: box.placement,
-      trackingMode: "ar_local_plane_assumed_0.65m"
+      trackingMode: "shelf_face_xy_persistent;ar_plane_or_image_fallback"
     )
   }
 }

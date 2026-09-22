@@ -214,11 +214,28 @@ def _cached_report_objects(
     ):
         return cached
     structured = structure_report_objects(records)
-    pricing["report_objects"] = structured
-    pricing["report_objects_sha256"] = digest
     current = dict(repository.get_json(survey_id, "pricing") or {})
+    durable_keys = (
+        "searches",
+        "live_searches",
+        "found_prices",
+        "observations",
+        "ledger",
+        "search_attempts",
+        "no_comparable",
+        "log",
+        "schema_version",
+        "pipeline_version",
+    )
+    durable = {key: current[key] for key in durable_keys if key in current}
+    if not durable:
+        durable = {key: pricing[key] for key in durable_keys if key in pricing}
+    current.update(durable)
     current["report_objects"] = structured
     current["report_objects_sha256"] = digest
+    survey = repository.get(survey_id)
+    if survey.status == "ingest_validation" and "searches" not in durable:
+        return structured
     repository.save_json(survey_id, "pricing", current)
     return structured
 
