@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from backend.app.api.dependencies import get_survey_workflow
 from backend.app.domain.models import (
+    AstraLiveRequest,
     CapturePackageManifest,
     InventoryResult,
     LivePriceSearchRequest,
@@ -33,6 +34,7 @@ from backend.app.rl.offline import (
     train_offline_policy,
 )
 from backend.app.utils.paths import validate_package_path
+from backend.app.workflows.astra_live import list_astra_live, record_astra_live
 from backend.app.workflows.models import ModelReplayError, replay_asset
 from backend.app.workflows.report import build_report
 from backend.app.workflows.stage3 import apply_review
@@ -153,12 +155,32 @@ def model_replay(request: Request, survey_id: UUID, asset_copy_id: str) -> dict:
     try:
         return replay_asset(
             get_survey_workflow(request).repository, survey_id, asset_copy_id,
-            run_id=request.state.run_id,
+            run_id=request.state.run_id, source="button_replay",
         )
     except SurveyNotFoundError as error:
         raise HTTPException(status_code=404, detail="survey not found") from error
     except ModelReplayError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/astra-live")
+def astra_live(request: Request, survey_id: UUID, payload: AstraLiveRequest) -> dict:
+    try:
+        return record_astra_live(
+            get_survey_workflow(request).repository,
+            survey_id,
+            payload.model_dump(mode="json"),
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+
+
+@router.get("/surveys/{survey_id}/astra-live")
+def get_astra_live(request: Request, survey_id: UUID) -> dict:
+    try:
+        return list_astra_live(get_survey_workflow(request).repository, survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
 
 
 @router.get("/surveys/{survey_id}/model-runs")

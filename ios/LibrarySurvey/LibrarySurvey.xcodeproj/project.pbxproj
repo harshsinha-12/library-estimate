@@ -16,6 +16,7 @@
 		1F13171D603809AED9D252C9 /* RoomCaptureContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7CA864A25DCD9232388B09 /* RoomCaptureContainer.swift */; };
 		2250F04C823B49975660A454 /* PackagePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA3E3171F4FBD156129CF23 /* PackagePreviewView.swift */; };
 		23CB2C2671405F7E460DB5A9 /* AudioNoteRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */; };
+		2D9F5B3C0E8A52C1B7D6F4E2 /* AstraLiveAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8E4A2B9D7F41B0A6C5E3D1 /* AstraLiveAssist.swift */; };
 		255C16719F1B21171B7DF5B6 /* OperatorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43349E7F91B889372B4308B1 /* OperatorSession.swift */; };
 		32FF30380A5446D6967D8677 /* DeviceCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843442AA8496CF71010E8750 /* DeviceCheckService.swift */; };
 		3966D58A4F4FE36A05AF3A1D /* LivePriceAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF3BF2DEB90DE100D968CAB /* LivePriceAssist.swift */; };
@@ -61,6 +62,7 @@
 		082CC6F89646262287DB3B7A /* JSONCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONCoding.swift; sourceTree = "<group>"; };
 		10D267CACD1ED23A8AA22182 /* ShelfMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfMapView.swift; sourceTree = "<group>"; };
 		11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioNoteRecorder.swift; sourceTree = "<group>"; };
+		1C8E4A2B9D7F41B0A6C5E3D1 /* AstraLiveAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AstraLiveAssist.swift; sourceTree = "<group>"; };
 		21956A0227737D443A1F57B5 /* FileHashing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileHashing.swift; sourceTree = "<group>"; };
 		26C68BCD82208FD8803E9219 /* MonotonicClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonotonicClock.swift; sourceTree = "<group>"; };
 		360C071ABB5CA35E7906875D /* Stage3ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage3ReviewView.swift; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */,
+				1C8E4A2B9D7F41B0A6C5E3D1 /* AstraLiveAssist.swift */,
 				843442AA8496CF71010E8750 /* DeviceCheckService.swift */,
 				DBF3BF2DEB90DE100D968CAB /* LivePriceAssist.swift */,
 				6B666F2104D2E3966DF0492F /* LocalNetworkPrompter.swift */,
@@ -321,6 +324,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7CF5E8EFDC34BCB4D02F4726 /* AppConfiguration.swift in Sources */,
+				2D9F5B3C0E8A52C1B7D6F4E2 /* AstraLiveAssist.swift in Sources */,
 				23CB2C2671405F7E460DB5A9 /* AudioNoteRecorder.swift in Sources */,
 				AB6A617FE9F28198F6EBBBE9 /* CaptureEvidenceView.swift in Sources */,
 				6183DD440564177A251EC3D8 /* CapturePackageWriter.swift in Sources */,

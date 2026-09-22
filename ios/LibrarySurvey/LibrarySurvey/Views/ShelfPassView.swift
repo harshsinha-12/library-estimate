@@ -12,6 +12,7 @@ struct ShelfPassView: View {
   let onOther: (UIImage?) -> Void
   @AppStorage("backendURL") private var backendURLString = "http://192.168.29.178:8000"
   @StateObject private var livePrices = LivePriceSession()
+  @StateObject private var astraLive = AstraLiveSession()
 
   var body: some View {
     ZStack(alignment: .bottom) {
@@ -60,6 +61,13 @@ struct ShelfPassView: View {
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: Capsule())
         .padding()
+        if !astraLive.status.isEmpty {
+          Text(astraLive.caption)
+            .font(.caption2)
+            .padding(8)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.bottom, 72)
+        }
       } else {
         VStack(alignment: .leading, spacing: 10) {
           Text("\(unit.name) · face \(face.rawValue)")
@@ -78,6 +86,11 @@ struct ShelfPassView: View {
           if store.assistCount > 0 {
             Label("About \(store.assistCount) visible copies", systemImage: "sparkles")
               .foregroundStyle(.yellow)
+          }
+          if !astraLive.status.isEmpty {
+            Text(astraLive.caption)
+              .font(.caption)
+              .foregroundStyle(.orange)
           }
           coverageHeatmap
           HStack {
@@ -107,7 +120,21 @@ struct ShelfPassView: View {
       store.ingestCurrentFrame()
       if store.capturing, let jpeg = store.currentJpeg(), let backendURL {
         Task { await livePrices.consider(jpeg: jpeg, draft: draft, backendURL: backendURL) }
+        Task {
+          await astraLive.consider(
+            jpeg: jpeg,
+            capturePass: "B",
+            draft: draft,
+            backendURL: backendURL,
+            qualityMessages: store.quality.messages,
+            provisionalCount: store.assistCount,
+            unreadableSlots: store.recaptureRows
+          )
+        }
       }
+    }
+    .onChange(of: store.capturing) { _, capturing in
+      if capturing { astraLive.resetFace() }
     }
   }
 

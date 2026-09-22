@@ -11,7 +11,7 @@ struct InventoryView: View {
       if let overview {
         Section("Row roster") {
           Button("Search prices for every found edition") { Task { await queue() } }
-          Text("Detected/actual and priced/eligible stay visible. Drafts are not confirmed prices. Open a copy to run Fable, Astra, and Jev; their results stay on that copy and also under Report.")
+          Text("Detected/actual and priced/eligible stay visible. Drafts are not confirmed prices. After seal, Fable and Astra run on every copy automatically. Open a copy to see the Jev comparison; the button there is optional replay.")
             .font(.footnote)
         }
         ForEach(overview.rows) { row in

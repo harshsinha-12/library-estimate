@@ -245,3 +245,12 @@ Sequential camera ownership is now productized in the iOS capture flow. No physi
 - After the room is processed, Review Shelves shows the RoomPlan plan. Dragging a box stores an operator-placed footprint. Unplaced units stay an explicit unregistered overlay. Those coordinates go into `shelf_scans/labeled.json` and the 2D plan instead of the old disconnected placeholders.
 - If RGB cannot be sampled during RoomPlan, the capture UI shows **Sequential fallback** and `device/calibration.json` records `camera_ownership: sequential` plus `rgb_evidence_mode`.
 - Verification: Ruff, compileall, `git diff --check`, and 62 isolated backend tests passed. `test_live_storage` and `test_settings_repr_redacts_credentials` need `REDIS_HOST` in this environment. No Xcode/simulator on this host. Device confirmation of exclusive camera ownership remains for when Harsh is back.
+
+## 2026-09-22 — Leftover #3 Fable, Astra, Jev (code)
+
+Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs remain unconfirmed.
+
+- Astra-live: `POST /v1/surveys/{id}/astra-live` on Pass B/C, sampled (max 6/survey, 8s interval, `$50` reservation). Stored as `authority: assist_metadata`. Not Pipeline B and not inventory. Unavailable provider returns a disclosed skip, not an invented assessment. iOS `AstraLiveSession` samples during shelf sweep and Pass C stills.
+- After seal: `replay_survey` runs Pipeline A (Fable) and Pipeline B (Astra replay) on **every** `AssetCopy` with the same evidence bytes. The inventory button is optional replay. Missing keys or budget produce disclosed partial + human review.
+- Jev writes a comparison record (A fields, B fields, disagreement, chosen route, confidence) separate from policy. Jev cannot write count or price. Geometry, ISBN, merge, and money keys are dropped from assessments.
+- Settings expose `FABLE_MODEL` / `ASTRA_MODEL` / `JEV_MODEL` defaults (`claude-fable-5-1`, `gpt-6-astra`, `jev-latest`). Confirming live IDs and spending against the ledger is still open below.

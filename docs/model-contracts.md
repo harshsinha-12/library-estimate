@@ -15,7 +15,11 @@ The TTS UI must disclose that generated speech is AI-generated. The defaults fol
 
 ## Stage 5 replay and usage
 
-`POST /v1/surveys/{survey_id}/assets/{asset_copy_id}/model-replay` freezes a bounded per-copy evidence JSON in object storage, then sends its same bytes independently to Fable (`claude-fable-5-1`) and Astra replay (`gpt-6-astra`). The iOS inventory copy screen posts this route and `GET /v1/surveys/{survey_id}/model-runs` shows the stored results. The package names the already-extracted copy in `target_identity` (title, ISBN, crop when present) so a crowded shelf frame is scored as that one copy, not as an unlabeled stack. Up to two stored JPEG/PNG references are attached as provider image inputs, with a per-copy crop preferred when it exists. Raw provider responses are saved before normalized assessments. Jev (`jev-latest`) then receives only structured A/B assessments and deterministic flags; its choice and probabilities are retained separately from the final policy decision. A failed or unavailable provider routes to human review. No live Fable call is part of local verification.
+`POST /v1/surveys/{survey_id}/assets/{asset_copy_id}/model-replay` is optional replay of a sealed copy. After seal, `replay_survey` runs Pipeline A (Fable, `claude-fable-5-1` via `FABLE_MODEL`) and Pipeline B (Astra replay, `gpt-6-astra` via `ASTRA_MODEL`) independently on **every** `AssetCopy`, using the same frozen evidence bytes. A failed or missing provider is stored as a disclosed partial that routes to human review; the adapters do not invent an assessment. Jev (`jev-latest` via `JEV_MODEL`) emits a comparison record (A fields, B fields, disagreement, chosen route, confidence) and must not write count or price. Policy may still veto. The iOS copy screen shows that comparison; the button is not the pipeline.
+
+`POST /v1/surveys/{survey_id}/astra-live` is the sampled Astra-live capture assist (Pass B/C). It is stored as `authority: assist_metadata` under `derived/astra-live/` and a Redis list. It is not Pipeline B and is never written as inventory truth. Sampling is capped (6 calls/survey, 8s interval, `$50` reservation) so live assist cannot consume the demo budget. `GET /v1/surveys/{survey_id}/astra-live` lists stored assists. No live Fable/Astra/Jev spend is part of local verification; configured default IDs are not a confirmation of provider access.
+
+The package names the already-extracted copy in `target_identity` (title, ISBN, crop when present) so a crowded shelf frame is scored as that one copy, not as an unlabeled stack. Up to two stored JPEG/PNG references are attached as provider image inputs, with a per-copy crop preferred when it exists. Raw provider responses are saved before normalized assessments. Forbidden keys (geometry, ISBN, merge, money) are dropped before validation so they cannot enter the assessment record.
 
 Every replay decision appends an `RLTransition` with `reward: null` until independently labeled feedback exists. Human Stage 3 review actions also append transitions, but the offline trainer excludes human-selected actions from policy fitting. Independent labels carry the reward table outcome. A disjoint-survey trainer fits supported logged policy actions and specialist heads, registers a shadow artifact, and scores labeled holdout transitions. Shadow output includes action support and an overlap warning; it never updates live routing.
 
@@ -30,8 +34,8 @@ The canonical contract is [`schemas/model-assessment.schema.json`](../schemas/mo
 Runtime validation is provider-specific at the edge:
 
 - `backend/app/providers/models/fable.py` accepts only `pipeline=fable`.
-- `backend/app/providers/models/astra.py` accepts only `pipeline=astra_replay`.
-- `backend/app/providers/models/normalization.py` performs strict Pydantic validation and rejects extra fields.
+- `backend/app/providers/models/astra.py` accepts only `pipeline=astra_replay` for Pipeline B. Astra-live uses a separate `AstraLiveAssist` contract (`pipeline=astra_live`, `authority=assist_metadata`).
+- `backend/app/providers/models/normalization.py` performs strict Pydantic validation. Forbidden money/geometry/ISBN/merge keys are dropped; remaining extra fields are not stored on the assessment.
 
 The raw provider response and the normalized assessment are different records. Provider integrations must preserve the raw response as immutable audit evidence before parsing it; only the validated normalized assessment may enter Jev.
 

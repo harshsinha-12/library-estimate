@@ -34,6 +34,7 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         "Capture/ShelfCaptureStore.swift",
         "Capture/LiveQualityAnalyzer.swift",
         "Services/LivePriceAssist.swift",
+        "Services/AstraLiveAssist.swift",
         "Views/OverviewView.swift",
         "Views/InventoryView.swift",
         "Views/PriceEvidenceView.swift",
@@ -66,9 +67,25 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "Run Fable, Astra, and Jev" in price
     assert "model-replay" in price
     assert "Results for this named copy appear here" in price
+    assert "after seal" in price.lower() or "After seal" in price
     report = (source_root / "Views/ReportView.swift").read_text(encoding="utf-8")
     assert "modelRuns" in report
     assert "Fable, Astra, and Jev" in report
+    assert "after seal" in report.lower() or "After seal" in report
+    live = (source_root / "Services/AstraLiveAssist.swift").read_text(encoding="utf-8")
+    assert "astra-live" in live
+    assert "maxCalls = 6" in live
+    assert "not inventory" in live.lower() or "assist_metadata" in live
+    assert "astraLive" in shelf or "AstraLiveSession" in shelf
+    exception = (source_root / "Views/ExceptionPassView.swift").read_text(encoding="utf-8")
+    assert "AstraLiveSession" in exception
+    assert "astra-live" in exception or "astraLive" in exception
+    inventory = (source_root / "Views/InventoryView.swift").read_text(encoding="utf-8")
+    assert "after seal" in inventory.lower()
+    project = (IOS_ROOT / "LibrarySurvey.xcodeproj" / "project.pbxproj").read_text(
+        encoding="utf-8"
+    )
+    assert "AstraLiveAssist.swift" in project
 
 
 def test_ios_camera_session_is_sequential() -> None:

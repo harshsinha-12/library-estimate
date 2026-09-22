@@ -61,6 +61,32 @@ class EvidencePackage(StrictModel):
     task: str = Field(min_length=1)
 
 
+class AstraLiveQuality(StrictModel):
+    blur: bool | None = None
+    glare: bool | None = None
+    readable: bool | None = None
+    notes: str | None = Field(default=None, max_length=400)
+
+
+class AstraLiveAssist(StrictModel):
+    """Capture UX only. Never Pipeline B and never inventory truth."""
+
+    schema_version: Literal["1.0.0"]
+    assist_id: UUID
+    survey_id: UUID
+    pipeline: Literal["astra_live"]
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    authority: Literal["assist_metadata"]
+    capture_pass: Literal["B", "C"]
+    quality: AstraLiveQuality
+    provisional_count: int | None = Field(default=None, ge=0, le=500)
+    unreadable_slots: list[str] = Field(default_factory=list, max_length=40)
+    recapture_hint: str | None = Field(default=None, max_length=400)
+    confidence: float = Field(ge=0, le=1)
+    rationale: str | None = Field(default=None, max_length=1000)
+
+
 class ModelAssessmentProvider(Protocol):
     """Fable and Astra adapters must return this validated, shared shape."""
 

@@ -1,6 +1,6 @@
 # Implementation checkpoints
 
-**Last updated:** 2026-09-21  
+**Last updated:** 2026-09-22
 **Source of truth:** `IMPLEMENTATION.md` (entire project, 24-hour clock) and `FINAL-PLAN.md`
 
 A stage is complete only when every item in that stage and its exit gate in `IMPLEMENTATION.md` are done. Nothing is deferred.
@@ -129,7 +129,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Evidence package frozen; identical input to A and B.
 - [x] Fable batch adapter.
 - [x] Astra replay adapter.
-- [ ] Astra-live assist.
+- [x] Astra-live assist.
 - [x] Shared assessment schema wired end-to-end.
 - [x] Jev routing: accept, recapture, human, alternate resolver.
 - [x] Policy vetoes (high-value, eBook-as-physical, ISBN-only merge).

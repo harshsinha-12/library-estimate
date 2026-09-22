@@ -7,6 +7,7 @@ import os
 import time
 from urllib.request import Request, urlopen
 
+from backend.app.providers.models.remote import configured_jev_model
 from backend.app.providers.usage import record_usage, reserve_budget
 
 CRITERIA = {
@@ -21,7 +22,7 @@ def propose_route(state: dict) -> dict:
     key = os.getenv("JEV_API_KEY", "").strip()
     if not key:
         raise RuntimeError("JEV_API_KEY is required for Jev routing")
-    model = os.getenv("JEV_MODEL", "jev-latest").strip() or "jev-latest"
+    model = configured_jev_model()
     body = {
         "model": model,
         "state": state,
@@ -58,6 +59,7 @@ def parse_jev_response(raw: dict, *, requested_model: str = "jev-latest") -> dic
     invalid = any(value < 0 or value > 1 for value in values.values())
     if invalid or abs(sum(values.values()) - 1) > 0.02:
         raise ValueError("Jev response probabilities are invalid")
+    # Jev may only propose a route. Count, price, geometry, and ISBN are dropped.
     return {
         "model": str(raw.get("model") or requested_model),
         "choice": choice,

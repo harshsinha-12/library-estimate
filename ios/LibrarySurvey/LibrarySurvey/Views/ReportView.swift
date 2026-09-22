@@ -39,12 +39,15 @@ struct ReportView: View {
           }
         }
         Section("Fable, Astra, and Jev") {
-          Text("Run a copy from Inventory → that copy. Results stay on the copy screen; this page lists stored runs for the survey. Prepare PDF to include the same section.")
+          Text("After seal, Fable (A) and Astra replay (B) run on every copy automatically. The inventory button is optional replay of the same sealed bytes. Astra-live during capture is assist only, not Pipeline B.")
             .font(.footnote)
           if let pipelines = report.modelPipelines {
             Text("Fable: \(pipelines.fable?.status ?? "not_run")")
             Text("Astra: \(pipelines.astra?.status ?? "not_run")")
             Text("Jev: \(pipelines.jev?.status ?? "not_run")")
+            if let live = pipelines.astraLive {
+              Text("Astra-live assist: \(live.status)")
+            }
             if let note = pipelines.note { Text(note).font(.caption) }
           }
           if let runs = report.modelRuns, !runs.isEmpty {
