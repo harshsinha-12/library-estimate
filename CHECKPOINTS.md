@@ -151,6 +151,8 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 
 ### Product, security, failures
 
+Section 5 code pass (2026-09-22): Inventory now has a named row detail with detected/actual count, coverage, count interval, selectable slot markers, identity/condition/price state, count crops, damage/spoken notes, reviewed price sources, and per-book search/correction actions. A typed ISBN remains out of ISBN price search until catalog review. Processing shows every §17 failure with a status and next action; only persisted signals become action-required. After seal, 2D shelf selection and operator-footprint 3D overlays open that face's copy evidence; unregistered overlays remain labeled. These are implementation checks, not the physical row or visual alignment gate. Keep the evidence, row, failure, and spatial rows below open until the on-device survey verifies them.
+
 - [x] Remaining screens: Processing, Overview, Inventory, Review, Report.
 - [x] JSON + PDF report with versions, citations, limitations.
 - [ ] Evidence viewer for every count and value.

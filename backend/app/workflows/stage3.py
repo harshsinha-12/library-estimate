@@ -282,7 +282,8 @@ class Stage3Worker:
                         "scope": scan.get("scope", "volume"),
                         "identifier_kind": (
                             f"{scan.get('scope', 'volume')}_isbn"
-                            if typed.kind.startswith("isbn") else typed.kind
+                            if typed.kind.startswith("isbn")
+                            else typed.kind
                         ),
                         "format": scan.get("format") or "unknown",
                         "evidence_ref": scan.get("evidence_ref"),
@@ -537,11 +538,14 @@ def apply_review(repository: SurveyRepository, survey_id: UUID, decision: dict) 
     )
     repository.save_json(survey_id, "stage3", result)
     record_decision(
-        repository, survey_id,
-        policy_id="human_review_v1", action_source="human",
+        repository,
+        survey_id,
+        policy_id="human_review_v1",
+        action_source="human",
         action="recapture" if action == "rescan_barcode" else "human_review",
         state={
-            "queue_id": target["id"], "queue_kind": target["kind"],
+            "queue_id": target["id"],
+            "queue_kind": target["kind"],
             "asset_copy_id": decision.get("asset_copy_id") or target.get("asset_copy_id"),
             "evidence_ref": target.get("evidence_ref"),
             "operator_action": action,
@@ -549,3 +553,88 @@ def apply_review(repository: SurveyRepository, survey_id: UUID, decision: dict) 
         next_state_id=str(uuid4()) if action == "rescan_barcode" else None,
     )
     return result
+
+
+def correct_book_identity(repository: SurveyRepository, survey_id: UUID, payload: dict) -> dict:
+    """Record an operator correction without changing sealed capture or inferring an ISBN."""
+    result = repository.get_json(survey_id, "stage3")
+    if result is None:
+        raise ValueError("Stage 3 review is unavailable")
+    asset_id = str(payload.get("asset_copy_id") or "")
+    if not any(
+        asset.get("asset_copy_id") == asset_id and asset.get("category") == "book"
+        for asset in result.get("assets") or []
+    ):
+        raise ValueError("unknown physical book copy")
+    title = str(payload.get("title") or "").strip()
+    if len(title) < 2:
+        raise ValueError("enter the visible title")
+    reason = str(payload.get("reason") or "").strip()
+    if len(reason) < 3:
+        raise ValueError("explain the correction")
+    raw = str(payload.get("isbn") or "").strip()
+    typed = type_identifier(raw, "isbn") if raw else None
+    if typed and not typed.valid:
+        raise ValueError(typed.reason or "invalid ISBN")
+    scope = str(payload.get("scope") or "volume")
+    if scope not in {"set", "volume"}:
+        raise ValueError("scope must be set or volume")
+    physical_format = str(payload.get("format") or "unknown")
+    if physical_format not in {"unknown", "paperback", "hardcover", "library_binding"}:
+        raise ValueError("unsupported physical format")
+    identity = {
+        "asset_copy_id": asset_id,
+        "title": title,
+        "author": str(payload.get("author") or "").strip(),
+        "raw": raw or None,
+        "normalized": typed.normalized if typed else None,
+        "kind": typed.kind if typed else None,
+        "valid": bool(typed),
+        "usable_for_isbn_price_query": False,
+        "status": "operator_correction_pending_catalog_review"
+        if typed
+        else "operator_title_correction",
+        "scope": scope,
+        "format": physical_format,
+        "evidence_ref": None,
+        "reason": reason,
+    }
+    previous = next(
+        (item for item in result.get("identities") or [] if item.get("asset_copy_id") == asset_id),
+        None,
+    )
+    result["identities"] = [
+        item for item in result.get("identities") or [] if item.get("asset_copy_id") != asset_id
+    ] + [identity]
+    result.setdefault("corrections", []).append(
+        {"asset_copy_id": asset_id, "previous": previous, "current": identity, "reason": reason}
+    )
+    for task in result.get("queue") or []:
+        if (task.get("asset_copy_id") == asset_id
+                and task.get("kind") in {"unread_spine", "rescan_barcode", "manual_identity"}
+                and task.get("status") == "open"):
+            task["status"] = "resolved_by_operator_correction"
+    if typed:
+        result.setdefault("queue", []).append(
+            Stage3Worker._queue(
+                "catalog_review",
+                asset_id,
+                "Confirm the typed ISBN against the visible title and edition",
+                None,
+            )
+        )
+    repository.save_json(survey_id, "stage3", result)
+    record_decision(
+        repository,
+        survey_id,
+        policy_id="human_review_v1",
+        action_source="human",
+        action="human_review",
+        state={
+            "asset_copy_id": asset_id,
+            "operator_action": "identity_correction",
+            "reason": reason,
+            "isbn_pending_catalog_review": bool(typed),
+        },
+    )
+    return identity

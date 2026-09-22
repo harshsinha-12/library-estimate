@@ -82,6 +82,7 @@ class PricingWorker:
         repository.save_json(survey_id, "pricing", state)
         building = self._building(repository, survey_id, survey.geography.model_dump(mode="json"))
         rows = self._row_details(inventory, copies)
+        self._attach_operator_evidence(copies, rows, stage3, inventory, state)
         eligible = [item for item in copies if item["eligible"]]
         priced = [item for item in eligible if item["valuation_status"] in {"quoted", "manual"}]
         contents = self._contents_range(copies, survey.geography.currency)
@@ -132,6 +133,59 @@ class PricingWorker:
         ir["building_valuation"] = building
         repository.save_json(survey_id, "ir", ir)
         return payload
+
+    @staticmethod
+    def _attach_operator_evidence(
+        copies: list[dict], rows: list[dict], stage3: dict, inventory: dict, state: dict
+    ) -> None:
+        observations = {
+            item.get("observation_id"): item for item in inventory.get("observations") or []
+        }
+        damage = stage3.get("damage") or []
+        notes = stage3.get("notes") or []
+        queue = stage3.get("queue") or []
+        accepted = [
+            item
+            for item in state.get("observations") or []
+            if item.get("review_status") == "accepted" and item.get("offer_type") == "physical"
+        ]
+        faces = {
+            item.get("shelf_face_id"): item for item in inventory.get("shelf_face_data_sizes") or []
+        }
+        for copy in copies:
+            asset_id = copy["asset_copy_id"]
+            asset = next(
+                (
+                    item
+                    for item in stage3.get("assets") or inventory.get("asset_copies") or []
+                    if item.get("asset_copy_id") == asset_id
+                ),
+                {},
+            )
+            copy["count_evidence"] = [
+                observations[ref]
+                for ref in asset.get("observation_refs") or []
+                if ref in observations
+            ]
+            copy["damage_evidence"] = [
+                item for item in damage if item.get("asset_copy_id") == asset_id
+            ]
+            copy["spoken_notes"] = [item for item in notes if item.get("asset_copy_id") == asset_id]
+            copy["review_tasks"] = [item for item in queue if item.get("asset_copy_id") == asset_id]
+            copy["confirmed_price_evidence"] = [
+                item for item in accepted if item.get("asset_copy_id") == asset_id
+            ]
+            copy["placement"] = faces.get(copy.get("face_id"), {}).get("placement")
+        for row in rows:
+            row["placement"] = faces.get(row.get("face_id"), {}).get("placement")
+            row["count_interval"] = next(
+                (
+                    item.get("count_interval")
+                    for item in faces.get(row.get("face_id"), {}).get("rows") or []
+                    if item.get("row_id") == row.get("row_id")
+                ),
+                None,
+            )
 
     def search_asset(self, repository: SurveyRepository, survey_id: UUID, asset_id: str) -> dict:
         survey = repository.get(survey_id)
@@ -223,8 +277,7 @@ class PricingWorker:
         unresolved = {
             "status": "unresolved",
             "reason": (
-                "No book name or ISBN yet. Point the camera at the cover or barcode "
-                "and scan again."
+                "No book name or ISBN yet. Point the camera at the cover or barcode and scan again."
             ),
             "title": title,
             "isbn": isbn,
@@ -361,9 +414,7 @@ class PricingWorker:
         )
         unresolved = {
             "status": "unresolved",
-            "reason": (
-                "Point the camera at the object and say what it is, then scan again."
-            ),
+            "reason": ("Point the camera at the object and say what it is, then scan again."),
             "title": label or None,
             "isbn": None,
             "query": None,
@@ -787,12 +838,17 @@ class PricingWorker:
             raise ValueError("unsupported price observation action")
         copies = self._refresh(repository, survey_id, state, geography, stage3, inventory)
         record_decision(
-            repository, survey_id, policy_id="price_review_v1", action_source="human",
+            repository,
+            survey_id,
+            policy_id="price_review_v1",
+            action_source="human",
             action="accept" if action in {"confirm", "manual"} else "human_review",
             state={
-                "asset_copy_id": asset_id, "operator_action": action,
+                "asset_copy_id": asset_id,
+                "operator_action": action,
                 "price_observation_id": (
-                    confirmed["price_observation_id"] if action == "confirm"
+                    confirmed["price_observation_id"]
+                    if action == "confirm"
                     else payload.get("price_observation_id")
                 ),
                 "reason": payload.get("reason"),
@@ -977,9 +1033,7 @@ class PricingWorker:
                 record_attempt(state, job["lookup"])
             parsed_rows = self._run_batch(chunk, geography)
             for job, parsed in zip(chunk, parsed_rows, strict=False):
-                stored = self._store_search(
-                    repository, survey_id, state, geography, job, parsed
-                )
+                stored = self._store_search(repository, survey_id, state, geography, job, parsed)
                 for index, item in enumerate(results):
                     if item is job:
                         results[index] = stored
@@ -1023,9 +1077,9 @@ class PricingWorker:
     ) -> dict:
         listing = (prior or {}).get("listing_url") or ""
         return {
-            "search_id": sha256_bytes(
-                f"found|{job.get('lookup') or job.get('query')}".encode()
-            )[:16],
+            "search_id": sha256_bytes(f"found|{job.get('lookup') or job.get('query')}".encode())[
+                :16
+            ],
             "edition_key": job["edition_key"],
             "query_kind": job["kind"],
             "query": job.get("book_title") or job["query"],
@@ -1192,9 +1246,7 @@ class PricingWorker:
             "reason": citation.get("snippet"),
         }
 
-    def _copy_rows(
-        self, stage3: dict, inventory: dict, state: dict, geography: dict
-    ) -> list[dict]:
+    def _copy_rows(self, stage3: dict, inventory: dict, state: dict, geography: dict) -> list[dict]:
         assets = list(stage3.get("assets") or inventory.get("asset_copies") or [])
         evidence_by_observation = {
             item.get("observation_id"): item.get("evidence_ref")
@@ -1304,9 +1356,7 @@ class PricingWorker:
                 reason = state["no_comparable"][asset_id]
             elif spoken:
                 status = "price_pending"
-                reason = (
-                    "Spoken or tagged cost is a draft assertion and is not a confirmed price"
-                )
+                reason = "Spoken or tagged cost is a draft assertion and is not a confirmed price"
                 if spoken is not None and spoken not in drafts:
                     drafts = [*drafts, spoken]
             elif identity_task and query is None:
@@ -1331,8 +1381,7 @@ class PricingWorker:
                 (
                     item
                     for item in state["searches"]
-                    if item.get("edition_key") == edition_key
-                    or item.get("query") == query
+                    if item.get("edition_key") == edition_key or item.get("query") == query
                 ),
                 None,
             )
@@ -1378,20 +1427,21 @@ class PricingWorker:
                     "search_id": None if search is None else search.get("search_id"),
                     "listing_url": None if search is None else search.get("listing_url"),
                     "evidence_refs": asset.get("observation_refs") or [],
-                    "evidence_paths": sorted({
-                        evidence_by_observation.get(ref) or ref
-                        for ref in asset.get("observation_refs") or []
-                        if evidence_by_observation.get(ref) or "/" in ref
-                    } | ({asset["evidence_ref"]} if asset.get("evidence_ref") else set())),
+                    "evidence_paths": sorted(
+                        {
+                            evidence_by_observation.get(ref) or ref
+                            for ref in asset.get("observation_refs") or []
+                            if evidence_by_observation.get(ref) or "/" in ref
+                        }
+                        | ({asset["evidence_ref"]} if asset.get("evidence_ref") else set())
+                    ),
                     "actions": self._actions(status, eligible, query, identity_task, category),
                 }
             )
         rows.extend(self._rows_from_searches(rows, state, geography))
         return rows
 
-    def _rows_from_searches(
-        self, existing: list[dict], state: dict, geography: dict
-    ) -> list[dict]:
+    def _rows_from_searches(self, existing: list[dict], state: dict, geography: dict) -> list[dict]:
         known = []
         for row in existing:
             title = str(row.get("title") or row.get("label") or "").strip()
@@ -1486,9 +1536,9 @@ class PricingWorker:
                     "identity_status": "name" if category == "book" else category,
                     "condition": None,
                     "valuation_status": (
-                        "price_pending" if item.get("status") == "draft" else (
-                            item.get("status") or "price_pending"
-                        )
+                        "price_pending"
+                        if item.get("status") == "draft"
+                        else (item.get("status") or "price_pending")
                     ),
                     "reason": item.get("reason") or DRAFT_REASON,
                     "valuation": None
@@ -1604,9 +1654,7 @@ class PricingWorker:
         observations = list(inventory.get("observations") or [])
         copies = list(inventory.get("asset_copies") or [])
         obs_id = f"obs_{asset_id[6:]}" if asset_id.startswith("found_") else f"obs_{asset_id}"
-        if evidence_ref and not any(
-            item.get("observation_id") == obs_id for item in observations
-        ):
+        if evidence_ref and not any(item.get("observation_id") == obs_id for item in observations):
             observations.append(
                 Observation(
                     observation_id=obs_id,
@@ -1736,9 +1784,9 @@ class PricingWorker:
             return None, None, asset.get("book_edition_ref") or asset["asset_copy_id"]
         query, kind = built
         edition_key = (
-            f"edition_{identity.get('scope', 'volume')}_{isbn}_"
-            f"{identity.get('format', 'unknown')}"
-            if isbn and identity else "title_" + sha256_bytes(query.encode())[:12]
+            f"edition_{identity.get('scope', 'volume')}_{isbn}_{identity.get('format', 'unknown')}"
+            if isbn and identity
+            else "title_" + sha256_bytes(query.encode())[:12]
         )
         return query, kind, edition_key
 
@@ -1868,8 +1916,7 @@ class PricingWorker:
             "status": "estimated",
             "basis": "replacement_cost",
             "note": (
-                "Sum of technician-confirmed physical replacement evidence. "
-                "Drafts are excluded."
+                "Sum of technician-confirmed physical replacement evidence. Drafts are excluded."
             ),
         }
 

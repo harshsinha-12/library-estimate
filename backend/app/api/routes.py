@@ -38,8 +38,9 @@ from backend.app.rl.transitions import record_successor_state
 from backend.app.utils.paths import validate_package_path
 from backend.app.workflows.astra_live import list_astra_live, record_astra_live
 from backend.app.workflows.models import ModelReplayError, replay_asset
+from backend.app.workflows.operator_failures import failure_actions
 from backend.app.workflows.report import build_report
-from backend.app.workflows.stage3 import apply_review
+from backend.app.workflows.stage3 import apply_review, correct_book_identity
 from backend.app.workflows.surveys import ManifestConflictError
 
 router = APIRouter(prefix="/v1")
@@ -77,6 +78,29 @@ def get_survey_jobs(request: Request, survey_id: UUID) -> list[SurveyStateEvent]
         return get_survey_workflow(request).repository.events(survey_id)
     except SurveyNotFoundError as error:
         raise HTTPException(status_code=404, detail="survey not found") from error
+
+
+@router.get("/surveys/{survey_id}/operator-actions")
+def get_operator_actions(request: Request, survey_id: UUID) -> dict:
+    workflow = get_survey_workflow(request)
+    repository = workflow.repository
+    try:
+        survey = repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    overview = workflow.overview(survey_id) if survey.package_hash else {}
+    stage3 = repository.get_json(survey_id, "stage3") or {}
+    model_key = f"{repository.key_prefix}:survey:{survey_id}:model_runs"
+    runs = [
+        repository.get_json(survey_id, f"model-run:{raw}")
+        for raw in sorted(repository.redis.smembers(model_key))
+    ]
+    return {
+        "survey_id": str(survey_id),
+        "actions": failure_actions(
+            survey.model_dump(mode="json"), overview, stage3, [row for row in runs if row]
+        ),
+    }
 
 
 @router.get("/surveys/{survey_id}/runs/{run_id}/usage")
@@ -140,7 +164,8 @@ def get_evidence(request: Request, survey_id: UUID, path: str = Query(min_length
 
 @router.delete("/surveys/{survey_id}")
 def delete_survey(
-    request: Request, survey_id: UUID,
+    request: Request,
+    survey_id: UUID,
     confirm: Annotated[str, Header(alias="X-Confirm-Delete")],
 ) -> dict:
     if confirm != str(survey_id):
@@ -156,8 +181,11 @@ def delete_survey(
 def model_replay(request: Request, survey_id: UUID, asset_copy_id: str) -> dict:
     try:
         return replay_asset(
-            get_survey_workflow(request).repository, survey_id, asset_copy_id,
-            run_id=request.state.run_id, source="button_replay",
+            get_survey_workflow(request).repository,
+            survey_id,
+            asset_copy_id,
+            run_id=request.state.run_id,
+            source="button_replay",
         )
     except SurveyNotFoundError as error:
         raise HTTPException(status_code=404, detail="survey not found") from error
@@ -230,11 +258,13 @@ def get_auto_accept_audit(request: Request, survey_id: UUID) -> dict:
 def create_rl_successor_state(request: Request, survey_id: UUID, payload: dict) -> dict:
     try:
         return record_successor_state(
-            get_survey_workflow(request).repository, survey_id,
+            get_survey_workflow(request).repository,
+            survey_id,
             state_id=str(payload["state_id"]),
             predecessor_transition_id=str(payload["predecessor_transition_id"]),
             evidence_ref=str(payload["evidence_ref"]),
-            evidence_hash=str(payload["evidence_hash"]), state=dict(payload["state"]),
+            evidence_hash=str(payload["evidence_hash"]),
+            state=dict(payload["state"]),
         )
     except SurveyNotFoundError as error:
         raise HTTPException(status_code=404, detail="survey not found") from error
@@ -258,8 +288,10 @@ def create_independent_label(request: Request, survey_id: UUID, payload: Indepen
 def create_gold_set(request: Request, survey_id: UUID, payload: dict) -> dict:
     try:
         return freeze_gold_set(
-            get_survey_workflow(request).repository, survey_id,
-            copy_ids=list(payload["copy_ids"]), case_tags=dict(payload["case_tags"]),
+            get_survey_workflow(request).repository,
+            survey_id,
+            copy_ids=list(payload["copy_ids"]),
+            case_tags=dict(payload["case_tags"]),
             frozen_by=str(payload["frozen_by"]),
         )
     except SurveyNotFoundError as error:
@@ -302,7 +334,8 @@ def train_policy(request: Request, payload: dict) -> dict:
         holdout_ids = [UUID(value) for value in payload["holdout_survey_ids"]]
         return train_offline_policy(
             get_survey_workflow(request).repository,
-            train_survey_ids=train_ids, holdout_survey_ids=holdout_ids,
+            train_survey_ids=train_ids,
+            holdout_survey_ids=holdout_ids,
         )
     except (KeyError, ValueError, TypeError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -415,9 +448,7 @@ def price_search(
 ) -> dict:
     try:
         run_id = uuid4()
-        with usage_scope(
-            get_survey_workflow(request).repository, payload.survey_id, run_id
-        ):
+        with usage_scope(get_survey_workflow(request).repository, payload.survey_id, run_id):
             result = get_survey_workflow(request).price_search(payload.survey_id, asset_id)
         response.headers["X-Survey-Run-Id"] = str(run_id)
         return result
@@ -502,6 +533,20 @@ def review_decision(request: Request, review_id: str, payload: dict) -> dict:
             get_survey_workflow(request).repository, survey_id, {**payload, "queue_id": review_id}
         )
     except (KeyError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/books/{asset_id}/identity-correction")
+def post_identity_correction(
+    request: Request, survey_id: UUID, asset_id: str, payload: dict
+) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+        return correct_book_identity(repository, survey_id, {**payload, "asset_copy_id": asset_id})
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
