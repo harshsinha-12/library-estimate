@@ -38,6 +38,7 @@ from backend.app.providers.pricing.targets import (
 )
 from backend.app.providers.pricing.vision_titles import describe_object, extract_book_titles
 from backend.app.providers.pricing.web_search import search_book_price, search_price_batch
+from backend.app.rl.transitions import record_decision
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.workflows.identifiers import type_identifier
@@ -784,6 +785,18 @@ class PricingWorker:
         else:
             raise ValueError("unsupported price observation action")
         copies = self._refresh(repository, survey_id, state, geography, stage3, inventory)
+        record_decision(
+            repository, survey_id, policy_id="price_review_v1", action_source="human",
+            action="accept" if action in {"confirm", "manual"} else "human_review",
+            state={
+                "asset_copy_id": asset_id, "operator_action": action,
+                "price_observation_id": (
+                    confirmed["price_observation_id"] if action == "confirm"
+                    else payload.get("price_observation_id")
+                ),
+                "reason": payload.get("reason"),
+            },
+        )
         return {"asset_copy_id": asset_id, "copies": copies, "observations": state["observations"]}
 
     def _refresh(

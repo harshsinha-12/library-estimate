@@ -11,6 +11,7 @@ from backend.app.domain.repository import SurveyRepository
 from backend.app.providers.catalog.chain import CatalogChain
 from backend.app.providers.pricing.queries import title_from_ocr
 from backend.app.providers.voice import transcribe_segments
+from backend.app.rl.transitions import record_decision
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.workflows.identifiers import type_identifier
 
@@ -535,22 +536,16 @@ def apply_review(repository: SurveyRepository, survey_id: UUID, decision: dict) 
         }
     )
     repository.save_json(survey_id, "stage3", result)
-    transition = {
-        "schema_version": "1.0.0", "transition_id": str(uuid4()),
-        "survey_id": str(survey_id), "policy_id": "human_review_v1",
-        "state": {
+    record_decision(
+        repository, survey_id,
+        policy_id="human_review_v1", action_source="human",
+        action="recapture" if action == "rescan_barcode" else "human_review",
+        state={
             "queue_id": target["id"], "queue_kind": target["kind"],
             "asset_copy_id": decision.get("asset_copy_id") or target.get("asset_copy_id"),
             "evidence_ref": target.get("evidence_ref"),
             "operator_action": action,
         },
-        "action": "recapture" if action == "rescan_barcode" else "human_review",
-        "action_source": "human", "fable": None, "astra": None, "jev": None,
-        "human_truth": None, "independent_outcome": None, "reward": None,
-        "next_state_id": None, "cost_usd": 0.0, "elapsed_ms": 0,
-    }
-    repository.redis.rpush(
-        f"{repository.key_prefix}:survey:{survey_id}:rl_transitions",
-        json.dumps(transition, sort_keys=True),
+        next_state_id=str(uuid4()) if action == "rescan_barcode" else None,
     )
     return result

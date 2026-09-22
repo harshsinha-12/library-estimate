@@ -16,6 +16,7 @@ from backend.app.providers.models.fable import parse_fable_response
 from backend.app.providers.models.jev import parse_jev_response, propose_route
 from backend.app.providers.models.remote import call_astra, call_fable, extract_json_object
 from backend.app.providers.usage import usage_for_run
+from backend.app.rl.transitions import record_decision
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.utils.json_codec import canonical_json_bytes
@@ -193,27 +194,32 @@ def replay_asset(
     }
     usage = usage_for_run(repository, survey_id, run_id)
     action = "accept" if decision["action"] == "accept_candidate" else decision["action"]
-    transition = {
-        "schema_version": "1.0.0", "transition_id": str(uuid4()),
-        "survey_id": str(survey_id), "policy_id": "route_v0_log_only",
-        "state": {
+    transition = record_decision(
+        repository, survey_id, action=action, action_source="policy",
+        policy_id="route_v0_log_only",
+        state={
             "asset_copy_id": asset_copy_id, "category": asset["category"],
             "evidence_package_hash": result["evidence_package_hash"],
             "disagreement": decision["disagreement"],
             "appraisal_required": bool(asset.get("requires_appraisal")),
-            "logging_propensity": 1.0,
+            "policy_reason": decision["reason"],
         },
-        "action": action, "action_source": "policy",
-        "fable": assessments.get("fable"), "astra": assessments.get("astra_replay"),
-        "jev": jev, "human_truth": None, "independent_outcome": None,
-        "reward": None, "next_state_id": None,
-        "cost_usd": float(Decimal(usage["estimated_cost_usd"])),
-        "elapsed_ms": round((time.monotonic() - started) * 1000),
-    }
-    repository.redis.rpush(
-        f"{repository.key_prefix}:survey:{survey_id}:rl_transitions",
-        json.dumps(transition, sort_keys=True),
+        fable=assessments.get("fable"), astra=assessments.get("astra_replay"),
+        jev=jev, cost_usd=float(Decimal(usage["estimated_cost_usd"])),
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+        next_state_id=str(uuid4()) if action == "recapture" else None,
     )
+    if action == "accept":
+        repository.redis.rpush(
+            f"{repository.key_prefix}:survey:{survey_id}:auto_accept_audit",
+            json.dumps({
+                "transition_id": transition["transition_id"], "asset_copy_id": asset_copy_id,
+                "evidence_hash": result["evidence_package_hash"],
+                "fable": assessments.get("fable"), "astra": assessments.get("astra_replay"),
+                "jev": jev, "policy_reason": decision["reason"],
+                "overturn_by": "human_reviewer", "created_at": transition["created_at"],
+            }, sort_keys=True),
+        )
     result["transition_id"] = transition["transition_id"]
     repository.save_json(survey_id, f"model-run:{run_id}", result)
     repository.redis.sadd(

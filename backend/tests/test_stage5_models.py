@@ -156,6 +156,13 @@ def test_replay_names_the_extracted_title_in_a_crowded_frame() -> None:
     assert "Python Data Science Handbook" in package["task"]
     assert package["evidence_refs"][0] == "shelf_scans/crops/row_01_slot0.jpg"
     assert package["media"][0]["evidence_ref"] == "shelf_scans/crops/row_01_slot0.jpg"
+    audit = json.loads(repository.redis.lindex(
+        f"{repository.key_prefix}:survey:{survey_id}:auto_accept_audit", 0
+    ))
+    assert audit["asset_copy_id"] == "copy-1"
+    assert audit["policy_reason"] == "agreement"
+    assert audit["evidence_hash"]
+    assert audit["overturn_by"] == "human_reviewer"
 
 
 def test_replay_attaches_jpeg_over_four_hundred_kb() -> None:
