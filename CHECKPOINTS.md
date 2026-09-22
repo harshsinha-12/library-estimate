@@ -1,6 +1,6 @@
 # Implementation checkpoints
 
-**Last updated:** 2026-09-21  
+**Last updated:** 2026-09-22
 **Source of truth:** `IMPLEMENTATION.md` (entire project, 24-hour clock) and `FINAL-PLAN.md`
 
 A stage is complete only when every item in that stage and its exit gate in `IMPLEMENTATION.md` are done. Nothing is deferred.
@@ -129,7 +129,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Evidence package frozen; identical input to A and B.
 - [x] Fable batch adapter.
 - [x] Astra replay adapter.
-- [ ] Astra-live assist.
+- [x] Astra-live assist.
 - [x] Shared assessment schema wired end-to-end.
 - [x] Jev routing: accept, recapture, human, alternate resolver.
 - [x] Policy vetoes (high-value, eBook-as-physical, ISBN-only merge).
@@ -157,7 +157,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [ ] Shelf-row inventory detail with expected/detected count, selectable copy outlines and evidence, identity/unresolved action, and per-copy price/condition status; barcode rescan, correction, and search actions.
 - [ ] Auth, encryption, signed URLs or local equivalent, retention, redaction, access log.
 - [ ] Accessibility requirements.
-- [x] $50 ledger with stop-at-cap.
+- [x] Spend ledger with no stop-at-cap.
 - [ ] Every §17 failure row as status + operator action.
 - [x] Remaining APIs: jobs, inventory, review, report, shelves, evidence, policies, shadow.
 

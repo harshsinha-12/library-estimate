@@ -253,6 +253,16 @@ Sequential camera ownership is now productized in the iOS capture flow. No physi
 - Backend fixtures keep adjacent thin copies with the same ISBN distinct through a reverse sweep, mark a count mismatch partial, and keep set/volume and binding variants separate. The pure Swift tracker fixture passed. The isolated backend suite passed 66 tests; Ruff and `git diff --check` passed; a generic iOS Simulator build passed with signing disabled.
 - **Open:** no physical iPhone row of 8–10 books was scanned. Detected/actual count, reverse-sweep stability, identity or Pass C tasks, and per-copy price/report roster still require the operator's on-device walkthrough. Leftover #2 and the Stage 4 physical row gate remain open.
 
+## 2026-09-22 — Leftover #3 Fable, Astra, Jev (code)
+
+Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs remain unconfirmed.
+
+- Astra-live: `POST /v1/surveys/{id}/astra-live` on Pass B/C, debounced (~2s) with no per-survey dollar stop. Stored as `authority: assist_metadata`. Not Pipeline B and not inventory. Unavailable provider returns a disclosed skip, not an invented assessment. iOS `AstraLiveSession` calls it throughout the shelf sweep and Pass C stills.
+- After seal: `replay_survey` runs Pipeline A (Fable) and Pipeline B (Astra replay) on **every** `AssetCopy` with the same evidence bytes. The inventory button is optional replay. Missing keys produce disclosed partial + human review.
+- Spend ledger still records reservations and estimated USD. There is no per-survey dollar stop, so Astra-live and sealed A/B are not cut off at $50.
+- Jev writes a comparison record (A fields, B fields, disagreement, chosen route, confidence) separate from policy. Jev cannot write count or price. Geometry, ISBN, merge, and money keys are dropped from assessments.
+- Settings expose `FABLE_MODEL` / `ASTRA_MODEL` / `JEV_MODEL` defaults (`claude-fable-5-1`, `gpt-6-astra`, `jev-latest`). Confirming live IDs and spending against the ledger is still open below.
+
 ## 2026-09-22 — Leftover #4 RL (backend groundwork)
 
 - Named the implemented technique in the policy artifact and validation guide: offline contextual bandit routing using propensity-weighted linear reward regression; specialist condition, eligibility, damage, duplicate-features, and quality heads use Laplace-smoothed naive Bayes. This is not sequential offline RL or a live-trained frontier model.

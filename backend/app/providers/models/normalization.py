@@ -2,7 +2,31 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.providers.models.contracts import AssessmentPipeline, ModelAssessment
+from backend.app.providers.models.contracts import (
+    AssessmentPipeline,
+    IdentityCandidate,
+    ModelAssessment,
+)
+
+ALLOWED_ASSESSMENT_FIELDS = set(ModelAssessment.model_fields)
+ALLOWED_CANDIDATE_FIELDS = set(IdentityCandidate.model_fields)
+FORBIDDEN_ASSESSMENT_KEYS = {
+    "geometry",
+    "isbn",
+    "isbn_10",
+    "isbn_13",
+    "price",
+    "prices",
+    "amount",
+    "currency",
+    "merge",
+    "merge_key",
+    "valuation",
+    "money",
+    "count",
+    "inventory",
+    "quoted_price",
+}
 
 CATEGORIES = {
     "book",
@@ -55,7 +79,11 @@ def normalize_assessment(
 
 
 def _coerce_assessment(payload: dict[str, Any]) -> dict[str, Any]:
-    coerced = dict(payload)
+    coerced = {
+        key: value
+        for key, value in dict(payload).items()
+        if key in ALLOWED_ASSESSMENT_FIELDS and key not in FORBIDDEN_ASSESSMENT_KEYS
+    }
     coerced["category"] = _category(coerced.get("category"))
     coerced["condition"] = _enum(coerced.get("condition"), CONDITIONS, "unknown")
     coerced["recommended_action"] = _enum(
@@ -70,7 +98,11 @@ def _coerce_assessment(payload: dict[str, Any]) -> dict[str, Any]:
     for item in coerced.get("identity_candidates") or []:
         if not isinstance(item, dict):
             continue
-        candidate = dict(item)
+        candidate = {
+            key: value
+            for key, value in dict(item).items()
+            if key in ALLOWED_CANDIDATE_FIELDS
+        }
         candidate_refs = [
             str(ref) for ref in (candidate.get("evidence_refs") or []) if str(ref).strip()
         ] or refs[:1]

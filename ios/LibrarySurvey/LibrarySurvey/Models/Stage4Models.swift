@@ -158,9 +158,23 @@ struct ModelReplayRun: Decodable, Identifiable {
   let assetCopyId: String
   let assessments: ModelReplayAssessments?
   let jev: ModelReplayJev?
+  let comparison: ModelReplayComparison?
   let failures: [String: String]?
   let decision: ModelReplayDecision?
+  let partial: Bool?
+  let source: String?
   let createdAt: String?
+}
+
+struct ModelReplayComparison: Decodable {
+  let a: ModelReplayAssessment?
+  let b: ModelReplayAssessment?
+  let disagreement: Bool?
+  let disagreedFields: [String]?
+  let chosenRoute: String?
+  let confidence: Double?
+  let writesCount: Bool?
+  let writesPrice: Bool?
 }
 
 struct ModelReplayAssessments: Decodable {
@@ -204,5 +218,6 @@ struct ModelPipelines: Decodable {
   let fable: ModelPipelineStatus?
   let astra: ModelPipelineStatus?
   let jev: ModelPipelineStatus?
+  let astraLive: ModelPipelineStatus?
   let note: String?
 }

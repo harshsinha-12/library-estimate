@@ -272,6 +272,17 @@ class LivePriceSearchRequest(StrictModel):
     asset_copy_id: str | None = None
 
 
+class AstraLiveRequest(StrictModel):
+    capture_pass: Literal["B", "C"] = "B"
+    image_base64: str | None = None
+    quality_messages: list[str] = Field(default_factory=list)
+    provisional_count: int | None = None
+    unreadable_slots: list[str] = Field(default_factory=list)
+    blur: float | None = None
+    glare: float | None = None
+    recapture_rows: list[str] = Field(default_factory=list)
+
+
 class PriceQueueRequest(StrictModel):
     pass
 

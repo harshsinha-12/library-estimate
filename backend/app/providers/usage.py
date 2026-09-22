@@ -36,11 +36,10 @@ RATES: dict[tuple[str, str], tuple[str, str, str, str]] = {
     ("typesafe", "jev-1.13.0"): ("0.042", "0", "0.042", PRICE_SOURCE_JEV),
 }
 WEB_SEARCH_USD = Decimal("0.01")
-SPEND_CAP_USD = Decimal("50")
 
 
 class BudgetExceededError(RuntimeError):
-    pass
+    """Kept for older callers. Spend is recorded; calls are not stopped at a dollar cap."""
 
 
 @dataclass(frozen=True)
@@ -179,16 +178,13 @@ def record_usage(
 
 
 def reserve_budget(allowance_usd: str) -> None:
-    """Conservatively reserve provider spend before a call; failed calls retain allowance."""
+    """Record a conservative pre-call reservation. There is no dollar stop-at-cap."""
     context = _context.get()
     if context is None:
         return
     amount = int(Decimal(allowance_usd) * 1_000_000)
     key = f"{context.repository.key_prefix}:survey:{context.survey_id}:budget_reserved_micros"
-    reserved = context.repository.redis.incrby(key, amount)
-    if reserved > int(SPEND_CAP_USD * 1_000_000):
-        context.repository.redis.decrby(key, amount)
-        raise BudgetExceededError("per-survey $50 provider budget reached")
+    context.repository.redis.incrby(key, amount)
 
 
 def usage_for_run(repository: SurveyRepository, survey_id: UUID, run_id: UUID) -> dict[str, Any]:
@@ -219,5 +215,5 @@ def usage_for_survey(repository: SurveyRepository, survey_id: UUID) -> dict[str,
         "survey_id": str(survey_id), "runs": runs,
         "estimated_cost_usd": str(total.quantize(Decimal("0.000001"))),
         "unpriced_calls": sum(row["unpriced_calls"] for row in runs),
-        "budget_cap_usd": str(SPEND_CAP_USD),
+        "budget_cap_usd": None,
     }

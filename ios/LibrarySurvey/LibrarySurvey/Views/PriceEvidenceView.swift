@@ -35,7 +35,7 @@ struct PriceEvidenceView: View {
         }
       }
       Section("Fable, Astra, and Jev") {
-        Text("Results for this named copy appear here after the run. The same run is also listed under Report. These models are not the price search.")
+        Text("After seal, Fable (A) and Astra replay (B) run on every copy automatically, independently, on the same evidence bytes. This button is optional replay. Jev scores A vs B and does not write count or price. Results for this named copy appear here after the run. The same run is also listed under Report. These models are not the price search.")
           .font(.footnote)
         if replaying {
           ProgressView("Running Fable, then Astra, then Jev")
@@ -213,6 +213,19 @@ struct ModelReplayResultBlock: View {
       }
       if let decision = run.decision {
         Text("Policy: \(decision.action.replacingOccurrences(of: "_", with: " ")) · \(decision.reason.replacingOccurrences(of: "_", with: " "))")
+      }
+      if let comparison = run.comparison {
+        Text(
+          "Jev comparison · disagreement: \(comparison.disagreement == true ? "yes" : "no") · route: \((comparison.chosenRoute ?? "none").replacingOccurrences(of: "_", with: " ")) \(confidence(comparison.confidence))"
+        )
+        .font(.footnote)
+        if comparison.writesCount == true || comparison.writesPrice == true {
+          Text("Unexpected model write").foregroundStyle(.orange)
+        }
+      }
+      if run.partial == true {
+        Text("Disclosed partial. Human review. No invented assessment.")
+          .foregroundStyle(.orange)
       }
       assessment("Fable", run.assessments?.fable)
       assessment("Astra", run.assessments?.astraReplay)

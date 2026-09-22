@@ -35,6 +35,7 @@ struct ExceptionPassView: View {
   @State private var promptPlayer: AVAudioPlayer?
   @AppStorage("backendURL") private var backendURLString = "http://192.168.29.178:8000"
   @StateObject private var livePrices = LivePriceSession()
+  @StateObject private var astraLive = AstraLiveSession()
 
   var body: some View {
     Form {
@@ -121,6 +122,11 @@ struct ExceptionPassView: View {
           Text(livePrices.status)
             .font(.callout)
             .foregroundStyle(livePrices.latest?.status == "draft" ? .green : .orange)
+        }
+        if !astraLive.status.isEmpty {
+          Text(astraLive.caption)
+            .font(.footnote)
+            .foregroundStyle(.orange)
         }
         if let error = store.errorMessage { Text(error).foregroundStyle(.orange) }
         HStack {
@@ -276,6 +282,20 @@ struct ExceptionPassView: View {
               draft: draft,
               backendURL: backendURL
             )
+          }
+          if let jpeg = store.latestImageRef.flatMap({ store.images[$0] }) {
+            Task {
+              await astraLive.consider(
+                jpeg: jpeg,
+                capturePass: "C",
+                draft: draft,
+                backendURL: backendURL,
+                qualityMessages: store.latestText.isEmpty ? ["Unread still"] : [],
+                provisionalCount: store.candidateRegions.count,
+                unreadableSlots: pendingSpines.map { "\($0.row)/slot \($0.slot)" },
+                force: true
+              )
+            }
           }
         }
       }

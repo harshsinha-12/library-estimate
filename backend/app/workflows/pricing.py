@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -635,7 +634,9 @@ class PricingWorker:
         self._promote_searches(repository, survey_id)
         queued = self.queue(repository, survey_id)
         overview = self.overview(repository, survey_id)
-        replayed = self._replay_sample(repository, survey_id)
+        from backend.app.workflows.models import replay_survey
+
+        replayed = replay_survey(repository, survey_id)
         return {
             "identified": identified,
             "spoken": spoken,
@@ -1647,37 +1648,6 @@ class PricingWorker:
             pipeline_version=PIPELINE_VERSION,
             run_id=f"price_{uuid4().hex[:12]}",
         ).model_dump(mode="json")
-
-    def _replay_sample(self, repository: SurveyRepository, survey_id: UUID) -> list[dict]:
-        if not (
-            os.getenv("ANTHROPIC_API_KEY", "").strip()
-            or os.getenv("OPENAI_API_KEY", "").strip()
-        ):
-            return []
-        from backend.app.workflows.models import ModelReplayError, replay_asset
-
-        inventory = repository.get_json(survey_id, "inventory") or {}
-        ran: list[dict] = []
-        for asset in (inventory.get("asset_copies") or [])[:2]:
-            try:
-                ran.append(
-                    replay_asset(repository, survey_id, asset["asset_copy_id"])
-                )
-            except (
-                ModelReplayError,
-                OSError,
-                RuntimeError,
-                ValueError,
-                KeyError,
-                TypeError,
-            ) as error:
-                pricing_log.warning(
-                    "replay_sample failed",
-                    survey_id=str(survey_id),
-                    asset_copy_id=asset.get("asset_copy_id"),
-                    error=error.__class__.__name__,
-                )
-        return ran
 
     def _actions(
         self,

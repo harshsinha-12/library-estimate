@@ -30,7 +30,7 @@ def test_cost_lookup_counts_cached_tokens_and_web_search_calls() -> None:
     ) == "0.005000"
 
 
-def test_run_usage_is_saved_to_redis_and_budget_stops_calls() -> None:
+def test_run_usage_is_saved_to_redis_without_a_spend_cap() -> None:
     client = fakeredis.FakeRedis(decode_responses=True)
     repository = SurveyRepository(client, MemoryObjectStore(), key_prefix="test:usage")
     survey_id, run_id = uuid4(), uuid4()
@@ -49,12 +49,10 @@ def test_run_usage_is_saved_to_redis_and_budget_stops_calls() -> None:
         assert saved["estimated_cost_usd"] == "0.018000"
         assert saved["budget_reserved_usd"] == "0.250000"
         assert saved["events"][0]["web_search_calls"] == 1
-        try:
-            reserve_budget("50")
-        except RuntimeError as error:
-            assert "$50" in str(error)
-        else:
-            raise AssertionError("budget did not stop the call")
+        reserve_budget("50")
+        reserve_budget("50")
+        after = usage_for_run(repository, survey_id, run_id)
+        assert after["budget_reserved_usd"] == "100.250000"
     finally:
         unbind_usage(token)
 

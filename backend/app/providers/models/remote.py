@@ -112,8 +112,64 @@ def _text_evidence(package: dict) -> str:
     )
 
 
+def configured_fable_model() -> str:
+    return os.getenv("FABLE_MODEL", "claude-fable-5-1").strip() or "claude-fable-5-1"
+
+
+def configured_astra_model() -> str:
+    return os.getenv("ASTRA_MODEL", "gpt-6-astra").strip() or "gpt-6-astra"
+
+
+def configured_jev_model() -> str:
+    return os.getenv("JEV_MODEL", "jev-latest").strip() or "jev-latest"
+
+
+LIVE_SYSTEM = (
+    "You are Astra-live capture assist for a library shelf or Pass C still. "
+    "Return JSON with keys quality, provisional_count, unreadable_slots, recapture_hint, "
+    "confidence, rationale. quality is an object "
+    '{"blur": false, "glare": false, "readable": true, "notes": null}. '
+    "provisional_count is visible copies in this frame only. "
+    "unreadable_slots is an array of labels such as row_01/slot_2. "
+    "This is assist metadata only. It is not Pipeline B and not inventory truth. "
+    "Do not invent ISBNs, prices, geometry, merges, or money. "
+    "Do not output count or price as inventory fields."
+)
+
+LIVE_ASSIST_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "quality",
+        "provisional_count",
+        "unreadable_slots",
+        "recapture_hint",
+        "confidence",
+        "rationale",
+    ],
+    "properties": {
+        "quality": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["blur", "glare", "readable", "notes"],
+            "properties": {
+                "blur": {"type": ["boolean", "null"]},
+                "glare": {"type": ["boolean", "null"]},
+                "readable": {"type": ["boolean", "null"]},
+                "notes": {"type": ["string", "null"]},
+            },
+        },
+        "provisional_count": {"type": ["integer", "null"]},
+        "unreadable_slots": {"type": "array", "items": {"type": "string"}},
+        "recapture_hint": {"type": ["string", "null"]},
+        "confidence": {"type": "number"},
+        "rationale": {"type": ["string", "null"]},
+    },
+}
+
+
 def call_fable(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict, str]:
-    model = model or os.getenv("FABLE_MODEL", "claude-fable-5-1")
+    model = model or configured_fable_model()
     key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY is required for Fable")
@@ -150,7 +206,7 @@ def call_fable(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
 
 
 def call_astra(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict, str]:
-    model = model or os.getenv("ASTRA_MODEL", "gpt-6-astra")
+    model = model or configured_astra_model()
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
         raise RuntimeError("OPENAI_API_KEY is required for Astra")
@@ -191,6 +247,67 @@ def call_astra(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
         for part in item.get("content", []) if part.get("type") in {"output_text", "text"}
     )
     return raw, content
+
+
+def call_astra_live(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict, str]:
+    model = model or configured_astra_model()
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("OPENAI_API_KEY is required for Astra-live")
+    package = json.loads(evidence_bytes)
+    content = [{"type": "input_text", "text": _live_text(package)}]
+    for media in package.get("media", []):
+        content.append({
+            "type": "input_image",
+            "image_url": f"data:{media['media_type']};base64,{media['base64']}",
+        })
+    body = {
+        "model": model,
+        "instructions": LIVE_SYSTEM,
+        "input": [{"role": "user", "content": content}],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "astra_live_assist",
+                "strict": True,
+                "schema": LIVE_ASSIST_SCHEMA,
+            }
+        },
+        "max_output_tokens": 500,
+    }
+    reserve_budget("0.40")
+    started = time.monotonic()
+    request = Request(
+        "https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    )
+    raw = _http_json(request, model=model, pipeline="astra_live")
+    record_usage(
+        provider="openai", model=model, operation="astra_live", response=raw,
+        latency_ms=round((time.monotonic() - started) * 1000),
+    )
+    content = raw.get("output_text") or "".join(
+        part.get("text", "")
+        for item in raw.get("output", []) if item.get("type") == "message"
+        for part in item.get("content", []) if part.get("type") in {"output_text", "text"}
+    )
+    return raw, content
+
+
+def _live_text(package: dict) -> str:
+    bounded = {
+        key: value for key, value in package.items()
+        if key != "media"
+    }
+    bounded["media"] = [
+        {"evidence_ref": row["evidence_ref"], "media_type": row["media_type"]}
+        for row in package.get("media", [])
+    ]
+    return (
+        "Reply with JSON matching the Astra-live assist schema. "
+        "Assist only; not inventory.\n"
+        + json.dumps(bounded, sort_keys=True)
+    )
 
 
 def _http_json(request: Request, *, model: str, pipeline: str) -> dict:

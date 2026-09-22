@@ -18,6 +18,7 @@ from backend.app.domain.repository import SurveyRepository
 from backend.app.providers.usage import usage_for_survey
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.json_codec import canonical_json_bytes
+from backend.app.workflows.astra_live import list_astra_live
 
 
 def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, bytes]:
@@ -40,6 +41,7 @@ def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, b
         for raw in sorted(repository.redis.smembers(model_key))
     ]
     model_runs = [row for row in model_runs if row]
+    astra_live = list_astra_live(repository, survey_id)
     report = {
         "schema_version": "1.0.0", "survey_id": str(survey_id),
         "generated_at": utc_now().isoformat(), "package_hash": survey.package_hash,
@@ -55,15 +57,18 @@ def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, b
         "review": stage3,
         "valuation": overview,
         "model_runs": model_runs,
-        "model_pipelines": _model_pipelines(model_runs),
+        "model_pipelines": _model_pipelines(model_runs, astra_live),
+        "astra_live": astra_live,
         "spend": usage_for_survey(repository, survey_id),
         "limitations": [
             "Physical copies and prices require operator review where evidence is incomplete.",
             "Web prices are draft evidence until confirmed; eBooks and rentals are excluded.",
             "Building figures use demo replacement-cost rates, not market sale value.",
             "Model agreement is not independent ground truth.",
-            "Fable, Astra, and Jev assess sealed copies after seal or model-replay; "
-            "they do not look up prices. Live routing is log-only.",
+            "After seal, Fable (A) and Astra replay (B) run on every AssetCopy independently. "
+            "Jev scores A vs B and does not write count or price. "
+            "Astra-live during Pass B/C is sampled assist metadata, not Pipeline B.",
+            "Configured default model IDs are not a live confirmation of provider access.",
         ],
     }
     pdf = render_pdf(report)
@@ -75,7 +80,9 @@ def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, b
     return report, pdf
 
 
-def _model_pipelines(model_runs: list[dict]) -> dict:
+def _model_pipelines(model_runs: list[dict], astra_live: dict | None = None) -> dict:
+    live_rows = (astra_live or {}).get("assists") or []
+    live_ran = any(row.get("status") == "assist" for row in live_rows)
     if not model_runs:
         return {
             "fable": {
@@ -90,10 +97,14 @@ def _model_pipelines(model_runs: list[dict]) -> dict:
                 "status": "not_run",
                 "role": "Typed router over Fable and Astra. Policy still vetoes the action.",
             },
+            "astra_live": {
+                "status": "ran" if live_ran else "not_run",
+                "role": "Capture UX assist on Pass B/C. Not Pipeline B and not inventory.",
+            },
             "note": (
-                "Fable, Astra, and Jev are not the web-search pricer. They assess a sealed "
-                "copy after POST /v1/surveys/{id}/assets/{copy}/model-replay, or a small "
-                "sample after seal when API keys are present. This survey has no replay yet."
+                "After seal, Fable and Astra replay run automatically on every AssetCopy. "
+                "The inventory button is optional replay of the same sealed bytes. "
+                "This survey has no sealed replay yet."
             ),
         }
     fable = any((row.get("assessments") or {}).get("fable") for row in model_runs)
@@ -106,12 +117,13 @@ def _model_pipelines(model_runs: list[dict]) -> dict:
     failures = [
         row.get("failures") for row in model_runs if row.get("failures")
     ]
+    partial = any(row.get("partial") for row in model_runs)
     note = (
-        "Replay ran after seal. These models judge category and condition on a sealed "
-        "copy; they are not the web-search pricer. Live policy is route_v0_log_only, "
-        "so RL labels do not change routing. "
-        f"Provider failures: {failures or 'none recorded'}."
-        if not (fable and astra and jev)
+        "Automatic A/B after seal is the pipeline. These models judge category and "
+        "condition on a sealed copy; they are not the web-search pricer and they do "
+        "not write count or price. Live policy is route_v0_log_only. "
+        f"Disclosed partial: {partial}. Provider failures: {failures or 'none recorded'}."
+        if not (fable and astra and jev) or partial
         else None
     )
     return {
@@ -126,6 +138,10 @@ def _model_pipelines(model_runs: list[dict]) -> dict:
         "jev": {
             "status": "ran" if jev else "failed_or_missing",
             "role": "Typed router over Fable and Astra. Policy still vetoes the action.",
+        },
+        "astra_live": {
+            "status": "ran" if live_ran else "not_run",
+            "role": "Capture UX assist on Pass B/C. Not Pipeline B and not inventory.",
         },
         "note": note,
     }
@@ -213,6 +229,11 @@ def _model_section(report: dict, styles) -> list:
         ["Fable (Pipeline A)", f"{pipelines['fable']['status']} — {pipelines['fable']['role']}"],
         ["Astra (Pipeline B)", f"{pipelines['astra']['status']} — {pipelines['astra']['role']}"],
         ["Jev", f"{pipelines['jev']['status']} — {pipelines['jev']['role']}"],
+        [
+            "Astra-live assist",
+            f"{(pipelines.get('astra_live') or {}).get('status', 'not_run')} — "
+            f"{(pipelines.get('astra_live') or {}).get('role', 'capture UX only')}",
+        ],
     ]))
     if pipelines.get("note"):
         blocks.append(Paragraph(_safe(pipelines["note"]), styles["SurveyBody"]))
@@ -222,10 +243,12 @@ def _model_section(report: dict, styles) -> list:
         fable = assessments.get("fable") or {}
         astra = assessments.get("astra_replay") or assessments.get("astra") or {}
         jev = run.get("jev") or {}
+        comparison = run.get("comparison") or {}
         failures = run.get("failures") or {}
         failure_line = (
             f" | Failures: {_safe(failures)}" if failures else ""
         )
+        partial_line = " | Disclosed partial, human review" if run.get("partial") else ""
         blocks.append(KeepTogether([
             Paragraph(_safe(run.get("asset_copy_id")), styles["Heading3"]),
             Paragraph(
@@ -233,9 +256,11 @@ def _model_section(report: dict, styles) -> list:
                 f"({_safe(fable.get('confidence'))}) | "
                 f"Astra: {_safe(astra.get('category'))} / {_safe(astra.get('condition'))} "
                 f"({_safe(astra.get('confidence'))}) | "
-                f"Jev: {_safe(jev.get('choice'))} ({_safe(jev.get('confidence'))}) | "
+                f"Jev route: {_safe(comparison.get('chosen_route') or jev.get('choice'))} "
+                f"({_safe(comparison.get('confidence') or jev.get('confidence'))}) | "
+                f"Disagreement: {_safe(comparison.get('disagreement'))} | "
                 f"Policy: {_safe(decision.get('action'))} ({_safe(decision.get('reason'))})"
-                f"{failure_line}",
+                f"{failure_line}{partial_line}",
                 styles["SurveyBody"],
             ),
         ]))
