@@ -7,6 +7,7 @@ import os
 import time
 from urllib.request import Request, urlopen
 
+from backend.app.providers.llm_trace import record_llm_call
 from backend.app.providers.models.remote import configured_jev_model
 from backend.app.providers.usage import record_usage, reserve_budget
 
@@ -36,15 +37,32 @@ def propose_route(state: dict) -> dict:
     }
     reserve_budget("0.05")
     started = time.monotonic()
+    reason = (
+        "Jev typed route proposal: what should happen next for this physical asset "
+        "(deterministic policy still owns the final action)"
+    )
     request = Request(
         "https://api.typesafe.ai/v1/systemone", data=json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
-    with urlopen(request, timeout=30) as response:
-        raw = json.load(response)
+    try:
+        with urlopen(request, timeout=30) as response:
+            raw = json.load(response)
+    except Exception as error:
+        record_llm_call(
+            reason=reason, operation="jev_route", provider="typesafe", model=model,
+            query={"state": state, "criteria": CRITERIA}, status="error",
+            error=str(error), latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        raise
+    latency_ms = round((time.monotonic() - started) * 1000)
     record_usage(
         provider="typesafe", model=model, operation="jev_route", response=raw,
-        latency_ms=round((time.monotonic() - started) * 1000),
+        latency_ms=latency_ms,
+    )
+    record_llm_call(
+        reason=reason, operation="jev_route", provider="typesafe", model=model,
+        query={"state": state, "criteria": CRITERIA}, response=raw, latency_ms=latency_ms,
     )
     return raw
 

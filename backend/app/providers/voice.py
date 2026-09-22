@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from urllib.request import Request, urlopen
 from uuid import uuid4
+
+from backend.app.providers.llm_trace import record_llm_call
 
 
 def _key() -> str:
@@ -42,8 +45,26 @@ def transcribe_segments(
             "Content-Type": f"multipart/form-data; boundary={boundary}",
         },
     )
-    with urlopen(request, timeout=45) as response:
-        payload = json.load(response)
+    reason = (
+        "STT: transcribe operator speech from survey audio so notes can be aligned "
+        "to the capture clock"
+    )
+    started = time.monotonic()
+    try:
+        with urlopen(request, timeout=45) as response:
+            payload = json.load(response)
+    except Exception as error:
+        record_llm_call(
+            reason=reason, operation="stt", provider="openai", model=model,
+            query={"audio_bytes": len(audio)}, status="error", error=str(error),
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        raise
+    latency_ms = round((time.monotonic() - started) * 1000)
+    record_llm_call(
+        reason=reason, operation="stt", provider="openai", model=model,
+        query={"audio_bytes": len(audio)}, response=payload, latency_ms=latency_ms,
+    )
     return [
         {
             "id": segment.get("id", f"speech_{index}"),
@@ -60,6 +81,8 @@ def transcribe_segments(
 def synthesize_prompt(text: str, *, model: str = "gpt-4o-mini-tts", voice: str = "marin") -> bytes:
     if not text or len(text) > 4096:
         raise ValueError("prompt text must be 1–4096 characters")
+    reason = "TTS: speak an operator prompt so the capture app does not hold an API key"
+    started = time.monotonic()
     request = Request(
         "https://api.openai.com/v1/audio/speech",
         data=json.dumps(
@@ -67,5 +90,20 @@ def synthesize_prompt(text: str, *, model: str = "gpt-4o-mini-tts", voice: str =
         ).encode(),
         headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
     )
-    with urlopen(request, timeout=45) as response:
-        return response.read(2_000_000)
+    try:
+        with urlopen(request, timeout=45) as response:
+            audio = response.read(2_000_000)
+    except Exception as error:
+        record_llm_call(
+            reason=reason, operation="tts", provider="openai", model=model,
+            query={"text": text, "voice": voice}, status="error", error=str(error),
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        raise
+    record_llm_call(
+        reason=reason, operation="tts", provider="openai", model=model,
+        query={"text": text, "voice": voice},
+        response={"audio_bytes": len(audio), "format": "mp3"},
+        latency_ms=round((time.monotonic() - started) * 1000),
+    )
+    return audio

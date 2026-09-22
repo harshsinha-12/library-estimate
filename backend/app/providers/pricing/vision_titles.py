@@ -8,6 +8,7 @@ import os
 import time
 from urllib.request import Request, urlopen
 
+from backend.app.providers.llm_trace import record_llm_call
 from backend.app.providers.pricing.queries import titles_from_ocr
 from backend.app.providers.usage import record_usage, reserve_budget
 
@@ -19,8 +20,19 @@ def extract_book_titles(jpeg: bytes, *, model: str = DEFAULT_VISION_MODEL) -> li
         return []
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
+        record_llm_call(
+            reason="Vision: read book titles from a shelf or cover JPEG so price search has a name",
+            operation="vision_titles", provider="openai", model=model,
+            query={"image_jpeg_bytes": len(jpeg)},
+            status="skipped", error="missing_openai_key",
+        )
         return []
-    payload = _complete_vision(jpeg, model=model, key=key)
+    payload = _complete_vision(
+        jpeg,
+        model=model,
+        key=key,
+        reason="Vision: read book titles from a shelf or cover JPEG so price search has a name",
+    )
     if not isinstance(payload, dict):
         return []
     titles: list[str] = []
@@ -46,6 +58,12 @@ def describe_object(
         return {}
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
+        record_llm_call(
+            reason="Vision: name a non-book physical object for a local replacement-cost search",
+            operation="vision_object", provider="openai", model=model,
+            query={"spoken": spoken, "category": category, "image_jpeg_bytes": len(jpeg)},
+            status="skipped", error="missing_openai_key",
+        )
         return {}
     payload = _complete_vision(
         jpeg,
@@ -61,6 +79,10 @@ def describe_object(
             f"Spoken note: {spoken or 'none'}. "
             "Name the object a shopper would search for."
         ),
+        reason=(
+            "Vision: name a non-book physical object for a local replacement-cost search"
+        ),
+        operation="vision_object",
     )
     if not isinstance(payload, dict):
         return {}
@@ -76,31 +98,26 @@ def _complete_vision(
     key: str,
     system: str | None = None,
     user: str | None = None,
+    reason: str = "Vision: extract readable text from a capture JPEG",
+    operation: str = "vision_titles",
 ) -> dict | None:
+    system_text = system or (
+        "Extract readable physical book titles from the photo. "
+        "Do not invent a title or ISBN. Ignore notebooks, papers, and devices. "
+        'Return JSON {"books": [{"title": "...", "author": null}]}.'
+    )
+    user_text = user or "List each distinct book cover or spine you can read."
     encoded = base64.b64encode(jpeg[:400_000]).decode("ascii")
     body = {
         "model": model,
         "temperature": 0,
         "response_format": {"type": "json_object"},
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    system
-                    or (
-                        "Extract readable physical book titles from the photo. "
-                        "Do not invent a title or ISBN. Ignore notebooks, papers, and devices. "
-                        'Return JSON {"books": [{"title": "...", "author": null}]}.'
-                    )
-                ),
-            },
+            {"role": "system", "content": system_text},
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "text",
-                        "text": user or "List each distinct book cover or spine you can read.",
-                    },
+                    {"type": "text", "text": user_text},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
@@ -108,6 +125,11 @@ def _complete_vision(
                 ],
             },
         ],
+    }
+    query = {
+        "system": system_text,
+        "user": user_text,
+        "image_jpeg_bytes": min(len(jpeg), 400_000),
     }
     reserve_budget("0.10")
     started = time.monotonic()
@@ -122,12 +144,23 @@ def _complete_vision(
         )
         with urlopen(request, timeout=45) as response:
             payload = json.load(response)
+        latency_ms = round((time.monotonic() - started) * 1000)
         record_usage(
-            provider="openai", model=model, operation="vision_titles",
-            response=payload, latency_ms=round((time.monotonic() - started) * 1000),
+            provider="openai", model=model, operation=operation,
+            response=payload, latency_ms=latency_ms,
         )
-        return json.loads(payload["choices"][0]["message"]["content"])
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        parsed = json.loads(payload["choices"][0]["message"]["content"])
+        record_llm_call(
+            reason=reason, operation=operation, provider="openai", model=model,
+            query=query, response=payload, latency_ms=latency_ms,
+        )
+        return parsed
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        record_llm_call(
+            reason=reason, operation=operation, provider="openai", model=model,
+            query=query, status="error", error=error.__class__.__name__,
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
         return None
 
 

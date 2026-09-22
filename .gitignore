@@ -12,6 +12,9 @@ __pycache__/
 data/runtime/
 *.sqlite3
 
+logs/*
+!logs/.gitkeep
+
 DerivedData/
 *.xcuserstate
 xcuserdata/

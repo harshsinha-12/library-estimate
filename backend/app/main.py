@@ -15,6 +15,7 @@ from redis import Redis
 from backend.app.api.routes import router
 from backend.app.config import Settings
 from backend.app.domain.repository import SurveyRepository
+from backend.app.providers.llm_trace import configure as configure_llm_trace
 from backend.app.providers.pricing import log as pricing_log
 from backend.app.providers.usage import BudgetExceededError, UsageContext, bind_usage, unbind_usage
 from backend.app.storage.encrypted import EncryptedObjectStore
@@ -63,6 +64,7 @@ def create_app(
     repository = SurveyRepository(redis_client, object_store, key_prefix=key_prefix)
     small_model = settings.openai_small_model if settings else "gpt-5.6-luna"
     pricing_log.configure()
+    configure_llm_trace()
     pricing_log.info("backend_ready", small_model=small_model)
 
     @asynccontextmanager

@@ -289,6 +289,10 @@ def plan_price_targets(
         schema=TARGET_SCHEMA,
         schema_name="price_targets",
         model=model,
+        reason=(
+            "List unique physical items from the capture timeline that still need "
+            "a replacement-cost web search"
+        ),
     )
     rows = parsed.get("items") if isinstance(parsed, dict) else None
     if not isinstance(rows, list):

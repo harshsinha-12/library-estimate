@@ -8,6 +8,7 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from backend.app.providers.llm_trace import record_llm_call
 from backend.app.providers.pricing import log as pricing_log
 from backend.app.providers.pricing.parse import is_shop_url, parse_prices
 from backend.app.providers.pricing.schema import (
@@ -66,6 +67,19 @@ def search_price_batch(items: list[dict], *, geography: dict) -> list[dict | Non
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
         pricing_log.warning("web_search skipped", reason="missing_openai_key")
+        record_llm_call(
+            reason=(
+                "Web search: find a current physical-copy purchase price for unpriced catalog items"
+            ),
+            operation="web_search", provider="openai", model=DEFAULT_WEB_SEARCH_MODEL,
+            query={
+                "items": [
+                    str(item.get("title") or item.get("description") or "")
+                    for item in pending
+                ]
+            },
+            status="skipped", error="missing_openai_key",
+        )
         return [None] * len(items)
     found: list[dict | None] = []
     for offset in range(0, len(pending), BATCH_SIZE):
@@ -243,6 +257,16 @@ def _responses(
     }
     reserve_budget("0.25")
     started = time.monotonic()
+    reason = (
+        "Web search: find a current physical-copy purchase price for unpriced catalog items"
+    )
+    query = {
+        "prompt": prompt,
+        "schema_name": schema_name,
+        "country": str(geography.get("country_code") or "IN"),
+        "city": str(geography.get("city") or ""),
+        "region": str(geography.get("region") or ""),
+    }
     try:
         request = Request(
             "https://api.openai.com/v1/responses",
@@ -254,11 +278,16 @@ def _responses(
         )
         with urlopen(request, timeout=90) as response:
             payload = json.load(response)
+        latency_ms = round((time.monotonic() - started) * 1000)
         record_usage(
             provider="openai", model=model, operation="web_search",
-            response=payload, latency_ms=round((time.monotonic() - started) * 1000),
+            response=payload, latency_ms=latency_ms,
         )
         pricing_log.info("web_search http_ok", model=model, schema=schema_name)
+        record_llm_call(
+            reason=reason, operation="web_search", provider="openai", model=model,
+            query=query, response=payload, latency_ms=latency_ms,
+        )
         return payload
     except HTTPError as error:
         detail = error.read()[:300].decode("utf-8", errors="replace")
@@ -268,12 +297,23 @@ def _responses(
             status=error.code,
             detail=detail.replace("\n", " "),
         )
+        record_llm_call(
+            reason=reason, operation="web_search", provider="openai", model=model,
+            query=query, status="error",
+            error=f"http_{error.code}: {detail.replace(chr(10), ' ')}",
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
         return None
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         pricing_log.warning(
             "web_search failed",
             model=model,
             error=error.__class__.__name__,
+        )
+        record_llm_call(
+            reason=reason, operation="web_search", provider="openai", model=model,
+            query=query, status="error", error=error.__class__.__name__,
+            latency_ms=round((time.monotonic() - started) * 1000),
         )
         return None
 

@@ -52,6 +52,13 @@ class UsageContext:
 _context: ContextVar[UsageContext | None] = ContextVar("provider_usage", default=None)
 
 
+def current_usage_ids() -> tuple[str | None, str | None]:
+    context = _context.get()
+    if context is None:
+        return None, None
+    return str(context.survey_id), str(context.run_id)
+
+
 def bind_usage(context: UsageContext) -> Token:
     return _context.set(context)
 

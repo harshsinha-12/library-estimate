@@ -8,6 +8,7 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from backend.app.providers.llm_trace import record_llm_call
 from backend.app.providers.pricing import log as pricing_log
 from backend.app.providers.usage import record_usage, reserve_budget
 
@@ -185,6 +186,20 @@ def call_fable(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
         "model": model, "max_tokens": 1300, "system": SYSTEM,
         "messages": [{"role": "user", "content": content}],
     }
+    query = {
+        "system": SYSTEM,
+        "evidence": _text_evidence(package),
+        "media": [
+            {
+                "evidence_ref": row.get("evidence_ref"),
+                "media_type": row.get("media_type"),
+            }
+            for row in package.get("media", [])
+        ],
+    }
+    reason = (
+        "Pipeline A: Anthropic Fable assessment of a sealed physical-copy evidence package"
+    )
     reserve_budget("0.50")
     started = time.monotonic()
     request = Request(
@@ -195,10 +210,23 @@ def call_fable(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
             "content-type": "application/json",
         },
     )
-    raw = _http_json(request, model=model, pipeline="fable")
+    try:
+        raw = _http_json(request, model=model, pipeline="fable")
+    except Exception as error:
+        record_llm_call(
+            reason=reason, operation="fable_assessment", provider="anthropic",
+            model=model, query=query, status="error", error=str(error),
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        raise
+    latency_ms = round((time.monotonic() - started) * 1000)
     record_usage(
         provider="anthropic", model=model, operation="fable_assessment", response=raw,
-        latency_ms=round((time.monotonic() - started) * 1000),
+        latency_ms=latency_ms,
+    )
+    record_llm_call(
+        reason=reason, operation="fable_assessment", provider="anthropic",
+        model=model, query=query, response=raw, latency_ms=latency_ms,
     )
     blocks = raw.get("content") or []
     content = "".join(item.get("text", "") for item in blocks if item.get("type") == "text")
@@ -230,16 +258,43 @@ def call_astra(evidence_bytes: bytes, *, model: str | None = None) -> tuple[dict
             }
         },
     }
+    query = {
+        "instructions": SYSTEM,
+        "evidence": _text_evidence(package),
+        "media": [
+            {
+                "evidence_ref": row.get("evidence_ref"),
+                "media_type": row.get("media_type"),
+            }
+            for row in package.get("media", [])
+        ],
+    }
+    reason = (
+        "Pipeline B: independent OpenAI Astra replay of the same sealed evidence"
+    )
     reserve_budget("1.00")
     started = time.monotonic()
     request = Request(
         "https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
-    raw = _http_json(request, model=model, pipeline="astra_replay")
+    try:
+        raw = _http_json(request, model=model, pipeline="astra_replay")
+    except Exception as error:
+        record_llm_call(
+            reason=reason, operation="astra_replay", provider="openai",
+            model=model, query=query, status="error", error=str(error),
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        raise
+    latency_ms = round((time.monotonic() - started) * 1000)
     record_usage(
         provider="openai", model=model, operation="astra_replay", response=raw,
-        latency_ms=round((time.monotonic() - started) * 1000),
+        latency_ms=latency_ms,
+    )
+    record_llm_call(
+        reason=reason, operation="astra_replay", provider="openai",
+        model=model, query=query, response=raw, latency_ms=latency_ms,
     )
     content = raw.get("output_text") or "".join(
         part.get("text", "")
@@ -275,16 +330,44 @@ def call_astra_live(evidence_bytes: bytes, *, model: str | None = None) -> tuple
         },
         "max_output_tokens": 500,
     }
+    query = {
+        "instructions": LIVE_SYSTEM,
+        "frame": _live_text(package),
+        "media": [
+            {
+                "evidence_ref": row.get("evidence_ref"),
+                "media_type": row.get("media_type"),
+            }
+            for row in package.get("media", [])
+        ],
+    }
+    reason = (
+        "Astra-live capture assist: quality, provisional count, and unreadable slots "
+        "for this shelf or Pass C frame (not inventory truth)"
+    )
     reserve_budget("0.40")
     started = time.monotonic()
     request = Request(
         "https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
-    raw = _http_json(request, model=model, pipeline="astra_live")
+    try:
+        raw = _http_json(request, model=model, pipeline="astra_live")
+    except Exception as error:
+        record_llm_call(
+            reason=reason, operation="astra_live", provider="openai",
+            model=model, query=query, status="error", error=str(error),
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        raise
+    latency_ms = round((time.monotonic() - started) * 1000)
     record_usage(
         provider="openai", model=model, operation="astra_live", response=raw,
-        latency_ms=round((time.monotonic() - started) * 1000),
+        latency_ms=latency_ms,
+    )
+    record_llm_call(
+        reason=reason, operation="astra_live", provider="openai",
+        model=model, query=query, response=raw, latency_ms=latency_ms,
     )
     content = raw.get("output_text") or "".join(
         part.get("text", "")

@@ -8,6 +8,7 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from backend.app.providers.llm_trace import record_llm_call
 from backend.app.providers.pricing import log as pricing_log
 from backend.app.providers.usage import record_usage, reserve_budget
 
@@ -37,11 +38,30 @@ def complete_json(
     schema: dict,
     schema_name: str,
     model: str,
+    reason: str | None = None,
 ) -> dict | None:
+    reason = reason or (
+        f"Small-model JSON completion for schema {schema_name}"
+    )
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
         pricing_log.warning("small_model skipped", model=model, reason="missing_openai_key")
+        record_llm_call(
+            reason=reason, operation=f"small_model:{schema_name}", provider="openai",
+            model=model, query={"prompt": prompt, "schema_name": schema_name},
+            status="skipped", error="missing_openai_key",
+        )
         return None
+    system = (
+        "Return JSON that matches the schema. Do not invent an ISBN. "
+        "Do not treat an unconfirmed snippet as a final physical-copy "
+        "price. Never include secrets."
+    )
+    query = {
+        "system": system,
+        "prompt": prompt,
+        "schema_name": schema_name,
+    }
     formats = (
         {
             "type": "json_schema",
@@ -62,14 +82,7 @@ def complete_json(
                         model,
                         response_format=response_format,
                         messages=[
-                            {
-                                "role": "system",
-                                "content": (
-                                    "Return JSON that matches the schema. Do not invent an ISBN. "
-                                    "Do not treat an unconfirmed snippet as a final physical-copy "
-                                    "price. Never include secrets."
-                                ),
-                            },
+                            {"role": "system", "content": system},
                             {"role": "user", "content": prompt},
                         ],
                     )
@@ -81,9 +94,10 @@ def complete_json(
             )
             with urlopen(request, timeout=30) as response:
                 payload = json.load(response)
+            latency_ms = round((time.monotonic() - started) * 1000)
             record_usage(
                 provider="openai", model=model, operation=f"small_model:{schema_name}",
-                response=payload, latency_ms=round((time.monotonic() - started) * 1000),
+                response=payload, latency_ms=latency_ms,
             )
             parsed = json.loads(payload["choices"][0]["message"]["content"])
             usage = payload.get("usage") or {}
@@ -94,6 +108,11 @@ def complete_json(
                 format=format_name,
                 prompt_tokens=usage.get("prompt_tokens"),
                 completion_tokens=usage.get("completion_tokens"),
+            )
+            record_llm_call(
+                reason=reason, operation=f"small_model:{schema_name}",
+                provider="openai", model=model, query=query, response=payload,
+                latency_ms=latency_ms,
             )
             return parsed
         except HTTPError as error:
@@ -106,6 +125,12 @@ def complete_json(
                 status=error.code,
                 detail=detail.replace("\n", " "),
             )
+            record_llm_call(
+                reason=reason, operation=f"small_model:{schema_name}",
+                provider="openai", model=model, query=query, status="error",
+                error=f"{last_error}: {detail.replace(chr(10), ' ')}",
+                latency_ms=round((time.monotonic() - started) * 1000),
+            )
             continue
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             last_error = error.__class__.__name__
@@ -114,6 +139,12 @@ def complete_json(
                 model=model,
                 format=format_name,
                 error=last_error,
+            )
+            record_llm_call(
+                reason=reason, operation=f"small_model:{schema_name}",
+                provider="openai", model=model, query=query, status="error",
+                error=last_error,
+                latency_ms=round((time.monotonic() - started) * 1000),
             )
             continue
     pricing_log.warning("small_model gave_up", model=model, error=last_error)
