@@ -10,6 +10,123 @@ Governing rule: never trust one frame, one model, or one signal. Combine geometr
 
 ---
 
+## Invertis Library report
+
+Live survey **2026-09-22** at Invertis Library, Bareilly (`en-IN`).
+
+- Survey ID: `4b9d7885-af80-42b8-b8c3-827c7a7f07fd`
+- PDF: [`docs/invertis-library-report.pdf`](docs/invertis-library-report.pdf)
+- Sealed report: [`docs/library-survey-4b9d7885.pdf`](docs/library-survey-4b9d7885.pdf)
+- Recorded copies: **45**
+- Unique book titles / copies: **5 / 45** (four named groups plus 27 untitled copies)
+- Confirmed / eligible books: **0 / 45** (no operator-confirmed listings)
+- Draft-priced / eligible books: **18 / 45** (named groups only; web-search unit prices × copy count)
+- Named draft titles:
+  - *Organization Theory: Management and Leadership Analysis* — 2 × 447 INR
+  - *Brand Management* — 5 × 176 INR
+  - *Organization Development* — 3 × 800 INR
+  - *Organizational Behavior* — 8 × 1,062 INR
+- Contents confirmed: none
+- Contents drafts (books): **12,670 INR** (not confirmed)
+- Other object drafts: mattress, cupboards, coffee table, study tables, split ACs, windows (operator/speech counts × unit price; not confirmed)
+- Building reconstruction: **37,761,129.14 INR** for **580.94 m²** (demo rebuild rates, **not** sale value)
+- Fable (A), Astra Extra (B / replay), Jev, and Astra-live Extra assist all **ran**
+- Inventory status: **partial**
+
+This does **not** close the 8–10 book physical row gate.
+
+### Sealed package
+
+Hashes verified locally. 8 walls, **580.9 m²**, ceiling 250 cm. N is scan +Z, not magnetic north. Geography: Bareilly, IN (`source: gps`). 323 files. Shelf pins are **unregistered overlays** (not operator-placed footprints).
+
+![2D tagged floor plan](docs/invertis-library/sealed-2d-plan.png)
+
+![Walls, doors, windows, openings, shelves](docs/invertis-library/sealed-openings-shelves.png)
+
+![Spatial evidence 2D and 3D](docs/invertis-library/spatial-evidence.png)
+
+![3D RoomPlan model and package](docs/invertis-library/sealed-3d-package.png)
+
+![Upload accepted](docs/invertis-library/sealed-upload.png)
+
+### Pass B on the stacks
+
+Astra-live captions are assist only, not inventory. Rows stayed **partial** (blur / unconfirmed actual).
+
+![Five persistent candidates on a row](docs/invertis-library/pass-b-row-five.jpg)
+
+![Slot 1 on a run of Organizational Behavior](docs/invertis-library/pass-b-slot-one.jpg)
+
+![Eleven persistent candidates, 86% readable coverage](docs/invertis-library/pass-b-row-eleven.jpg)
+
+Download a sealed report from the laptop while uvicorn is up:
+
+```bash
+curl -o ~/Downloads/library-survey.pdf \
+  http://127.0.0.1:8000/v1/surveys/4b9d7885-af80-42b8-b8c3-827c7a7f07fd/report.pdf
+```
+
+---
+
+## Current state (2026-09-22)
+
+| Area | Status |
+| --- | --- |
+| Stage 1 capture, seal, 2D/3D | Closed on device (`eb3f30fa` canonical) |
+| Stage 2–4 fixture/storage gates | Passed |
+| Live Pass B count | On-device rectangles + shelf-face tracking; unread boxes are not minted; reverse sweep must not double |
+| Stage 4/5 physical 8–10 book row | **Open** |
+| Independent 50–100 copy holdout / policy promotion | **Open** |
+
+**Storage:** Redis holds Survey IR, jobs, RL transitions, and state. Cloudflare R2 holds sealed media (`audio/survey.m4a`, frames, USDZ). SQLite is a Stage 1 archive only.
+
+---
+
+## Capture and processing that actually ship
+
+1. **Sequential camera.** RoomPlan owns Pass A. Pass B shelf AR starts after RoomPlan releases. Pass C stills after shelf AR stops. No optical zoom during RoomPlan.
+2. **Live spines.** Apple Vision rectangles + OCR; only boxes with readable letters become copies. Association is in shelf-face metres. Coverage is 8 cm bins along the face of readable detections.
+3. **Voice.** AAC on the RoomPlan session clock. After seal, server STT; notes bind by tap / reticle / pose / time / semantics, or stay unbound.
+4. **Astra-live Extra** during Pass B/C is assist metadata, not inventory.
+5. **After seal.** Geometry → vision count → identity/notes/damage → `web_search` drafts → Fable (A) and Astra Extra (B) on the same sealed bytes → Jev + policy. Every decision appends an `RLTransition`.
+6. **Price search** once per unique edition + market via OpenAI Responses `web_search` (`user_location` from survey geography). ISBN first, else name. No Bing. No Amazon scrape.
+7. **Building value** is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`.
+
+---
+
+## Run
+
+Copy [`.env.example`](.env.example) to `.env.local` (untracked). Never put keys in the iOS app.
+
+```bash
+make check         # Ruff, compileall, backend/schema tests
+python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
+```
+
+Phone Backend URL: `http://<Mac-Wi-Fi-IP>:8000`. Mac and iPhone must share a network that allows client-to-client traffic. Uvicorn binds `0.0.0.0`, not `127.0.0.1`.
+
+```bash
+make ios-project   # XcodeGen
+make ios-build     # generic iOS Simulator
+```
+
+Physical install: [`INSTALLATION.md`](INSTALLATION.md).
+
+---
+
+## Layout
+
+```text
+backend/     FastAPI, Redis, R2, pricing, Fable/Astra Extra/Jev, RL, reports
+ios/          LibrarySurvey (SwiftUI, RoomPlan, Vision, live spine tracker)
+cv/           labeled-JSON shelf count helpers (shelf-count-v1)
+schemas/      Survey IR, evidence package, model assessment, RL transition
+docs/         architecture.md, gates, deployment, Invertis PDF and screenshots
+eval/         holdout/preflight (templates are not device accuracy)
+```
+
+---
+
 ## Architecture
 
 ### System context
@@ -399,114 +516,3 @@ stateDiagram-v2
 ```
 
 Seal workers, in order: geometry → vision count → Stage 3 identity/notes/damage → pricing drafts → Fable + Astra Extra replay + Jev on every copy.
-
----
-
-## Current state (2026-09-22)
-
-| Area | Status |
-| --- | --- |
-| Stage 1 capture, seal, 2D/3D | Closed on device (`eb3f30fa` canonical) |
-| Stage 2–4 fixture/storage gates | Passed |
-| Live Pass B count | On-device rectangles + shelf-face tracking; unread boxes are not minted; reverse sweep must not double |
-| Stage 4/5 physical 8–10 book row | **Open** |
-| Independent 50–100 copy holdout / policy promotion | **Open** |
-
-**Storage:** Redis holds Survey IR, jobs, RL transitions, and state. Cloudflare R2 holds sealed media (`audio/survey.m4a`, frames, USDZ). SQLite is a Stage 1 archive only.
-
----
-
-## Invertis Library report
-
-Live survey **2026-09-22** at Invertis Library, Bareilly (`en-IN`).
-
-- Survey ID: `4b9d7885-af80-42b8-b8c3-827c7a7f07fd`
-- PDF: [`docs/invertis-library-report.pdf`](docs/invertis-library-report.pdf)
-- Recorded copies: **45**
-- Unique book titles / copies: **5 / 45**
-- Confirmed / eligible books: **0 / 45** (no operator-confirmed listings)
-- Draft-priced / eligible books: **18 / 45** (four titled groups with web-search unit prices × copy count)
-- Contents confirmed: none
-- Contents drafts (books): **8,288 INR** (not confirmed)
-- Other object drafts: mattress, cupboards, coffee table, study tables, split ACs, windows (operator/speech counts × unit price; not confirmed)
-- Building reconstruction: **37,761,129.14 INR** for **580.94 m²** (demo rebuild rates, **not** sale value)
-- Fable (A), Astra Extra (B / replay), Jev, and Astra-live Extra assist all **ran**
-- Inventory status: **partial**
-
-This does **not** close the 8–10 book physical row gate.
-
-### Sealed package
-
-Hashes verified locally. 8 walls, **580.9 m²**, ceiling 250 cm. N is scan +Z, not magnetic north. Geography: Bareilly, IN (`source: gps`). 323 files. Shelf pins are **unregistered overlays** (not operator-placed footprints).
-
-![2D tagged floor plan](docs/invertis-library/sealed-2d-plan.png)
-
-![Walls, doors, windows, openings, shelves](docs/invertis-library/sealed-openings-shelves.png)
-
-![Spatial evidence 2D and 3D](docs/invertis-library/spatial-evidence.png)
-
-![3D RoomPlan model and package](docs/invertis-library/sealed-3d-package.png)
-
-![Upload accepted](docs/invertis-library/sealed-upload.png)
-
-### Pass B on the stacks
-
-Astra-live captions are assist only, not inventory. Rows stayed **partial** (blur / unconfirmed actual).
-
-![Five persistent candidates on a row](docs/invertis-library/pass-b-row-five.jpg)
-
-![Slot 1 on a run of Organization Behavior](docs/invertis-library/pass-b-slot-one.jpg)
-
-![Eleven persistent candidates, 86% readable coverage](docs/invertis-library/pass-b-row-eleven.jpg)
-
-Download a sealed report from the laptop while uvicorn is up:
-
-```bash
-curl -o ~/Downloads/library-survey.pdf \
-  http://127.0.0.1:8000/v1/surveys/4b9d7885-af80-42b8-b8c3-827c7a7f07fd/report.pdf
-```
-
----
-
-## Capture and processing that actually ship
-
-1. **Sequential camera.** RoomPlan owns Pass A. Pass B shelf AR starts after RoomPlan releases. Pass C stills after shelf AR stops. No optical zoom during RoomPlan.
-2. **Live spines.** Apple Vision rectangles + OCR; only boxes with readable letters become copies. Association is in shelf-face metres. Coverage is 8 cm bins along the face of readable detections.
-3. **Voice.** AAC on the RoomPlan session clock. After seal, server STT; notes bind by tap / reticle / pose / time / semantics, or stay unbound.
-4. **Astra-live Extra** during Pass B/C is assist metadata, not inventory.
-5. **After seal.** Geometry → vision count → identity/notes/damage → `web_search` drafts → Fable (A) and Astra Extra (B) on the same sealed bytes → Jev + policy. Every decision appends an `RLTransition`.
-6. **Price search** once per unique edition + market via OpenAI Responses `web_search` (`user_location` from survey geography). ISBN first, else name. No Bing. No Amazon scrape.
-7. **Building value** is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`.
-
----
-
-## Run
-
-Copy [`.env.example`](.env.example) to `.env.local` (untracked). Never put keys in the iOS app.
-
-```bash
-make check         # Ruff, compileall, backend/schema tests
-python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
-```
-
-Phone Backend URL: `http://<Mac-Wi-Fi-IP>:8000`. Mac and iPhone must share a network that allows client-to-client traffic. Uvicorn binds `0.0.0.0`, not `127.0.0.1`.
-
-```bash
-make ios-project   # XcodeGen
-make ios-build     # generic iOS Simulator
-```
-
-Physical install: [`INSTALLATION.md`](INSTALLATION.md).
-
----
-
-## Layout
-
-```text
-backend/     FastAPI, Redis, R2, pricing, Fable/Astra Extra/Jev, RL, reports
-ios/          LibrarySurvey (SwiftUI, RoomPlan, Vision, live spine tracker)
-cv/           labeled-JSON shelf count helpers (shelf-count-v1)
-schemas/      Survey IR, evidence package, model assessment, RL transition
-docs/         architecture.md, gates, deployment, Invertis PDF and screenshots
-eval/         holdout/preflight (templates are not device accuracy)
-```
