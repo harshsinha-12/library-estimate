@@ -1,12 +1,51 @@
+import base64
+import contextlib
+import re
+import zlib
 from uuid import uuid4
 
 import fakeredis
+import pytest
 
 from backend.app.domain.models import SurveyGeography, SurveyRecord
 from backend.app.domain.repository import SurveyRepository
 from backend.app.storage.objects import MemoryObjectStore
 from backend.app.utils.clocks import utc_now
 from backend.app.workflows.report import build_report, build_report_snapshot
+
+
+@pytest.fixture(autouse=True)
+def _stub_report_objects_model(monkeypatch, request):
+    if request.node.name == "test_report_structures_object_prices_through_small_model":
+        return
+
+    monkeypatch.setattr(
+        "backend.app.workflows.report_objects.complete_json",
+        lambda *args, **kwargs: None,
+    )
+
+
+def _pdf_text(pdf: bytes) -> str:
+    parts = []
+    for match in re.finditer(rb"stream\r?\n(.*?)endstream", pdf, re.S):
+        blob = match.group(1).strip()
+        if blob.endswith(b"~>"):
+            try:
+                blob = base64.a85decode(blob, adobe=True, ignorechars=b" \r\n\t")
+            except ValueError:
+                continue
+        with contextlib.suppress(zlib.error):
+            blob = zlib.decompress(blob)
+        text = blob.decode("latin-1", errors="replace")
+        parts.append(text)
+        for literal in re.findall(r"\((?:\\.|[^\\)])*\)", text):
+            parts.append(
+                literal[1:-1]
+                .replace(r"\(", "(")
+                .replace(r"\)", ")")
+                .replace(r"\\", "\\")
+            )
+    return "\n".join(parts)
 
 
 def test_report_keeps_citations_limit_and_spend_visible() -> None:
@@ -126,6 +165,12 @@ def test_report_does_not_turn_unbound_searches_into_inventory() -> None:
     assert report["valuation"]["copies"] == []
     assert len(report["valuation"]["live_searches"]) == 2
     assert pdf.startswith(b"%PDF")
+    text = _pdf_text(pdf)
+    assert "24-inch monitor" in text
+    assert "8,999 INR" in text
+    assert "M1 MacBook Air" in text
+    assert "65,000 INR" in text
+    assert report["valuation"]["report_objects"][0]["title"]
     assert report["model_pipelines"]["fable"]["status"] == "not_run"
 
 
@@ -213,3 +258,122 @@ def test_report_reads_astra_replay_assessment() -> None:
     assert report["model_pipelines"]["fable"]["status"] == "ran"
     assert report["model_pipelines"]["astra"]["status"] == "ran"
     assert report["model_pipelines"]["jev"]["status"] == "ran"
+
+
+def test_report_pdf_reads_redis_object_prices_even_when_copies_exist() -> None:
+    repository = SurveyRepository(
+        fakeredis.FakeRedis(decode_responses=True), MemoryObjectStore(),
+        key_prefix="test:report-objects",
+    )
+    survey_id = uuid4()
+    repository.create(SurveyRecord(
+        survey_id=survey_id, display_name="Home",
+        geography=SurveyGeography(
+            country_code="IN", city="Bareilly", currency="INR",
+            market="en-IN", source="manual",
+        ),
+        status="partial", created_at=utc_now(), sealed_at=utc_now(), package_hash="f" * 64,
+    ))
+    repository.save_json(survey_id, "inventory", {
+        "status": "partial", "asset_copies": [{"asset_copy_id": "copy-1"}],
+    })
+    repository.save_json(survey_id, "overview", {
+        "copies": [{
+            "asset_copy_id": "copy-1", "title": "LEARNING Python", "category": "book",
+            "valuation_status": "price_pending",
+        }],
+        "live_searches": [],
+    })
+    repository.save_json(survey_id, "pricing", {
+        "live_searches": [{
+            "title": "Nilkamal cupboard",
+            "query": "Nilkamal cupboard Bareilly",
+            "query_kind": "object",
+            "category": "furniture",
+            "status": "draft",
+            "amount": 10390,
+            "currency": "INR",
+            "listing_url": "https://www.nilkamalfurniture.com/collections/wardrobes",
+        }],
+        "found_prices": [{
+            "title": "MacBook Air with M1 chip",
+            "amount": "59990",
+            "currency": "INR",
+            "url": "https://www.amazon.in/Apple-MacBook-Chip-13-inch-256GB/dp/B08N5W4NNB",
+            "offer_type": "physical",
+            "query_kind": "object",
+            "category": "computer",
+        }],
+    })
+    report, pdf = build_report(repository, survey_id)
+    assert report["valuation"]["copies"][0]["title"] == "LEARNING Python"
+    assert report["valuation"]["live_searches"][0]["title"] == "Nilkamal cupboard"
+    names = {row["title"] for row in report["valuation"]["report_objects"]}
+    assert "Nilkamal cupboard" in names
+    assert "MacBook Air with M1 chip" in names
+    text = _pdf_text(pdf)
+    assert "Nilkamal cupboard" in text
+    assert "10,390 INR" in text
+    assert "MacBook Air with M1 chip" in text
+    assert "59,990 INR" in text
+    assert "No non-book object prices were found in Redis." not in text
+
+
+def test_report_structures_object_prices_through_small_model(monkeypatch) -> None:
+    seen: dict = {}
+
+    def fake_complete(prompt, *, schema, schema_name, model, reason=None):
+        seen["schema_name"] = schema_name
+        seen["prompt"] = prompt
+        seen["reason"] = reason
+        return {
+            "objects": [
+                {
+                    "name": "Nilkamal wardrobe",
+                    "category": "furniture",
+                    "amount": 1,
+                    "currency": "USD",
+                    "status": "draft",
+                    "listing_url": "https://invented.example/wardrobe",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "backend.app.workflows.report_objects.complete_json", fake_complete
+    )
+    repository = SurveyRepository(
+        fakeredis.FakeRedis(decode_responses=True), MemoryObjectStore(),
+        key_prefix="test:report-luna",
+    )
+    survey_id = uuid4()
+    repository.create(SurveyRecord(
+        survey_id=survey_id, display_name="Home",
+        geography=SurveyGeography(
+            country_code="IN", city="Bareilly", currency="INR",
+            market="en-IN", source="manual",
+        ),
+        status="partial", created_at=utc_now(), sealed_at=utc_now(), package_hash="a" * 64,
+    ))
+    repository.save_json(survey_id, "inventory", {"status": "partial", "asset_copies": []})
+    repository.save_json(survey_id, "overview", {"copies": []})
+    repository.save_json(survey_id, "pricing", {
+        "live_searches": [{
+            "title": "Nilkamal cupboard",
+            "query_kind": "object",
+            "category": "furniture",
+            "status": "draft",
+            "amount": 10390,
+            "currency": "INR",
+            "listing_url": "https://www.nilkamalfurniture.com/collections/wardrobes",
+        }],
+    })
+    report, pdf = build_report(repository, survey_id)
+    assert seen["schema_name"] == "report_objects"
+    assert "Nilkamal cupboard" in seen["prompt"]
+    row = report["valuation"]["report_objects"][0]
+    assert row["title"] == "Nilkamal wardrobe"
+    assert row["valuation"]["amount"]["value"] == 10390
+    assert row["valuation"]["currency"] == "INR"
+    assert "invented.example" not in (row.get("listing_url") or "")
+    assert "10,390 INR" in _pdf_text(pdf)
