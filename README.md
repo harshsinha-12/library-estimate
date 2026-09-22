@@ -18,6 +18,8 @@ Live survey **2026-09-22** at Invertis Library, Bareilly (`en-IN`).
 
 - Survey ID: `4b9d7885-af80-42b8-b8c3-827c7a7f07fd`
 - PDF: [`docs/invertis-library-report.pdf`](docs/invertis-library-report.pdf)
+- Capture walkthrough: [YouTube](https://www.youtube.com/watch?v=ghjy6Jd-eqM)
+- Whiteboard: [tldraw](https://www.tldraw.com/p/QTbrFMOSMF3nAvXJ3s_dN?d=v-673.-2103.7064.3836.page)
 - Recorded copies: **45**
 - Unique book titles / copies: **5 / 45** (four named groups plus 27 untitled copies)
 - Confirmed / eligible books: **0 / 45** (no operator-confirmed listings)
