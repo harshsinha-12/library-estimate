@@ -31,7 +31,7 @@ enum LiveQualityAnalyzer {
     let textBoxes = (textRequest.results ?? []).filter {
       ($0.topCandidates(1).first?.string.filter(\.isLetter).count ?? 0) >= 3
     }.map(\.boundingBox)
-    return (request.results ?? []).compactMap { observation in
+    let proposals: [SpineRegion] = (request.results ?? []).compactMap { observation in
       let box = observation.boundingBox
       let tall = box.height > box.width * 1.4
       let stacked = box.width > box.height * 1.4
@@ -47,6 +47,20 @@ enum LiveQualityAnalyzer {
         isStacked: stacked, isLeaning: lean
       )
     }
+    var selected: [SpineRegion] = []
+    for proposal in proposals.sorted(by: { $0.confidence > $1.confidence }) {
+      let nested = selected.contains { kept in
+        let overlap = kept.box.intersection(proposal.box)
+        let smaller = min(
+          kept.box.width * kept.box.height,
+          proposal.box.width * proposal.box.height
+        )
+        return !overlap.isNull && smaller > 0 &&
+          overlap.width * overlap.height / smaller > 0.7
+      }
+      if !nested { selected.append(proposal) }
+    }
+    return selected
   }
 
   static func cropContainsText(jpeg: Data, box: CGRect) -> Bool {

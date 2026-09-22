@@ -367,7 +367,8 @@ final class ShelfCaptureStore: ObservableObject {
     guard let index = rowCoverage.firstIndex(where: { $0.rowId == activeRowId }),
           let projection = sampler.projections[sample.id],
           quality.messages.isEmpty,
-          detected.contains(where: \.hasReadableText),
+          detected.count > 0,
+          detected.filter(\.hasReadableText).count * 2 >= detected.count,
           let left = project(0.08, 0.5, camera: projection.camera,
                              orientation: projection.orientation),
           let right = project(0.92, 0.5, camera: projection.camera,
@@ -471,7 +472,8 @@ final class ShelfCaptureStore: ObservableObject {
           captureStatus: row.status
         )
       },
-      placement: box.placement
+      placement: box.placement,
+      trackingMode: "ar_local_plane_assumed_0.65m"
     )
   }
 }

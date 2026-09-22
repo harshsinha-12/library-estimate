@@ -108,6 +108,7 @@ struct LabeledPass: Codable {
   var quality: LabeledQuality
   var rows: [LabeledRow]
   var placement: String?
+  var trackingMode: String? = nil
 }
 
 struct LabeledQuality: Codable {
