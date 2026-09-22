@@ -25,6 +25,43 @@ ACTIONS = (
 )
 HEADS = ("condition", "eligibility", "damage", "duplicate_features", "quality")
 POLICY_VERSION = "bandit_v1"
+REQUIRED_GOLD_CASES = frozenset({
+    "same_isbn_two_copies", "reverse_scan", "no_isbn", "ambiguous_edition",
+    "moved_book", "damaged_book", "portrait_spoken_damage", "mug", "appraisal_item",
+})
+
+
+def freeze_gold_set(
+    repository: SurveyRepository, survey_id: UUID, *,
+    copy_ids: list[str], case_tags: dict[str, list[str]], frozen_by: str,
+) -> dict:
+    survey = repository.get(survey_id)
+    if not survey.package_hash:
+        raise ValueError("gold set requires a sealed survey")
+    if not 50 <= len(copy_ids) <= 100 or len(copy_ids) != len(set(copy_ids)):
+        raise ValueError("gold set requires 50–100 unique physical copy IDs")
+    if not frozen_by.strip():
+        raise ValueError("frozen_by is required")
+    inventory = repository.get_json(survey_id, "inventory") or {}
+    actual = {item["asset_copy_id"] for item in inventory.get("asset_copies", [])}
+    if not set(copy_ids) <= actual:
+        raise ValueError("gold copy IDs must exist in the sealed inventory")
+    if not set(case_tags) <= set(copy_ids):
+        raise ValueError("case tags must refer to rostered copies")
+    covered = {tag for tags in case_tags.values() for tag in tags}
+    missing = REQUIRED_GOLD_CASES - covered
+    if missing:
+        raise ValueError(f"gold set missing cases: {', '.join(sorted(missing))}")
+    payload = {
+        "survey_id": str(survey_id), "package_hash": survey.package_hash,
+        "copy_ids": sorted(copy_ids), "case_tags": case_tags,
+        "frozen_by": frozen_by, "frozen_at": utc_now().isoformat(),
+    }
+    payload["sha256"] = sha256(canonical_json_bytes(payload)).hexdigest()
+    key = f"{repository.key_prefix}:survey:{survey_id}:gold_set"
+    if not repository.redis.set(key, json.dumps(payload, sort_keys=True), nx=True):
+        raise ValueError("gold set is already frozen")
+    return payload
 
 
 class IndependentOutcome(BaseModel):
@@ -104,6 +141,20 @@ def append_label(repository: SurveyRepository, label: IndependentLabel) -> dict:
     )
     if transition is None:
         raise ValueError("transition not found in survey")
+    prediction = transition.get("state", {}).get("specialist_prediction")
+    if prediction is not None:
+        head = prediction.get("head")
+        if head not in HEADS or head not in label.truth:
+            raise ValueError("specialist prediction requires independent truth for its head")
+        correct = prediction.get("class") == label.truth[head]
+        if (
+            label.outcome.specialist_correct is not None
+            and label.outcome.specialist_correct != correct
+        ):
+            raise ValueError("specialist credit must match independent truth")
+        label = label.model_copy(update={
+            "outcome": label.outcome.model_copy(update={"specialist_correct": correct})
+        })
     payload = label.model_dump(mode="json")
     payload["reward"] = reward_from_outcome(label.outcome)
     marker = f"{repository.key_prefix}:survey:{label.survey_id}:label:{label.transition_id}"
@@ -196,9 +247,13 @@ def train_offline_policy(
     rows = [
         row for row in labeled_transitions(repository, train_survey_ids)
         if row["transition"].get("action_source") in {"policy", "jev+policy", "baseline"}
+        and row["transition"].get("state", {}).get("logging_propensity") is not None
     ]
     if len(rows) < 10:
-        raise ValueError("at least 10 independently labeled transitions are required")
+        raise ValueError(
+            "at least 10 independently labeled transitions with known logging propensities "
+            "are required"
+        )
     support = Counter(row["transition"]["action"] for row in rows)
     weights: dict[str, dict[str, float]] = {action: {} for action in ACTIONS}
     for action in ACTIONS:
@@ -224,12 +279,21 @@ def train_offline_policy(
                 )
     specialists = {head: _fit_head(rows, head) for head in HEADS}
     labels_hash = sha256(canonical_json_bytes(rows)).hexdigest()
+    gold_hashes = {}
+    for survey_id in [*train_survey_ids, *holdout_survey_ids]:
+        raw = repository.redis.get(f"{repository.key_prefix}:survey:{survey_id}:gold_set")
+        if raw is not None:
+            gold_hashes[str(survey_id)] = json.loads(raw)["sha256"]
     artifact = {
         "schema_version": "1.0.0", "policy_id": f"{POLICY_VERSION}:{labels_hash[:12]}",
+        "technique": "offline contextual bandit, propensity-weighted linear reward regression",
+        "specialist_technique": "Laplace-smoothed naive Bayes on labeled state features",
         "stage": "shadow", "trained_at": utc_now().isoformat(),
         "approved_at": None, "train_survey_ids": sorted(map(str, train_survey_ids)),
         "holdout_survey_ids": sorted(map(str, holdout_survey_ids)),
         "labels_sha256": labels_hash, "n_train": len(rows),
+        "gold_set_hashes": gold_hashes,
+        "gold_rosters_frozen": len(gold_hashes) == len(set(train_survey_ids + holdout_survey_ids)),
         "action_support": dict(support), "weights": weights, "specialists": specialists,
         "limitations": [
             "Only logged actions have outcome support; alternate-action rewards are unobserved.",
@@ -263,12 +327,18 @@ def shadow_policy(repository: SurveyRepository, policy_id: str) -> dict:
             repository, [UUID(value) for value in policy["holdout_survey_ids"]]
         )
         if row["transition"].get("action_source") in {"policy", "jev+policy", "baseline"}
+        and row["transition"].get("state", {}).get("logging_propensity") is not None
     ]
     matched = 0
     supported = 0
     weighted_reward = 0.0
     baseline_reward = 0.0
     predictions = []
+    head_scores = {
+        head: {"correct_numerator": 0, "labeled_denominator": 0,
+               "mean_true_class_probability": None, "probability_sum": 0.0}
+        for head in HEADS
+    }
     for row in rows:
         transition = row["transition"]
         features = _features(transition["state"], transition)
@@ -294,6 +364,22 @@ def shadow_policy(repository: SurveyRepository, policy_id: str) -> dict:
             "predicted_action": choice, "logged_action": logged_action,
             "matched_logged_action": choice == logged_action,
         })
+        for head_name, head in policy["specialists"].items():
+            truth = row["label"].get("truth", {}).get(head_name)
+            if truth is None:
+                continue
+            probabilities = specialist_probabilities(head, features)
+            score = head_scores[head_name]
+            score["labeled_denominator"] += 1
+            score["correct_numerator"] += int(
+                bool(probabilities) and max(probabilities, key=probabilities.get) == truth
+            )
+            score["probability_sum"] += probabilities.get(truth, 0.0)
+    for score in head_scores.values():
+        denominator = score["labeled_denominator"]
+        score["mean_true_class_probability"] = (
+            score.pop("probability_sum") / denominator if denominator else None
+        )
     return {
         "policy_id": policy_id, "stage": "shadow", "holdout_numerator": len(rows),
         "holdout_denominator": len(rows), "matched_numerator": matched,
@@ -301,6 +387,8 @@ def shadow_policy(repository: SurveyRepository, policy_id: str) -> dict:
         "supported_denominator": len(rows),
         "observed_logged_reward_mean": baseline_reward / len(rows) if rows else None,
         "ips_reward_sum_on_matches": weighted_reward,
+        "ips_reward_mean": weighted_reward / len(rows) if rows else None,
         "ips_warning": "No causal improvement claim: overlap and propensities require review.",
+        "specialist_scores": head_scores,
         "predictions": predictions,
     }

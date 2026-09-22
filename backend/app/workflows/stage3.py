@@ -11,6 +11,7 @@ from backend.app.domain.repository import SurveyRepository
 from backend.app.providers.catalog.chain import CatalogChain
 from backend.app.providers.pricing.queries import title_from_ocr
 from backend.app.providers.voice import transcribe_segments
+from backend.app.rl.transitions import record_decision
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.workflows.identifiers import type_identifier
 
@@ -279,6 +280,11 @@ class Stage3Worker:
                         "usable_for_isbn_price_query": False,
                         "reason": typed.reason,
                         "scope": scan.get("scope", "volume"),
+                        "identifier_kind": (
+                            f"{scan.get('scope', 'volume')}_isbn"
+                            if typed.kind.startswith("isbn") else typed.kind
+                        ),
+                        "format": scan.get("format") or "unknown",
                         "evidence_ref": scan.get("evidence_ref"),
                         "ocr_text": scan.get("ocr_text", ""),
                         "ocr_confidence": scan.get("ocr_confidence"),
@@ -290,7 +296,10 @@ class Stage3Worker:
                         if identity["catalog"]["status"] == "candidate":
                             identity["usable_for_isbn_price_query"] = True
                             asset["isbn"] = typed.normalized
-                            asset["book_edition_ref"] = f"edition_{typed.normalized}"
+                            asset["book_edition_ref"] = (
+                                f"edition_{identity['scope']}_{typed.normalized}_"
+                                f"{identity['format']}"
+                            )
                         else:
                             queue.append(
                                 self._queue(
@@ -323,6 +332,8 @@ class Stage3Worker:
                             "status": "manual_title_match",
                             "evidence_ref": scan.get("evidence_ref"),
                             "catalog": catalog,
+                            "format": scan.get("format") or "unknown",
+                            "scope": scan.get("scope", "volume"),
                         }
                     )
                     queue.append(
@@ -403,7 +414,14 @@ class Stage3Worker:
             if catalog.get("status") != "candidate" or not identity.get("valid"):
                 continue
             isbn = identity["normalized"]
-            edition_id = f"edition_{isbn}"
+            asset = next(
+                (item for item in assets if item["asset_copy_id"] == identity["asset_copy_id"]),
+                None,
+            )
+            edition_id = (asset.get("book_edition_ref") if asset else None) or (
+                f"edition_{identity.get('scope', 'volume')}_{isbn}_"
+                f"{identity.get('format', 'unknown')}"
+            )
             work_key = (catalog.get("work_refs") or [catalog.get("title", isbn)])[0]
             work_id = "work_" + sha256_bytes(str(work_key).encode())[:12]
             works[work_id] = {
@@ -421,6 +439,8 @@ class Stage3Worker:
                 "publisher": catalog.get("publisher"),
                 "edition": catalog.get("edition"),
                 "scope": identity.get("scope", "volume"),
+                "format": identity.get("format", "unknown"),
+                "identifier_kind": identity.get("identifier_kind"),
                 "catalog_source": catalog["source"],
                 "evidence_ref": identity.get("evidence_ref"),
             }
@@ -516,22 +536,16 @@ def apply_review(repository: SurveyRepository, survey_id: UUID, decision: dict) 
         }
     )
     repository.save_json(survey_id, "stage3", result)
-    transition = {
-        "schema_version": "1.0.0", "transition_id": str(uuid4()),
-        "survey_id": str(survey_id), "policy_id": "human_review_v1",
-        "state": {
+    record_decision(
+        repository, survey_id,
+        policy_id="human_review_v1", action_source="human",
+        action="recapture" if action == "rescan_barcode" else "human_review",
+        state={
             "queue_id": target["id"], "queue_kind": target["kind"],
             "asset_copy_id": decision.get("asset_copy_id") or target.get("asset_copy_id"),
             "evidence_ref": target.get("evidence_ref"),
             "operator_action": action,
         },
-        "action": "recapture" if action == "rescan_barcode" else "human_review",
-        "action_source": "human", "fable": None, "astra": None, "jev": None,
-        "human_truth": None, "independent_outcome": None, "reward": None,
-        "next_state_id": None, "cost_usd": 0.0, "elapsed_ms": 0,
-    }
-    repository.redis.rpush(
-        f"{repository.key_prefix}:survey:{survey_id}:rl_transitions",
-        json.dumps(transition, sort_keys=True),
+        next_state_id=str(uuid4()) if action == "rescan_barcode" else None,
     )
     return result

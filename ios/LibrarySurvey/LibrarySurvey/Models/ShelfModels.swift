@@ -108,6 +108,7 @@ struct LabeledPass: Codable {
   var quality: LabeledQuality
   var rows: [LabeledRow]
   var placement: String?
+  var trackingMode: String? = nil
 }
 
 struct LabeledQuality: Codable {
@@ -124,6 +125,7 @@ struct LabeledRow: Codable {
   var capacityM: Double
   var actualCount: Int?
   var spines: [LabeledSpine]
+  var captureStatus: String? = nil
 }
 
 struct LabeledSpine: Codable {
@@ -133,4 +135,8 @@ struct LabeledSpine: Codable {
   var isbn: String?
   var appearance: String
   var evidenceRef: String
+  var observationId: String? = nil
+  var readable: Bool? = nil
+  var stacked: Bool? = nil
+  var leaning: Bool? = nil
 }

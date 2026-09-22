@@ -37,6 +37,7 @@ from backend.app.providers.pricing.targets import (
 )
 from backend.app.providers.pricing.vision_titles import describe_object, extract_book_titles
 from backend.app.providers.pricing.web_search import search_book_price, search_price_batch
+from backend.app.rl.transitions import record_decision
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.hashing import sha256_bytes
 from backend.app.workflows.identifiers import type_identifier
@@ -785,6 +786,18 @@ class PricingWorker:
         else:
             raise ValueError("unsupported price observation action")
         copies = self._refresh(repository, survey_id, state, geography, stage3, inventory)
+        record_decision(
+            repository, survey_id, policy_id="price_review_v1", action_source="human",
+            action="accept" if action in {"confirm", "manual"} else "human_review",
+            state={
+                "asset_copy_id": asset_id, "operator_action": action,
+                "price_observation_id": (
+                    confirmed["price_observation_id"] if action == "confirm"
+                    else payload.get("price_observation_id")
+                ),
+                "reason": payload.get("reason"),
+            },
+        )
         return {"asset_copy_id": asset_id, "copies": copies, "observations": state["observations"]}
 
     def _refresh(
@@ -1673,6 +1686,11 @@ class PricingWorker:
             author = authors[0] if authors else None
             publisher = catalog.get("publisher")
             edition = catalog.get("edition")
+            physical_format = identity.get("format")
+            if physical_format and physical_format != "unknown":
+                edition = " ".join(filter(None, [edition, physical_format.replace("_", " ")]))
+            if identity.get("scope") == "set":
+                edition = " ".join(filter(None, [edition, "boxed set"]))
         elif identity and identity.get("title"):
             title = identity.get("title")
             catalog = identity.get("catalog") or {}
@@ -1683,6 +1701,9 @@ class PricingWorker:
                 title = title or catalog["candidates"][0].get("title")
                 cand_authors = catalog["candidates"][0].get("authors") or []
                 author = cand_authors[0] if cand_authors else author
+            physical_format = identity.get("format")
+            if physical_format and physical_format != "unknown":
+                edition = physical_format.replace("_", " ")
         elif asset.get("isbn"):
             # Inventory ISBN hints are Stage B OCR and are never a price query key.
             isbn = None
@@ -1715,7 +1736,9 @@ class PricingWorker:
             return None, None, asset.get("book_edition_ref") or asset["asset_copy_id"]
         query, kind = built
         edition_key = (
-            f"edition_{isbn}" if isbn else "title_" + sha256_bytes(query.encode())[:12]
+            f"edition_{identity.get('scope', 'volume')}_{isbn}_"
+            f"{identity.get('format', 'unknown')}"
+            if isbn and identity else "title_" + sha256_bytes(query.encode())[:12]
         )
         return query, kind, edition_key
 

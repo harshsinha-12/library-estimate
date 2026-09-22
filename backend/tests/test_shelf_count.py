@@ -195,6 +195,50 @@ LABELED_SHELF = {
 }
 
 
+def test_adjacent_thin_copies_keep_distinct_ids_across_reverse_scan() -> None:
+    base = {
+        "room_id": "library", "shelf_id": "shelf_01",
+        "face_id": "shelf_01.face_A", "face_normal": [0, 0, 1],
+    }
+    def spine(slot: int, x: float) -> dict:
+        return {
+            "slot": slot, "x": x, "t": 1.0, "isbn": "9780143127550",
+            "appearance": "same-title", "evidence_ref": f"crop_{slot}",
+        }
+    result = count_labeled_shelf({"passes": [
+        {**base, "pass_id": "forward", "rows": [{
+            "row_id": "row_01", "coverage": 0.95, "actual_count": 2,
+            "spines": [spine(0, 0.300), spine(1, 0.322)],
+        }]},
+        {**base, "pass_id": "reverse", "rows": [{
+            "row_id": "row_01", "coverage": 0.95, "actual_count": 2,
+            "spines": [spine(1, 0.323), spine(0, 0.301)],
+        }]},
+    ]})
+    copies = [row for row in result.asset_copies if row["row_id"] == "row_01"]
+    assert len(copies) == 2
+    assert {row["slot"] for row in copies} == {0, 1}
+    assert all(len(row["observation_refs"]) == 2 for row in copies)
+
+
+def test_manual_count_mismatch_keeps_row_partial_with_interval() -> None:
+    result = count_labeled_shelf({"passes": [{
+        "pass_id": "one", "face_id": "face_A", "room_id": "room",
+        "shelf_id": "unit", "rows": [{
+            "row_id": "row_01", "coverage": 0.98, "actual_count": 3,
+            "capture_status": "partial", "spines": [{
+                "slot": 0, "x": 0.3, "t": 1, "evidence_ref": "crop_0",
+            }],
+        }],
+    }]})
+    row = result.faces[0]["rows"][0]
+    assert row["status"] == "partial"
+    assert row["copy_count"] == 1
+    assert row["actual_count"] == 3
+    assert row["count_interval"]["high"] >= 3
+    assert "face_A/row_01" in result.recapture
+
+
 def test_labeled_shelf_count_interval_no_double_and_partial_uncovered() -> None:
     result = count_labeled_shelf(LABELED_SHELF)
     face_a_copies = [item for item in result.asset_copies if item["face_id"] == "shelf_01.face_A"]

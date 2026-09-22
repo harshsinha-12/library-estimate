@@ -246,6 +246,13 @@ Sequential camera ownership is now productized in the iOS capture flow. No physi
 - If RGB cannot be sampled during RoomPlan, the capture UI shows **Sequential fallback** and `device/calibration.json` records `camera_ownership: sequential` plus `rgb_evidence_mode`.
 - Verification: Ruff, compileall, `git diff --check`, and 62 isolated backend tests passed. `test_live_storage` and `test_settings_repr_redacts_credentials` need `REDIS_HOST` in this environment. No Xcode/simulator on this host. Device confirmation of exclusive camera ownership remains for when Harsh is back.
 
+## 2026-09-22 — Leftover #2 multi-book count (code and fixture)
+
+- Pass B now keeps a selected face and row, projects detections onto a local AR plane, and tracks stable spine candidates across forward and reverse sweeps. Each candidate has its own crop, slot, and provisional copy path; unreadable, stacked, and leaning candidates remain visible. The operator can enter a manual row count and tap a candidate for Pass C. Set versus volume scope and physical binding flow into identity and pricing keys.
+- The plane is assumed 0.65 m from the first camera pose, so its coverage and slot locations are estimates until checked on a real shelf. A row stays partial if the manual count differs, candidate association is ambiguous, or readable coverage is insufficient. `trackingMode` records the projection assumption in the sealed label.
+- Backend fixtures keep adjacent thin copies with the same ISBN distinct through a reverse sweep, mark a count mismatch partial, and keep set/volume and binding variants separate. The pure Swift tracker fixture passed. The isolated backend suite passed 66 tests; Ruff and `git diff --check` passed; a generic iOS Simulator build passed with signing disabled.
+- **Open:** no physical iPhone row of 8–10 books was scanned. Detected/actual count, reverse-sweep stability, identity or Pass C tasks, and per-copy price/report roster still require the operator's on-device walkthrough. Leftover #2 and the Stage 4 physical row gate remain open.
+
 ## 2026-09-22 — Leftover #3 Fable, Astra, Jev (code)
 
 Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs remain unconfirmed.
@@ -255,3 +262,11 @@ Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs r
 - Spend ledger still records reservations and estimated USD. There is no per-survey dollar stop, so Astra-live and sealed A/B are not cut off at $50.
 - Jev writes a comparison record (A fields, B fields, disagreement, chosen route, confidence) separate from policy. Jev cannot write count or price. Geometry, ISBN, merge, and money keys are dropped from assessments.
 - Settings expose `FABLE_MODEL` / `ASTRA_MODEL` / `JEV_MODEL` defaults (`claude-fable-5-1`, `gpt-6-astra`, `jev-latest`). Confirming live IDs and spending against the ledger is still open below.
+
+## 2026-09-22 — Leftover #4 RL (backend groundwork)
+
+- Named the implemented technique in the policy artifact and validation guide: offline contextual bandit routing using propensity-weighted linear reward regression; specialist condition, eligibility, damage, duplicate-features, and quality heads use Laplace-smoothed naive Bayes. This is not sequential offline RL or a live-trained frontier model.
+- Centralized append-only transitions for model routing, Stage 3 human review/barcode recapture, and Stage 4 price review. Model auto accepts now have a separate audit record with copy ID, evidence hash, both model outputs, Jev, reason, and human overturn authority. Recapture decisions reserve a `next_state_id`; a new evidence state can be attached once, with its hash, through the successor-state API. The phone does not yet bind recapture evidence automatically.
+- Added an immutable 50–100-copy gold-roster freeze tied to the sealed package and required demo cases. It does not create independent truth labels. Specialist classification credit is derived from independent head truth when a prediction is logged. Shadow output reports per-head correct/labeled and true-class probability. Deterministic live decisions no longer carry a fabricated logging propensity into the bandit fit.
+- **Open:** no physical gold zone or independent holdout exists, so `approved_at` remains null. No canary, active learned router, rollback pointer, or live specialist inference is claimed. One survey does not change production weights. Stage 5 RL gate stays open.
+- Verification: full backend suite 70 passed; Ruff and `git diff --check` passed. No physical device or live provider call was used.

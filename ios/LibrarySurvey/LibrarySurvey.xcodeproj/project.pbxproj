@@ -12,6 +12,7 @@
 		0B355A2F35A7DD5F9087199B /* ExceptionPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377DE562BC6AC869728262CC /* ExceptionPassView.swift */; };
 		0B6E0898B6984E202D586C88 /* Stage3ReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360C071ABB5CA35E7906875D /* Stage3ReviewView.swift */; };
 		107526297493CEC5A2388720 /* ShelfPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC6429C1CE32DF6750D9A09 /* ShelfPassView.swift */; };
+		17FBFFDC5FE9282DFA33DFF3 /* CameraSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B95FD9563F7338132A91FC3 /* CameraSessionCoordinator.swift */; };
 		1A98AE08C40C75099AE5A499 /* ReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D017AA799189CEFBD441D5B /* ReportView.swift */; };
 		1F13171D603809AED9D252C9 /* RoomCaptureContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7CA864A25DCD9232388B09 /* RoomCaptureContainer.swift */; };
 		2250F04C823B49975660A454 /* PackagePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA3E3171F4FBD156129CF23 /* PackagePreviewView.swift */; };
@@ -25,7 +26,6 @@
 		49640AA29000F3DBEFAF1B02 /* LocalNetworkPrompter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B666F2104D2E3966DF0492F /* LocalNetworkPrompter.swift */; };
 		60AE023D0ED320A111C53BDE /* JSONCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082CC6F89646262287DB3B7A /* JSONCoding.swift */; };
 		6183DD440564177A251EC3D8 /* CapturePackageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99336D79C6661AE0A60CBB06 /* CapturePackageWriter.swift */; };
-		C5A1E5C0A11AA11B21C3D4E1 /* CameraSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A1E5C0A11AA11B21C3D4E0 /* CameraSessionCoordinator.swift */; };
 		684DABD691208009A9FF03F5 /* SurveyDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F42100972258D04116CB6B3 /* SurveyDraftStore.swift */; };
 		6B67B14F5E4419302461CE3F /* RoomPlanSVGRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A97A391E71BABE79E8A649C /* RoomPlanSVGRenderer.swift */; };
 		6E3DCDD7F48525DC448053D3 /* PortableRoomPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8376501EF4B476163B8D37D /* PortableRoomPlan.swift */; };
@@ -35,6 +35,7 @@
 		891D2DB8372B58BE2150E9FC /* PriceEvidenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E4DFF0696C6C92D7DC6F44 /* PriceEvidenceView.swift */; };
 		89724C9FB95BCE34277E426E /* CreateSurveyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6CAB75C1A35A43B56F251AC /* CreateSurveyView.swift */; };
 		8AC7DD498471AA22B643552F /* ShelfMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D267CACD1ED23A8AA22182 /* ShelfMapView.swift */; };
+		9094F0524AA2E724FDE121FE /* SpineInstanceTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B11BDEDDBD6EF7ECA7DB60 /* SpineInstanceTracker.swift */; };
 		9CF0AAFDEEEF5FAED3375776 /* FileHashing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21956A0227737D443A1F57B5 /* FileHashing.swift */; };
 		A3BAFA535CF5BE1B3A03B99A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A81946E74A526F9954F97A93 /* Assets.xcassets */; };
 		A5A04F7312ECEAD720D264DB /* ShelfCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDF1750F429DD0A64CFA4B16 /* ShelfCaptureStore.swift */; };
@@ -60,6 +61,7 @@
 		03AF8665FD9C224ECEB90E21 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
 		0679AB62A14FA7F626E9C301 /* DeviceCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCheckView.swift; sourceTree = "<group>"; };
 		082CC6F89646262287DB3B7A /* JSONCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONCoding.swift; sourceTree = "<group>"; };
+		0B95FD9563F7338132A91FC3 /* CameraSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSessionCoordinator.swift; sourceTree = "<group>"; };
 		10D267CACD1ED23A8AA22182 /* ShelfMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfMapView.swift; sourceTree = "<group>"; };
 		11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioNoteRecorder.swift; sourceTree = "<group>"; };
 		1C8E4A2B9D7F41B0A6C5E3D1 /* AstraLiveAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AstraLiveAssist.swift; sourceTree = "<group>"; };
@@ -87,10 +89,10 @@
 		8C1EBBB8799553D6FFA1D044 /* ExceptionCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExceptionCaptureStore.swift; sourceTree = "<group>"; };
 		977703683E802C36955738B4 /* LibrarySurveyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySurveyApp.swift; sourceTree = "<group>"; };
 		99336D79C6661AE0A60CBB06 /* CapturePackageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturePackageWriter.swift; sourceTree = "<group>"; };
-		C5A1E5C0A11AA11B21C3D4E0 /* CameraSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSessionCoordinator.swift; sourceTree = "<group>"; };
 		9A75896AF74FAE758ACD0681 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9CA3E3171F4FBD156129CF23 /* PackagePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackagePreviewView.swift; sourceTree = "<group>"; };
 		A0624716C2A2BD1A11D57662 /* FrameSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameSampler.swift; sourceTree = "<group>"; };
+		A3B11BDEDDBD6EF7ECA7DB60 /* SpineInstanceTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpineInstanceTracker.swift; sourceTree = "<group>"; };
 		A81946E74A526F9954F97A93 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A8376501EF4B476163B8D37D /* PortableRoomPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortableRoomPlan.swift; sourceTree = "<group>"; };
 		A9BDABD7E89F58A048D3FD4F /* ShelfModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfModels.swift; sourceTree = "<group>"; };
@@ -163,7 +165,7 @@
 		9A9C3D868233DEAE652B0E3D /* Capture */ = {
 			isa = PBXGroup;
 			children = (
-				C5A1E5C0A11AA11B21C3D4E0 /* CameraSessionCoordinator.swift */,
+				0B95FD9563F7338132A91FC3 /* CameraSessionCoordinator.swift */,
 				8C1EBBB8799553D6FFA1D044 /* ExceptionCaptureStore.swift */,
 				A0624716C2A2BD1A11D57662 /* FrameSampler.swift */,
 				CAEA0BFA0E112ED27C0548F2 /* LiveQualityAnalyzer.swift */,
@@ -171,6 +173,7 @@
 				ACA363AEF087E903C0E42ACE /* RoomCaptureStore.swift */,
 				458A6CD3BBDA041B75801F97 /* ShelfCameraContainer.swift */,
 				EDF1750F429DD0A64CFA4B16 /* ShelfCaptureStore.swift */,
+				A3B11BDEDDBD6EF7ECA7DB60 /* SpineInstanceTracker.swift */,
 			);
 			path = Capture;
 			sourceTree = "<group>";
@@ -326,9 +329,9 @@
 				7CF5E8EFDC34BCB4D02F4726 /* AppConfiguration.swift in Sources */,
 				2D9F5B3C0E8A52C1B7D6F4E2 /* AstraLiveAssist.swift in Sources */,
 				23CB2C2671405F7E460DB5A9 /* AudioNoteRecorder.swift in Sources */,
+				17FBFFDC5FE9282DFA33DFF3 /* CameraSessionCoordinator.swift in Sources */,
 				AB6A617FE9F28198F6EBBBE9 /* CaptureEvidenceView.swift in Sources */,
 				6183DD440564177A251EC3D8 /* CapturePackageWriter.swift in Sources */,
-				C5A1E5C0A11AA11B21C3D4E1 /* CameraSessionCoordinator.swift in Sources */,
 				89724C9FB95BCE34277E426E /* CreateSurveyView.swift in Sources */,
 				32FF30380A5446D6967D8677 /* DeviceCheckService.swift in Sources */,
 				A5DA9AC07CE5EC166617A6F5 /* DeviceCheckView.swift in Sources */,
@@ -362,6 +365,7 @@
 				8AC7DD498471AA22B643552F /* ShelfMapView.swift in Sources */,
 				82173908A3AA20756EB6AAD2 /* ShelfModels.swift in Sources */,
 				107526297493CEC5A2388720 /* ShelfPassView.swift in Sources */,
+				9094F0524AA2E724FDE121FE /* SpineInstanceTracker.swift in Sources */,
 				AAF8888453427F2521E67269 /* Stage3Models.swift in Sources */,
 				0B6E0898B6984E202D586C88 /* Stage3ReviewView.swift in Sources */,
 				EC0723DC0C4646D3C8843570 /* Stage4Models.swift in Sources */,

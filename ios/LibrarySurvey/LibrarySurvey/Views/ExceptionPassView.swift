@@ -25,6 +25,7 @@ struct ExceptionPassView: View {
   @State private var identifierKind = "auto"
   @State private var title = ""
   @State private var scope = "volume"
+  @State private var bookFormat = "unknown"
   @State private var damageType = "tear"
   @State private var severity = "unknown"
   @State private var region = ""
@@ -220,6 +221,12 @@ struct ExceptionPassView: View {
             Text("Volume").tag("volume")
             Text("Boxed set").tag("set")
           }
+          Picker("Physical binding", selection: $bookFormat) {
+            Text("Unknown").tag("unknown")
+            Text("Paperback").tag("paperback")
+            Text("Hardcover").tag("hardcover")
+            Text("Library binding").tag("library_binding")
+          }
         } else {
           TextField("Damage type", text: $damageType)
           TextField("Severity candidate", text: $severity)
@@ -234,6 +241,7 @@ struct ExceptionPassView: View {
                         faceId: faceId.isEmpty ? nil : faceId,
                         rowId: String(format: "row_%02d", row), slot: slot,
                         identifierKind: identifierKind, title: title, scope: scope,
+                        format: bookFormat,
                         damageType: damageType, severity: severity, region: region,
                         closeupRef: closeupRef, scaleRef: scaleRef)
         }

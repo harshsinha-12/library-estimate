@@ -37,6 +37,7 @@ struct ExceptionScan: Codable, Identifiable {
   let ocrText: String?
   let ocrConfidence: Double?
   let scope: String?
+  let format: String?
   let damageType: String?
   let severity: String?
   let region: String?

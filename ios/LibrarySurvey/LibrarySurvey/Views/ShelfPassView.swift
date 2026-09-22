@@ -20,9 +20,14 @@ struct ShelfPassView: View {
         .ignoresSafeArea()
       if store.capturing {
         GeometryReader { geometry in
-          ForEach(Array(store.highlightedSpines.enumerated()), id: \.offset) { index, box in
-            let rect = store.displayRect(for: box, in: geometry.size)
-            let highlight = livePrices.highlight(for: box)
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(.cyan.opacity(0.6), style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+            .frame(width: geometry.size.width * 0.94, height: geometry.size.height * 0.44)
+            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            .allowsHitTesting(false)
+          ForEach(store.visibleSpines) { spine in
+            let rect = store.displayRect(for: spine.box, in: geometry.size)
+            let highlight = livePrices.highlight(for: spine.box)
             let color: Color = {
               switch highlight?.status {
               case "draft": .green
@@ -30,12 +35,17 @@ struct ShelfPassView: View {
               default: .yellow
               }
             }()
-            RoundedRectangle(cornerRadius: 4)
-              .stroke(color, lineWidth: highlight == nil ? 2 : 3)
-              .background(color.opacity(0.12))
-              .overlay(alignment: .top) {
-                if let caption = highlight?.caption {
-                  Text(caption)
+            Button {
+              guard let image = store.focusedImage(for: spine.box) else { return }
+              onFocus(image, face == .a ? unit.faceAId : unit.faceBId,
+                      Int(spine.rowId.replacingOccurrences(of: "row_", with: "")) ?? 1,
+                      spine.slot)
+            } label: {
+              RoundedRectangle(cornerRadius: 4)
+                .stroke(color, lineWidth: highlight == nil ? 2 : 3)
+                .background(color.opacity(0.12))
+                .overlay(alignment: .top) {
+                  Text(highlight?.caption ?? "Slot \(spine.slot + 1)")
                     .font(.caption2.bold())
                     .lineLimit(2)
                     .padding(.horizontal, 4)
@@ -44,22 +54,76 @@ struct ShelfPassView: View {
                     .foregroundStyle(.black)
                     .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
-              }
-              .frame(width: max(8, rect.width), height: max(16, rect.height))
-              .position(x: rect.midX, y: rect.midY)
-              .allowsHitTesting(false)
-              .accessibilityLabel("Book copy \(index + 1)")
+            }
+            .frame(width: max(44, rect.width), height: max(44, rect.height))
+            .position(x: rect.midX, y: rect.midY)
+            .accessibilityLabel("\(spine.rowId) slot \(spine.slot + 1), tap for Pass C")
           }
         }
-        .allowsHitTesting(false)
-        Button("Finish face", systemImage: "stop.fill") {
-          store.stopFace()
-          onFinished()
+        VStack(spacing: 8) {
+          Text("Center the selected row in the guide. Reverse over the same row to add evidence.")
+            .font(.caption)
+          HStack {
+            ForEach(store.rowCoverage) { row in
+              Button(row.rowId.replacingOccurrences(of: "row_", with: "R")) {
+                store.selectRow(row.rowId)
+              }
+              .buttonStyle(.bordered)
+              .tint(store.activeRowId == row.rowId ? .blue : .gray)
+            }
+          }
+          .frame(maxWidth: .infinity)
+          Text("\(store.activeRowId): \(store.instances(for: store.activeRowId).count) persistent candidates")
+            .font(.caption.bold())
+          if let row = store.rowCoverage.first(where: { $0.rowId == store.activeRowId }) {
+            Text("Readable coverage \(Int(row.coverage * 100))% · \(row.status). Count \(row.copyCount) / actual \(row.actualCount.map(String.init) ?? "unconfirmed").")
+              .font(.caption2)
+            HStack {
+              Stepper("Actual \(row.actualCount ?? row.copyCount)", value: Binding(
+                get: { row.actualCount ?? row.copyCount },
+                set: { store.setActualCount($0, for: row.rowId) }
+              ), in: 0...40)
+              Button("Confirm \(row.copyCount)") {
+                store.confirmActualCount(for: row.rowId)
+              }
+              .buttonStyle(.bordered)
+            }
+          }
+          if let warning = store.quality.messages.first {
+            Label(warning, systemImage: "exclamationmark.triangle")
+              .font(.caption)
+              .foregroundStyle(.orange)
+          }
+          ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+              ForEach(Array(store.instances(for: store.activeRowId).enumerated()), id: \.element.id) { slot, instance in
+                Button {
+                  guard let image = store.evidenceImage(for: instance) else { return }
+                  onFocus(image, face == .a ? unit.faceAId : unit.faceBId,
+                          Int(instance.rowId.replacingOccurrences(of: "row_", with: "")) ?? 1,
+                          slot)
+                } label: {
+                  VStack {
+                    if let image = store.evidenceImage(for: instance) {
+                      Image(uiImage: image).resizable().scaledToFit().frame(width: 42, height: 56)
+                    }
+                    Text("\(slot + 1)\(instance.hasReadableText ? "" : " ?")")
+                      .font(.caption2)
+                  }
+                }
+                .accessibilityLabel("Saved spine slot \(slot + 1), \(instance.hasReadableText ? "readable" : "needs Pass C")")
+              }
+            }
+          }
+          Button("Finish face", systemImage: "stop.fill") {
+            store.stopFace()
+            onFinished()
+          }
+          .buttonStyle(.borderedProminent)
         }
-        .buttonStyle(.borderedProminent)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         .padding()
         if !astraLive.status.isEmpty {
           Text(astraLive.caption)
@@ -92,6 +156,8 @@ struct ShelfPassView: View {
               .font(.caption)
               .foregroundStyle(.orange)
           }
+          Text("Coverage marks distinct readable regions of the selected row. Confirm the actual count before sealing; any mismatch stays partial.")
+            .font(.caption)
           coverageHeatmap
           HStack {
             Button("Point out object", systemImage: "hand.point.up.left") {
@@ -153,10 +219,10 @@ struct ShelfPassView: View {
             Text(store.rowCoverage[index].rowId.replacingOccurrences(of: "row_", with: "R"))
               .font(.caption2)
             Stepper(
-              "Actual \(store.rowCoverage[index].actualCount ?? store.rowCoverage[index].copyCount)",
+              "Actual \(store.rowCoverage[index].actualCount.map(String.init) ?? "unconfirmed")",
               value: Binding(
                 get: { store.rowCoverage[index].actualCount ?? store.rowCoverage[index].copyCount },
-                set: { store.rowCoverage[index].actualCount = $0 }
+                set: { store.setActualCount($0, for: store.rowCoverage[index].rowId) }
               ),
               in: 0...40
             )
@@ -164,9 +230,13 @@ struct ShelfPassView: View {
             .labelsHidden()
             Text("det \(store.rowCoverage[index].copyCount)")
               .font(.caption2)
+            Button("Confirm \(store.rowCoverage[index].copyCount)") {
+              store.confirmActualCount(for: store.rowCoverage[index].rowId)
+            }
+            .font(.caption2)
           }
         }
     }
-    .accessibilityLabel("Coverage heatmap by shelf row")
+    .accessibilityLabel("Readable coverage and confirmed count by shelf row")
   }
 }

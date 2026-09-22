@@ -29,10 +29,12 @@ from backend.app.providers.voice import synthesize_prompt
 from backend.app.rl.offline import (
     IndependentLabel,
     append_label,
+    freeze_gold_set,
     list_policies,
     shadow_policy,
     train_offline_policy,
 )
+from backend.app.rl.transitions import record_successor_state
 from backend.app.utils.paths import validate_package_path
 from backend.app.workflows.astra_live import list_astra_live, record_astra_live
 from backend.app.workflows.models import ModelReplayError, replay_asset
@@ -210,6 +212,36 @@ def get_rl_transitions(request: Request, survey_id: UUID) -> dict:
     return {"survey_id": str(survey_id), "transitions": rows}
 
 
+@router.get("/surveys/{survey_id}/auto-accept-audit")
+def get_auto_accept_audit(request: Request, survey_id: UUID) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    key = f"{repository.key_prefix}:survey:{survey_id}:auto_accept_audit"
+    return {
+        "survey_id": str(survey_id),
+        "entries": [json.loads(raw) for raw in repository.redis.lrange(key, 0, -1)],
+    }
+
+
+@router.post("/surveys/{survey_id}/rl-successor-states")
+def create_rl_successor_state(request: Request, survey_id: UUID, payload: dict) -> dict:
+    try:
+        return record_successor_state(
+            get_survey_workflow(request).repository, survey_id,
+            state_id=str(payload["state_id"]),
+            predecessor_transition_id=str(payload["predecessor_transition_id"]),
+            evidence_ref=str(payload["evidence_ref"]),
+            evidence_hash=str(payload["evidence_hash"]), state=dict(payload["state"]),
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
 @router.post("/surveys/{survey_id}/independent-labels")
 def create_independent_label(request: Request, survey_id: UUID, payload: IndependentLabel) -> dict:
     if payload.survey_id != survey_id:
@@ -220,6 +252,33 @@ def create_independent_label(request: Request, survey_id: UUID, payload: Indepen
         raise HTTPException(status_code=404, detail="survey not found") from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post("/surveys/{survey_id}/gold-set")
+def create_gold_set(request: Request, survey_id: UUID, payload: dict) -> dict:
+    try:
+        return freeze_gold_set(
+            get_survey_workflow(request).repository, survey_id,
+            copy_ids=list(payload["copy_ids"]), case_tags=dict(payload["case_tags"]),
+            frozen_by=str(payload["frozen_by"]),
+        )
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/surveys/{survey_id}/gold-set")
+def get_gold_set(request: Request, survey_id: UUID) -> dict:
+    repository = get_survey_workflow(request).repository
+    try:
+        repository.get(survey_id)
+    except SurveyNotFoundError as error:
+        raise HTTPException(status_code=404, detail="survey not found") from error
+    raw = repository.redis.get(f"{repository.key_prefix}:survey:{survey_id}:gold_set")
+    if raw is None:
+        raise HTTPException(status_code=404, detail="gold set not frozen")
+    return json.loads(raw)
 
 
 @router.get("/surveys/{survey_id}/independent-labels")

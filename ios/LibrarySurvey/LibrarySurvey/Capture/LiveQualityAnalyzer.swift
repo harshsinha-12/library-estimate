@@ -3,25 +3,64 @@ import Foundation
 import UIKit
 import Vision
 
+struct SpineRegion {
+  let box: CGRect
+  let hasReadableText: Bool
+  let confidence: Float
+  let isStacked: Bool
+  let isLeaning: Bool
+}
+
 enum LiveQualityAnalyzer {
   static func spineRegions(jpeg: Data) -> [CGRect] {
+    spineCandidates(jpeg: jpeg).map(\.box)
+  }
+
+  static func spineCandidates(jpeg: Data) -> [SpineRegion] {
     guard let image = UIImage(data: jpeg)?.cgImage else { return [] }
     let request = VNDetectRectanglesRequest()
-    request.minimumAspectRatio = 0.08
-    request.maximumAspectRatio = 1.05
-    request.minimumSize = 0.04
-    request.maximumObservations = 24
-    try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-    return (request.results ?? []).compactMap { observation in
+    request.minimumAspectRatio = 0.035
+    request.maximumAspectRatio = 1.0
+    request.minimumSize = 0.012
+    request.minimumConfidence = 0.5
+    request.maximumObservations = 100
+    let textRequest = VNRecognizeTextRequest()
+    textRequest.recognitionLevel = .fast
+    textRequest.minimumTextHeight = 0.01
+    try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request, textRequest])
+    let textBoxes = (textRequest.results ?? []).filter {
+      ($0.topCandidates(1).first?.string.filter(\.isLetter).count ?? 0) >= 3
+    }.map(\.boundingBox)
+    let proposals: [SpineRegion] = (request.results ?? []).compactMap { observation in
       let box = observation.boundingBox
       let tall = box.height > box.width * 1.4
-      let thin = box.width <= 0.22
-      let tallEnough = box.height >= 0.08
-      let notWall = box.width * box.height <= 0.16
-      guard observation.confidence >= 0.65, tall, thin, tallEnough, notWall else { return nil }
-      guard cropContainsText(image: image, box: box) else { return nil }
-      return box
+      let stacked = box.width > box.height * 1.4
+      let narrow = tall ? box.width <= 0.25 : box.height <= 0.25
+      guard (tall || stacked), narrow, box.width * box.height <= 0.22,
+            max(box.width, box.height) >= 0.07 else { return nil }
+      let top = observation.topLeft
+      let bottom = observation.bottomLeft
+      let lean = tall && abs(top.x - bottom.x) > box.width * 0.4
+      let readable = textBoxes.contains { $0.intersects(box) }
+      return SpineRegion(
+        box: box, hasReadableText: readable, confidence: observation.confidence,
+        isStacked: stacked, isLeaning: lean
+      )
     }
+    var selected: [SpineRegion] = []
+    for proposal in proposals.sorted(by: { $0.confidence > $1.confidence }) {
+      let nested = selected.contains { kept in
+        let overlap = kept.box.intersection(proposal.box)
+        let smaller = min(
+          kept.box.width * kept.box.height,
+          proposal.box.width * proposal.box.height
+        )
+        return !overlap.isNull && smaller > 0 &&
+          overlap.width * overlap.height / smaller > 0.7
+      }
+      if !nested { selected.append(proposal) }
+    }
+    return selected
   }
 
   static func cropContainsText(jpeg: Data, box: CGRect) -> Bool {
@@ -51,21 +90,23 @@ enum LiveQualityAnalyzer {
     jpeg: Data,
     previousTransform: [Float]?,
     currentTransform: [Float],
-    dt: Double
+    dt: Double,
+    provisionalCount: Int
   ) -> LiveQualityReading {
     guard let image = UIImage(data: jpeg)?.cgImage else { return .idle }
     let blur = laplacianVariance(image)
     let glare = highlightFraction(image)
     let speed = motion(previous: previousTransform, current: currentTransform, dt: dt)
     let text = averageTextHeight(image)
-    let occlusion = 1 - min(1, Double(image.width * image.height) / 4_000_000)
+    // Pixel count is not an occlusion measurement. Missing spines remain a partial row
+    // until an independently confirmed actual count reconciles with the candidates.
+    let occlusion = 0.0
     var messages: [String] = []
     let blurScore = max(0, min(1, 1 - blur / 180))
     if blurScore > 0.55 { messages.append("Hold still — the frame is blurry") }
     if glare > 0.35 { messages.append("Tilt to reduce glare") }
     if speed > 0.45 { messages.append("Slow down the sweep") }
     if text > 0 && text < 14 { messages.append("Move closer — spine text is too small") }
-    if occlusion > 0.55 { messages.append("Shelf face is occluded") }
     return LiveQualityReading(
       blur: blurScore,
       glare: glare,
@@ -73,7 +114,7 @@ enum LiveQualityAnalyzer {
       textPixelHeight: text,
       occlusion: occlusion,
       messages: messages,
-      provisionalCount: spineRegions(jpeg: jpeg).count
+      provisionalCount: provisionalCount
     )
   }
 
