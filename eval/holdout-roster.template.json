@@ -1,0 +1,57 @@
+{
+  "roster_status": "template",
+  "roster_version": "1.0.0",
+  "survey_id": "REPLACE_WITH_UNSEEN_SURVEY_ID",
+  "split": "holdout",
+  "frozen_by": "REPLACE_WITH_INDEPENDENT_OPERATOR",
+  "frozen_at": "REPLACE_WITH_ISO_8601_TIMESTAMP",
+  "protocol_version": "controlled-zone-v1",
+  "copy_ids": [
+    "REPLACE-copy-same-isbn-a",
+    "REPLACE-copy-same-isbn-b",
+    "REPLACE-copy-no-isbn",
+    "REPLACE-copy-ambiguous-edition",
+    "REPLACE-copy-moved",
+    "REPLACE-copy-damaged",
+    "REPLACE-copy-portrait-note",
+    "REPLACE-copy-excluded-mug",
+    "REPLACE-copy-appraisal"
+  ],
+  "case_tags": {
+    "REPLACE-copy-same-isbn-a": [
+      "same_isbn_two_copies",
+      "reverse_scan"
+    ],
+    "REPLACE-copy-same-isbn-b": [
+      "same_isbn_two_copies"
+    ],
+    "REPLACE-copy-no-isbn": [
+      "no_isbn"
+    ],
+    "REPLACE-copy-ambiguous-edition": [
+      "ambiguous_edition"
+    ],
+    "REPLACE-copy-moved": [
+      "moved_book"
+    ],
+    "REPLACE-copy-damaged": [
+      "damaged_book"
+    ],
+    "REPLACE-copy-portrait-note": [
+      "portrait_note_closeup"
+    ],
+    "REPLACE-copy-excluded-mug": [
+      "excluded_mug"
+    ],
+    "REPLACE-copy-appraisal": [
+      "appraisal_item"
+    ]
+  },
+  "physical_evidence_refs": [
+    "REPLACE_WITH_ROSTER_SCAN_OR_PHOTO_PATH"
+  ],
+  "limitations": [
+    "TEMPLATE ONLY: replace with observed limitations; these entries are not measured results.",
+    "Expand copy_ids to 50-100 independently inventoried physical copies before preflight."
+  ]
+}

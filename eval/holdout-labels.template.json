@@ -1,0 +1,61 @@
+{
+  "survey_id": "REPLACE_WITH_UNSEEN_SURVEY_ID",
+  "split": "holdout",
+  "label_status": "template",
+  "labeled_by": "REPLACE_WITH_INDEPENDENT_OPERATOR",
+  "cases": [
+    {
+      "case_id": "row-count-face-01-row-01",
+      "metric": "row_count",
+      "expected": 0,
+      "face_id": "REPLACE-face-01",
+      "row_id": "REPLACE-row-01",
+      "physical_evidence_ref": "REPLACE_WITH_ROSTER_PAGE_OR_PHOTO_PATH"
+    },
+    {
+      "case_id": "copy-present-same-isbn-a",
+      "metric": "copy_present",
+      "expected": true,
+      "asset_copy_id": "REPLACE-copy-same-isbn-a",
+      "physical_evidence_ref": "REPLACE_WITH_ROSTER_PAGE_OR_PHOTO_PATH"
+    },
+    {
+      "case_id": "copy-isbn-same-isbn-a",
+      "metric": "copy_isbn",
+      "expected": "REPLACE_WITH_VALID_ISBN",
+      "asset_copy_id": "REPLACE-copy-same-isbn-a",
+      "physical_evidence_ref": "REPLACE_WITH_BARCODE_OR_TITLE_PAGE_PATH"
+    },
+    {
+      "case_id": "same-isbn-remains-separate",
+      "metric": "same_isbn_separate",
+      "expected": true,
+      "copy_ids": [
+        "REPLACE-copy-same-isbn-a",
+        "REPLACE-copy-same-isbn-b"
+      ],
+      "physical_evidence_ref": "REPLACE_WITH_BOTH_COPIES_PHOTO_PATH"
+    },
+    {
+      "case_id": "excluded-mug",
+      "metric": "copy_excluded",
+      "expected": true,
+      "asset_copy_id": "REPLACE-copy-excluded-mug",
+      "physical_evidence_ref": "REPLACE_WITH_MUG_PHOTO_PATH"
+    },
+    {
+      "case_id": "appraisal-item",
+      "metric": "copy_appraisal",
+      "expected": true,
+      "asset_copy_id": "REPLACE-copy-appraisal",
+      "physical_evidence_ref": "REPLACE_WITH_APPRAISAL_ITEM_PHOTO_PATH"
+    },
+    {
+      "case_id": "appraisal-valuation-status",
+      "metric": "copy_valuation_status",
+      "expected": "requires_appraisal",
+      "asset_copy_id": "REPLACE-copy-appraisal",
+      "physical_evidence_ref": "REPLACE_WITH_APPRAISAL_ITEM_PHOTO_PATH"
+    }
+  ]
+}

@@ -40,6 +40,8 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         "Views/PriceEvidenceView.swift",
         "Views/ReportView.swift",
         "Models/Stage4Models.swift",
+        "Security/EvidenceFaceRedactor.swift",
+        "Security/PackageStorageSecurity.swift",
     }
     source_root = IOS_ROOT / "LibrarySurvey"
     assert all((source_root / relative).is_file() for relative in expected_sources)
@@ -89,6 +91,26 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         encoding="utf-8"
     )
     assert "AstraLiveAssist.swift" in project
+
+
+def test_ios_package_security_and_face_redaction_are_wired() -> None:
+    source_root = IOS_ROOT / "LibrarySurvey"
+    writer = (source_root / "Export/CapturePackageWriter.swift").read_text(encoding="utf-8")
+    storage = (source_root / "Security/PackageStorageSecurity.swift").read_text(encoding="utf-8")
+    redactor = (source_root / "Security/EvidenceFaceRedactor.swift").read_text(encoding="utf-8")
+    project = (IOS_ROOT / "LibrarySurvey.xcodeproj" / "project.pbxproj").read_text(
+        encoding="utf-8"
+    )
+    assert "PackageStorageSecurity.secureTree" in writer
+    assert "PackageStorageSecurity.secureFile" in writer
+    assert "isExcludedFromBackup = true" in storage
+    assert ".completeUntilFirstUserAuthentication" in storage
+    assert "VNDetectFaceRectanglesRequest" in redactor
+    assert "CIPixellate" in redactor
+    assert "face-redaction.json" in writer
+    assert "EvidenceFaceRedactor.process" in writer
+    assert "EvidenceFaceRedactor.swift" in project
+    assert "PackageStorageSecurity.swift" in project
 
 
 def test_ios_camera_session_is_sequential() -> None:
@@ -155,3 +177,56 @@ def test_ios_camera_session_is_sequential() -> None:
         encoding="utf-8"
     )
     assert "CameraSessionCoordinator.swift" in project
+
+
+def test_ios_operator_accessibility_contract() -> None:
+    source_root = IOS_ROOT / "LibrarySurvey"
+    support = (source_root / "Utilities/AccessibilitySupport.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "@ScaledMetric(relativeTo: .body)" in support
+    assert "max(44, minimumSize)" in support
+    assert "accessibilityStatusAnnouncements" in support
+    assert "UIAccessibility.post(notification: .announcement" in support
+    assert "struct AccessibleStatusLabel" in support
+
+    room = (source_root / "Views/RoomPassView.swift").read_text(encoding="utf-8")
+    shelf = (source_root / "Views/ShelfPassView.swift").read_text(encoding="utf-8")
+    exception = (source_root / "Views/ExceptionPassView.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "ViewThatFits" in room
+    assert "minimumScaledTouchTarget" in room
+    assert "accessibilityStatusAnnouncements" in room
+    assert "ViewThatFits" in shelf
+    assert "Needs Exception Pass C" in shelf
+    assert "accessibilityStatusAnnouncements" in shelf
+    assert "Spoken prompts use AI-generated speech" in exception
+    assert "Barcode prompt transcript" in exception
+    assert "Damage prompt transcript" in exception
+    assert "Photo library fallback for exception evidence" in exception
+
+    for relative in (
+        "Views/ProcessingView.swift",
+        "Views/InventoryView.swift",
+        "Views/CaptureEvidenceView.swift",
+        "Views/ReportView.swift",
+        "Views/Stage3ReviewView.swift",
+        "Views/SurveySpatialEvidenceView.swift",
+    ):
+        source = (source_root / relative).read_text(encoding="utf-8")
+        assert "accessibilityStatusAnnouncements" in source, relative
+        assert "AccessibleStatusLabel" in source, relative
+
+    room_wrapper = (source_root / "Capture/RoomCaptureContainer.swift").read_text(
+        encoding="utf-8"
+    )
+    shelf_wrapper = (source_root / "Capture/ShelfCameraContainer.swift").read_text(
+        encoding="utf-8"
+    )
+    model_wrapper = (source_root / "Views/TaggedFloorPlanView.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "does not provide optical zoom" in room_wrapper
+    assert "Detected spine controls" in shelf_wrapper
+    assert "3D model unavailable" in model_wrapper
