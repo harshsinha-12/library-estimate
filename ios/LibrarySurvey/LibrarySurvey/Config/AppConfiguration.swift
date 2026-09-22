@@ -7,6 +7,9 @@ enum AppConfiguration {
   static let appVersion = "0.1.0"
   static let appBuild = "1"
   static let roomPlanFormat = "library-roomplan-1.0"
+  static var faceRedactionRequired: Bool {
+    Bundle.main.object(forInfoDictionaryKey: "LibraryFaceRedactionRequired") as? Bool ?? false
+  }
 
   static func localeDefaults(countryCode: String) -> (currency: String, market: String) {
     switch countryCode.uppercased() {

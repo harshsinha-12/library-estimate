@@ -16,8 +16,9 @@ struct CaptureEvidenceView: View {
             .resizable()
             .scaledToFit()
             .accessibilityLabel("Capture evidence at \(path)")
+            .accessibilityHint("Static evidence image. It is not a live camera view.")
         } else if let message {
-          Text(message).foregroundStyle(.orange)
+          AccessibleStatusLabel(text: message, kind: .error)
         } else {
           ProgressView("Loading evidence")
         }
@@ -27,6 +28,13 @@ struct CaptureEvidenceView: View {
     }
     .navigationTitle("Evidence")
     .task { await load() }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  private var accessibilityStatus: String {
+    if image != nil { return "Evidence image loaded" }
+    if let message { return "Evidence could not be displayed. \(message)" }
+    return "Loading evidence image"
   }
 
   private func load() async {

@@ -30,6 +30,7 @@ struct CreateSurveyView: View {
               preciseLocationConsent: store.draft.geography.preciseLocationConsent
             )
           }
+          .minimumScaledTouchTarget()
           locationStatus
         }
         TextField("Country code", text: $store.draft.geography.countryCode)
@@ -48,11 +49,23 @@ struct CreateSurveyView: View {
       Section {
         Button("Continue to Device Check", action: continueWithValidatedGeography)
           .disabled(!canContinue)
+          .minimumScaledTouchTarget()
       }
     }
     .onChange(of: location.suggestedGeography) { _, geography in
       guard let geography else { return }
       store.draft.geography = geography
+    }
+    .accessibilityStatusAnnouncements(locationAccessibilityStatus)
+  }
+
+  private var locationAccessibilityStatus: String {
+    switch location.state {
+    case .idle: ""
+    case .requesting: "Resolving country and city"
+    case .resolved: "Location resolved. Geography fields remain editable"
+    case .denied: "Location denied. Enter country and city manually"
+    case let .failed(message): "Location unavailable. \(message). Enter geography manually"
     }
   }
 
@@ -64,14 +77,20 @@ struct CreateSurveyView: View {
     case .requesting:
       ProgressView("Resolving country and city")
     case .resolved:
-      Label("Location resolved; fields remain editable", systemImage: "checkmark.circle")
-        .foregroundStyle(.green)
+      AccessibleStatusLabel(
+        text: "Location resolved; fields remain editable",
+        kind: .success
+      )
     case .denied:
-      Label("Location denied—enter country and city manually", systemImage: "hand.raised")
-        .foregroundStyle(.orange)
+      AccessibleStatusLabel(
+        text: "Location denied—enter country and city manually",
+        kind: .warning
+      )
     case let .failed(message):
-      Text("Location unavailable: \(message). Enter it manually.")
-        .foregroundStyle(.orange)
+      AccessibleStatusLabel(
+        text: "Location unavailable: \(message). Enter it manually.",
+        kind: .error
+      )
     }
   }
 

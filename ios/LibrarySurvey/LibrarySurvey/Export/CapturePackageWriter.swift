@@ -36,6 +36,7 @@ enum CapturePackageWriter {
     otherAssets: [OtherAssetMark] = [],
     exceptionImages: [String: Data] = [:],
     shelfCrops: [String: Data] = [:],
+    faceRedactionEnabled: Bool = AppConfiguration.faceRedactionRequired,
     rgbEvidenceMode: String = CameraSessionCoordinator.RGBEvidenceMode.sampledDuringScan.rawValue,
     shelfFootprintPlacement: String = "unregistered_overlay",
     fileManager: FileManager = .default
@@ -47,6 +48,7 @@ enum CapturePackageWriter {
       defaultLabel: "Library"
     )
     var files: [PackageFile] = []
+    var redactionRecords: [EvidenceRedactionRecord] = []
 
     try writeJSON(
       structure,
@@ -112,13 +114,18 @@ enum CapturePackageWriter {
       files: &files,
       fileManager: fileManager
     )
-    try writeFrames(samples, root: root, files: &files, fileManager: fileManager)
+    try writeFrames(
+      samples, root: root, files: &files, redactionRecords: &redactionRecords,
+      faceRedactionEnabled: faceRedactionEnabled, fileManager: fileManager
+    )
     try writeShelfScans(
       package: shelfPackage,
       frames: shelfFrames,
       crops: shelfCrops,
       root: root,
       files: &files,
+      redactionRecords: &redactionRecords,
+      faceRedactionEnabled: faceRedactionEnabled,
       fileManager: fileManager
     )
     if !exceptionPackage.scans.isEmpty || !exceptionPackage.notes.isEmpty || !exceptionPackage.focusEvents.isEmpty {
@@ -131,10 +138,11 @@ enum CapturePackageWriter {
     }
     for (path, bytes) in exceptionImages.sorted(by: { $0.key < $1.key }) {
       guard path.hasPrefix("closeups/"), !path.contains("..") else { continue }
-      let imageURL = root.appendingPathComponent(path)
-      try createParent(of: imageURL, fileManager: fileManager)
-      try bytes.write(to: imageURL, options: .atomic)
-      try appendFile(imageURL, relativePath: path, mimeType: "image/jpeg", files: &files)
+      try writeJPEG(
+        bytes, relativePath: path, root: root, files: &files,
+        redactionRecords: &redactionRecords, faceRedactionEnabled: faceRedactionEnabled,
+        fileManager: fileManager
+      )
     }
     try writeJSON(
       notes,
@@ -173,6 +181,20 @@ enum CapturePackageWriter {
       )
     }
 
+    try writeJSON(
+      RedactionMetadata(
+        schemaVersion: "1",
+        policy: faceRedactionEnabled ? "required" : "disabled",
+        failClosed: faceRedactionEnabled,
+        records: redactionRecords
+      ),
+      relativePath: "privacy/face-redaction.json",
+      mimeType: "application/json",
+      root: root,
+      files: &files,
+      fileManager: fileManager
+    )
+
     let checksums = files
       .sorted { $0.path < $1.path }
       .map { "\($0.sha256)  \($0.path)" }
@@ -208,6 +230,7 @@ enum CapturePackageWriter {
     )
     let manifestURL = root.appendingPathComponent("manifest.json")
     try JSONCoding.encoder().encode(manifest).write(to: manifestURL, options: .atomic)
+    try PackageStorageSecurity.secureTree(root, fileManager: fileManager)
     try verify(manifest: manifest, root: root)
     return SealedSurveyPackage(
       surveyId: draft.id,
@@ -237,6 +260,7 @@ enum CapturePackageWriter {
     guard manifest.surveyId == surveyId else {
       throw PackageWriterError.verificationFailed("manifest.json: survey ID")
     }
+    try PackageStorageSecurity.secureTree(root, fileManager: fileManager)
     try verify(manifest: manifest, root: root)
     let svgURL = root.appendingPathComponent("generated/plan.svg")
     let usdzURL = root.appendingPathComponent("roomplan/model.usdz")
@@ -274,6 +298,8 @@ enum CapturePackageWriter {
     crops: [String: Data],
     root: URL,
     files: inout [PackageFile],
+    redactionRecords: inout [EvidenceRedactionRecord],
+    faceRedactionEnabled: Bool,
     fileManager: FileManager
   ) throws {
     guard !package.passes.isEmpty else { return }
@@ -313,17 +339,19 @@ enum CapturePackageWriter {
     )
     for (index, sample) in frames.enumerated() {
       let path = String(format: "shelf_scans/frames/%04d.jpg", index + 1)
-      let url = root.appendingPathComponent(path)
-      try createParent(of: url, fileManager: fileManager)
-      try sample.jpegData.write(to: url, options: .atomic)
-      try appendFile(url, relativePath: path, mimeType: "image/jpeg", files: &files)
+      try writeJPEG(
+        sample.jpegData, relativePath: path, root: root, files: &files,
+        redactionRecords: &redactionRecords, faceRedactionEnabled: faceRedactionEnabled,
+        fileManager: fileManager
+      )
     }
     for (path, bytes) in crops.sorted(by: { $0.key < $1.key }) {
       guard path.hasPrefix("shelf_scans/crops/"), path.lowercased().hasSuffix(".jpg") else { continue }
-      let url = root.appendingPathComponent(path)
-      try createParent(of: url, fileManager: fileManager)
-      try bytes.write(to: url, options: .atomic)
-      try appendFile(url, relativePath: path, mimeType: "image/jpeg", files: &files)
+      try writeJPEG(
+        bytes, relativePath: path, root: root, files: &files,
+        redactionRecords: &redactionRecords, faceRedactionEnabled: faceRedactionEnabled,
+        fileManager: fileManager
+      )
     }
   }
 
@@ -331,6 +359,8 @@ enum CapturePackageWriter {
     _ samples: [FrameSample],
     root: URL,
     files: inout [PackageFile],
+    redactionRecords: inout [EvidenceRedactionRecord],
+    faceRedactionEnabled: Bool,
     fileManager: FileManager
   ) throws {
     struct Pose: Codable {
@@ -343,10 +373,11 @@ enum CapturePackageWriter {
     var poses: [Pose] = []
     for (index, sample) in samples.enumerated() {
       let path = String(format: "roomplan/raw/frames/%04d.jpg", index + 1)
-      let url = root.appendingPathComponent(path)
-      try createParent(of: url, fileManager: fileManager)
-      try sample.jpegData.write(to: url, options: .atomic)
-      try appendFile(url, relativePath: path, mimeType: "image/jpeg", files: &files)
+      try writeJPEG(
+        sample.jpegData, relativePath: path, root: root, files: &files,
+        redactionRecords: &redactionRecords, faceRedactionEnabled: faceRedactionEnabled,
+        fileManager: fileManager
+      )
       poses.append(
         Pose(
           frameId: sample.id,
@@ -381,12 +412,47 @@ enum CapturePackageWriter {
     try appendFile(url, relativePath: relativePath, mimeType: mimeType, files: &files)
   }
 
+  private struct RedactionMetadata: Encodable {
+    let schemaVersion: String
+    let policy: String
+    let failClosed: Bool
+    let records: [EvidenceRedactionRecord]
+
+    enum CodingKeys: String, CodingKey {
+      case schemaVersion = "schema_version"
+      case policy
+      case failClosed = "fail_closed"
+      case records
+    }
+  }
+
+  private static func writeJPEG(
+    _ data: Data,
+    relativePath: String,
+    root: URL,
+    files: inout [PackageFile],
+    redactionRecords: inout [EvidenceRedactionRecord],
+    faceRedactionEnabled: Bool,
+    fileManager: FileManager
+  ) throws {
+    let processed = try EvidenceFaceRedactor.process(
+      jpeg: data, path: relativePath, enabled: faceRedactionEnabled
+    )
+    let url = root.appendingPathComponent(relativePath)
+    try createParent(of: url, fileManager: fileManager)
+    try processed.data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    try PackageStorageSecurity.secureFile(url, fileManager: fileManager)
+    redactionRecords.append(processed.record)
+    try appendFile(url, relativePath: relativePath, mimeType: "image/jpeg", files: &files)
+  }
+
   private static func appendFile(
     _ url: URL,
     relativePath: String,
     mimeType: String,
     files: inout [PackageFile]
   ) throws {
+    try PackageStorageSecurity.secureFile(url)
     let bytes = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?
       .intValue ?? 0
     files.append(
@@ -405,6 +471,7 @@ enum CapturePackageWriter {
       .appendingPathComponent("LibrarySurvey/Packages", isDirectory: true)
       .appendingPathComponent("survey_\(surveyId.uuidString)", isDirectory: true)
     try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+    try PackageStorageSecurity.secureDirectory(root, fileManager: fileManager)
     return root
   }
 
@@ -412,6 +479,9 @@ enum CapturePackageWriter {
     try fileManager.createDirectory(
       at: url.deletingLastPathComponent(),
       withIntermediateDirectories: true
+    )
+    try PackageStorageSecurity.secureDirectory(
+      url.deletingLastPathComponent(), fileManager: fileManager
     )
   }
 }

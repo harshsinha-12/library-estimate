@@ -26,6 +26,7 @@ targets:
         NSMicrophoneUsageDescription: Microphone access records technician notes on the survey timeline.
         NSLocationWhenInUseUsageDescription: Location suggests the survey country, city, currency, and pricing market.
         NSLocalNetworkUsageDescription: Local network access uploads sealed survey packages to the development backend.
+        LibraryFaceRedactionRequired: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSBonjourServices:

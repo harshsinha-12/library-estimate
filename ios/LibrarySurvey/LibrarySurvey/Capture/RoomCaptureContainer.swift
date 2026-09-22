@@ -12,6 +12,9 @@ struct RoomCaptureContainer: UIViewRepresentable {
   func makeUIView(context: Context) -> RoomCaptureView {
     let view = RoomCaptureView(frame: .zero)
     view.delegate = context.coordinator
+    view.isAccessibilityElement = true
+    view.accessibilityLabel = "Live RoomPlan geometry capture"
+    view.accessibilityHint = "This camera view captures room geometry. It does not provide optical zoom. Use the scan controls to pause or finish."
     store.attach(session: view.captureSession)
     return view
   }

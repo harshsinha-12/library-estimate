@@ -13,6 +13,9 @@ struct ShelfCameraContainer: UIViewRepresentable {
   func makeUIView(context: Context) -> ARView {
     let view = ARView(frame: .zero)
     view.automaticallyConfigureSession = false
+    view.isAccessibilityElement = true
+    view.accessibilityLabel = "Live shelf augmented reality camera"
+    view.accessibilityHint = "Center a shelf row visually. Detected spine controls and row controls are exposed separately."
     context.coordinator.view = view
     context.coordinator.startIfAllowed()
     return view

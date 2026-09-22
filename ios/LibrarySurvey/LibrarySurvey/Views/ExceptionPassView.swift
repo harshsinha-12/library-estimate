@@ -33,6 +33,7 @@ struct ExceptionPassView: View {
   @State private var scaleRef: String?
   @State private var noteText = ""
   @State private var promptPlayer: AVAudioPlayer?
+  @State private var activePromptTranscript: String?
   @AppStorage("backendURL") private var backendURLString = "http://192.168.29.178:8000"
   @StateObject private var livePrices = LivePriceSession()
   @StateObject private var astraLive = AstraLiveSession()
@@ -52,28 +53,35 @@ struct ExceptionPassView: View {
           }
         }
         ForEach(store.marks.filter(\.highValue)) { mark in
-          Text("High-value review: \(mark.label)").foregroundStyle(.orange)
+          AccessibleStatusLabel(text: "High-value review: \(mark.label)", kind: .warning)
         }
         ForEach(store.notes.filter { $0.tappedAssetId == nil && $0.faceId == nil }) { note in
-          Text("Unbound note: \(note.text)").foregroundStyle(.orange)
+          AccessibleStatusLabel(text: "Unbound note: \(note.text)", kind: .warning)
         }
         ForEach(store.scans.filter { $0.kind == "damage" && ($0.closeupRef == nil || $0.scaleRef == nil) }) { scan in
-          Text("Damage needs close-up and scale: \(scan.id)").foregroundStyle(.orange)
+          AccessibleStatusLabel(text: "Damage needs close-up and scale: \(scan.id)", kind: .warning)
         }
       }
       Section("Camera and Vision") {
         Text(camera.statusLine)
           .font(.footnote)
           .foregroundStyle(.secondary)
-        Button("Capture image", systemImage: "camera") {
+        Button(hardwareCameraAvailable ? "Capture image" : "Choose image from photo library",
+               systemImage: hardwareCameraAvailable ? "camera" : "photo.on.rectangle") {
           guard camera.tryAcquire(.stillCamera) else { return }
           showCamera = true
         }
         .disabled(camera.geometrySessionActive)
+        .minimumScaledTouchTarget()
+        .accessibilityHint(hardwareCameraAvailable
+          ? "Opens the still camera"
+          : "The hardware camera is unavailable. Opens the photo library instead.")
         if camera.geometrySessionActive {
-          Text("Pass C camera waits until RoomPlan and the shelf AR view have stopped. Apple will not share the camera with UIImagePicker while those sessions run.")
+          AccessibleStatusLabel(
+            text: "Pass C camera waits until RoomPlan and the shelf AR view have stopped. Apple will not share the camera with UIImagePicker while those sessions run.",
+            kind: .warning
+          )
             .font(.footnote)
-            .foregroundStyle(.orange)
         } else {
           Text("This still is not optical zoom during RoomPlan. Close-ups run only after the geometry session is released.")
             .font(.footnote)
@@ -84,6 +92,8 @@ struct ExceptionPassView: View {
             .resizable()
             .scaledToFit()
             .frame(maxHeight: 280)
+            .accessibilityLabel("Latest exception capture")
+            .accessibilityValue("\(store.candidateRegions.count) candidate objects detected")
             .overlay {
               GeometryReader { geometry in
                 ForEach(Array(store.candidateRegions.enumerated()), id: \.offset) { index, box in
@@ -99,6 +109,7 @@ struct ExceptionPassView: View {
                   .position(x: box.midX * geometry.size.width,
                             y: (1 - box.midY) * geometry.size.height)
                   .accessibilityLabel("Candidate object \(index + 1). Tap to crop this still")
+                  .accessibilityHint("Creates a crop from the existing still; it does not zoom the camera")
                 }
               }
             }
@@ -119,19 +130,44 @@ struct ExceptionPassView: View {
         }
         if !store.latestText.isEmpty { Text(store.latestText).font(.caption) }
         if !livePrices.status.isEmpty {
-          Text(livePrices.status)
-            .font(.callout)
-            .foregroundStyle(livePrices.latest?.status == "draft" ? .green : .orange)
+          AccessibleStatusLabel(
+            text: livePrices.status,
+            kind: livePrices.latest?.status == "draft" ? .success : .warning
+          )
+          .font(.callout)
         }
         if !astraLive.status.isEmpty {
-          Text(astraLive.caption)
+          AccessibleStatusLabel(text: astraLive.caption, kind: .progress)
             .font(.footnote)
-            .foregroundStyle(.orange)
         }
-        if let error = store.errorMessage { Text(error).foregroundStyle(.orange) }
-        HStack {
-          Button("Speak barcode prompt") { Task { await playPrompt("barcode") } }
-          Button("Speak damage prompt") { Task { await playPrompt("damage") } }
+        if let error = store.errorMessage {
+          AccessibleStatusLabel(text: error, kind: .error)
+        }
+        Text("Spoken prompts use AI-generated speech. The exact operator instruction is always shown below.")
+          .font(.footnote)
+          .accessibilityLabel("AI-generated speech disclosure. Spoken prompts use AI-generated speech.")
+        ViewThatFits {
+          HStack {
+            barcodePromptButton
+            damagePromptButton
+          }
+          VStack(alignment: .leading) {
+            barcodePromptButton
+            damagePromptButton
+          }
+        }
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Barcode prompt transcript").font(.headline)
+          Text(promptTranscript("barcode"))
+          Text("Damage prompt transcript").font(.headline)
+          Text(promptTranscript("damage"))
+        }
+        .accessibilityElement(children: .contain)
+        if let activePromptTranscript {
+          AccessibleStatusLabel(
+            text: "Last AI-generated spoken prompt: \(activePromptTranscript)",
+            kind: .neutral
+          )
         }
       }
       Section("Mark another asset") {
@@ -310,6 +346,38 @@ struct ExceptionPassView: View {
     .onChange(of: store.suggestedCategory) { _, suggestion in
       if let suggestion { category = suggestion }
     }
+    .accessibilityStatusAnnouncements(accessibilityCaptureStatus)
+  }
+
+  private var hardwareCameraAvailable: Bool {
+    !camera.geometrySessionActive
+      && UIImagePickerController.isSourceTypeAvailable(.camera)
+  }
+
+  private var barcodePromptButton: some View {
+    Button("Speak barcode prompt") { Task { await playPrompt("barcode") } }
+      .minimumScaledTouchTarget()
+      .accessibilityHint("Plays AI-generated speech. The transcript is visible below.")
+  }
+
+  private var damagePromptButton: some View {
+    Button("Speak damage prompt") { Task { await playPrompt("damage") } }
+      .minimumScaledTouchTarget()
+      .accessibilityHint("Plays AI-generated speech. The transcript is visible below.")
+  }
+
+  private func promptTranscript(_ id: String) -> String {
+    switch id {
+    case "barcode": "Please capture the rear barcode and title page for this book."
+    case "damage": "Please capture the damaged region close up with a scale reference."
+    default: "Follow the written operator instruction."
+    }
+  }
+
+  private var accessibilityCaptureStatus: String {
+    if let error = store.errorMessage { return "Exception capture error. \(error)" }
+    if !astraLive.status.isEmpty { return astraLive.caption }
+    return "Exception evidence contains \(store.scans.count) scans, \(store.marks.count) other assets, and \(store.notes.count) notes"
   }
 
   private struct PendingSpine {
@@ -344,6 +412,7 @@ struct ExceptionPassView: View {
   private func playPrompt(_ id: String) async {
     guard let base = URL(string: backendURLString) else { return }
     do {
+      activePromptTranscript = promptTranscript(id)
       var request = URLRequest(url: base.appendingPathComponent("v1/operator-prompts/\(id)/speech"))
       request.httpMethod = "POST"
       let (audio, response) = try await OperatorSession.data(for: request)
@@ -353,6 +422,7 @@ struct ExceptionPassView: View {
       promptPlayer = try AVAudioPlayer(data: audio)
       promptPlayer?.play()
     } catch {
+      activePromptTranscript = nil
       store.errorMessage = "Prompt audio unavailable. Follow the written instruction."
     }
   }
@@ -369,6 +439,9 @@ struct ExceptionCamera: UIViewControllerRepresentable {
       && !camera.geometrySessionActive
       && UIImagePickerController.isSourceTypeAvailable(.camera)
     picker.sourceType = canUseHardwareCamera ? .camera : .photoLibrary
+    picker.view.accessibilityLabel = canUseHardwareCamera
+      ? "Still camera for exception evidence"
+      : "Photo library fallback for exception evidence. No live camera is available."
     picker.delegate = context.coordinator
     return picker
   }

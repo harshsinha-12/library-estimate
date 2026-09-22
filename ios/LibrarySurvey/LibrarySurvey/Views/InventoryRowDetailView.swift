@@ -10,12 +10,18 @@ struct InventoryRowDetailView: View {
       Section("Row status") {
         Text("Detected / actual: \(row.detectedCount) / \(row.actualCount.map(String.init) ?? "unknown")")
         Text("Readable coverage: \(row.coverage.map { String(format: "%.0f%%", $0 * 100) } ?? "unknown")")
-        Text("Count status: \(row.coverageStatus ?? "unknown")")
+        AccessibleStatusLabel(
+          text: "Count status: \(row.coverageStatus ?? "unknown")",
+          kind: row.recapture ? .warning : .success
+        )
         if let interval = row.countInterval, row.recapture {
           Text("Possible count: \(Int(interval.low))–\(Int(interval.high))")
         }
         if row.recapture {
-          Label("Recapture this named row before accepting the count", systemImage: "camera.viewfinder")
+          AccessibleStatusLabel(
+            text: "Recapture this named row before accepting the count",
+            kind: .warning
+          )
         }
         if row.placement != "operator" {
           Text("Unregistered overlay. Shelf location on the plan is not measured.")
@@ -40,7 +46,9 @@ struct InventoryRowDetailView: View {
                 .frame(width: 52, height: 96)
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.primary, lineWidth: 2))
               }
+              .minimumScaledTouchTarget()
               .accessibilityLabel("Slot \(copy.slot.map(String.init) ?? "unknown"), \(copy.title ?? copy.label ?? "unidentified book"), \(copy.valuationStatus)")
+              .accessibilityHint("Opens evidence and valuation details for this physical copy")
             }
           }
           .padding(.vertical, 8)
@@ -61,6 +69,7 @@ struct InventoryRowDetailView: View {
             }
             .font(.footnote)
           }
+          .accessibilityElement(children: .combine)
         }
       }
     }
