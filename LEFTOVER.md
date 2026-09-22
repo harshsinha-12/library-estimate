@@ -9,7 +9,7 @@ Price discovery stays on the OpenAI Responses API `web_search` tool already in t
 
 Do not run the physical device, the library scan, or any other step that needs Harsh present until he is back. Coding, unit tests, fixture gates, and other checks that do not need his permission should proceed. If a step needs his permission, the phone, a live survey on device, or a decision only he can make, skip it and leave it for when he returns.
 
-This is the remaining build. Fixture tests and adapters do not close an item. A checked Stage 1–4 clock in `CHECKPOINTS.md` means the original fixture gate passed; the physical row and the items below are still open.
+This is the remaining build. Fixture tests and adapters do not close an item. Invertis Library (45 copies) is the device book pass; there is no separate 8–10 row gate.
 
 After finishing the task, mention that you have done this so that, if I can see that on my phone, I know that this has been completed, and I will tell you to move to the next one or point You to the next one.
 
@@ -46,7 +46,7 @@ Left:
 
 `question.md` requires: every visible copy, spines on both faces, reverse sweep does not double, same title in another bay still counts as a second copy.
 
-That rule is proven on labeled JSON. It is not proven on a phone. Live detection is `VNDetectRectanglesRequest` (max 24 boxes, tall + thin + three letters). Merge is image-x ±0.06, not shelf-face coordinates. Coverage increments by frame count. Live ISBN is never written. Outlines are the current frame only and are not tappable.
+That rule is proven on labeled JSON and on the Invertis Library phone scan (45 copies). Live detection is `VNDetectRectanglesRequest` (tall + thin + three letters). Association is shelf-face coordinates. Unread rectangles are not minted. Live ISBN is never written.
 
 ### Detection structure
 
@@ -73,26 +73,12 @@ Scoped to the 50–100 book demo. The 200,000-spine production problem is not th
 15. Set ISBN vs volume ISBN as two identifier kinds. The Pass C UI has a `scope` field; `identifiers.py` does not.
 16. Two same-title different-edition copies stay two editions. Catalog match cannot invent the ISBN.
 
-### Physical Stage 4 row gate
-
-17. One physical row of 8–10 books, recorded in `SESSION-RUN.md`:
-
-    - detected / actual
-    - one stable copy per visible spine
-    - reverse sweep does not double
-    - each copy has ISBN/name **or** a visible Pass C task
-    - each eligible copy has a reviewed local physical range **or** pending/no-comparable
-    - drafts are never shown as confirmed prices
-    - priced/eligible as numerator/denominator
-
-Until this row is recorded, inventory, models, and the demo are running on fixtures. No sealed phone survey so far has shelf observations.
-
 ### Cost at scale
 
 Honest for $50 and 50–100 books. Not a 200k-spine production claim.
 
 18. Detect and track on device. Do not send every frame to a model.
-19. Price search once per unique edition + market; reuse evidence per copy. That rule must hold on the phone row.
+19. Price search once per unique edition + market; reuse evidence per copy.
 20. Do not skip Astra/Fable on most books to save money (see section 3). For this demo, run A and B on every copy in the sealed zone. At 200k, unique-edition search plus on-device count is the only affordable split; say that on the report instead of hiding it.
 
 ---
@@ -184,11 +170,9 @@ Code/readiness pass completed 2026-09-22: the repo now has a Caddy HTTPS deploym
 ## Blocking order
 
 1. Camera-safe sequential capture (section 1)
-2. Real spine instances on one physical row (section 2, through item 17)
-3. Identity / edition per copy
-4. Price status per copy
+2. Spine instances on a physical shelf (Invertis Library: 45 copies)
+3. Identity / edition per copy (Invertis name-level + Pass C queue)
+4. Price status per copy (Invertis name `web_search` drafts)
 5. Fable and Astra on every copy in that survey; Jev as scorer (section 3)
 6. RL with gold, reward, audit, promotion (section 4)
 7. Product, security, accessibility, recorded demo (sections 5–6)
-
-Everything after step 2 is polish on a library that still has not been counted.

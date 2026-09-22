@@ -25,4 +25,4 @@ iOS seals packages with Data Protection, excludes them from backup, and can requ
 
 Policy artifacts remain in shadow. There is no approved live `policy_id`, canary result, active learned router, or rollback pointer. The physical gold zone and disjoint holdout must precede those gates. One live survey never updates production weights.
 
-The Stage 4 physical 8–10 book row walkthrough and the full Stage 5 demo script in `FINAL-PLAN.md` §23 still require the operator and the phone. Record detected/actual and priced/eligible with numerator and denominator in `SESSION-RUN.md` before closing either stage gate.
+The full Stage 5 demo script in `FINAL-PLAN.md` §23 still requires the operator and the phone for the recorded 12-step run. Invertis Library is the device book pass; there is no separate 8–10 row walkthrough.

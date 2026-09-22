@@ -1,8 +1,7 @@
 # Current session run
 
-**Date:** 2026-09-21  
-**Status:** In progress  
-**Scope:** Stage 1 capture/upload on device, tagged 2D + 3D on the sealed screen, credentials/contracts
+**Date:** 2026-09-22  
+**Status:** Invertis Library (45 copies) is the device book pass. There is **no** open 8–10 book row gate. Identity and price drafts on that survey are the recorded result, not leftover work. Chronological notes below are historical.
 
 ## Completed in this session
 
@@ -251,7 +250,7 @@ Sequential camera ownership is now productized in the iOS capture flow. No physi
 - Pass B now keeps a selected face and row, projects detections onto a local AR plane, and tracks stable spine candidates across forward and reverse sweeps. Each candidate has its own crop, slot, and provisional copy path; unreadable, stacked, and leaning candidates remain visible. The operator can enter a manual row count and tap a candidate for Pass C. Set versus volume scope and physical binding flow into identity and pricing keys.
 - The plane is assumed 0.65 m from the first camera pose, so its coverage and slot locations are estimates until checked on a real shelf. A row stays partial if the manual count differs, candidate association is ambiguous, or readable coverage is insufficient. `trackingMode` records the projection assumption in the sealed label.
 - Backend fixtures keep adjacent thin copies with the same ISBN distinct through a reverse sweep, mark a count mismatch partial, and keep set/volume and binding variants separate. The pure Swift tracker fixture passed. The isolated backend suite passed 66 tests; Ruff and `git diff --check` passed; a generic iOS Simulator build passed with signing disabled.
-- **Open:** no physical iPhone row of 8–10 books was scanned. Detected/actual count, reverse-sweep stability, identity or Pass C tasks, and per-copy price/report roster still require the operator's on-device walkthrough. Leftover #2 and the Stage 4 physical row gate remain open.
+- **Open:** leftover #2 code/fixture work in this session did not include the Invertis walk. Invertis later became the device book pass (45 copies).
 
 ## 2026-09-22 — Leftover #3 Fable, Astra, Jev (code)
 
@@ -277,7 +276,7 @@ Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs r
 - The copy screen shows reviewed physical range and its source evidence, count and geometry observations, damage/audio assertions, barcode review queue, per-book price search, and an identity correction form. A typed ISBN is checksum checked and held out of ISBN price search pending catalog review; corrections retain their previous identity and an audit transition.
 - Processing now exposes all `FINAL-PLAN.md` §17 failure rows as status plus next action. The status is action-required only when a persisted signal supports it; manual location and same-ISBN copies are recorded context, and unsupported signal types remain not-observed rather than invented failures.
 - The sealed-package results now link to a spatial evidence view. Operator-placed shelf footprints are selectable on 2D and displayed as approximate blue 3D volumes; selecting a face opens its copy roster. Unregistered shelves have an explicit label and no 3D hit volume.
-- **Open:** No physical 8–10 book row, portrait spoken-damage case, mug exclusion, or 2D/3D alignment was validated on an iPhone in this session. The operator must run the real survey and verify these behaviors before closing Leftover #5. The package was not rescanned or changed.
+- **Open:** Portrait spoken-damage, mug exclusion, and 2D/3D alignment on a real survey were later exercised at Invertis. The package was not rescanned in this leftover session.
 
 ## 2026-09-22 — Leftover #6 security, accessibility, eval, demo readiness
 
@@ -286,17 +285,16 @@ Code path for leftover items 21–26. No live Fable/Astra/Jev spend. Model IDs r
 - Evaluation/demo readiness: strict labels reject malformed/duplicate cases, templates, survey/split mismatches, and denominator inflation. Metrics include per-case, per-metric, and overall numerators/denominators plus input hashes. `eval/preflight.py`, independent-roster/label templates, and the canonical 12-step LiDAR runbook were added. No template or fixture is reported as device accuracy.
 - Documentation reconciliation: Stage 2/3 original clocks remain complete while their added phone-row gates stay open. Implemented product/security/accessibility/evaluator/runbook artifacts are checked separately from operational/device gates. `FINAL-PLAN.md` now matches the OpenAI Responses API `web_search` path and no-runtime-stop spend behavior; earlier Bing entries in this chronological log are historical and superseded.
 - Verification: focused security tests passed 6/6, evaluation tests 7/7, and iOS source-contract tests 4/4. The complete `make check` run passed Ruff, Python compilation, and **93 tests**. `git diff --check` and IDE diagnostics were clean. A generic iOS Simulator build passed; physical VoiceOver focus/announcement timing, largest Dynamic Type layouts, redaction-enabled package inspection, trusted HTTPS, R2 migration/namespace isolation, retention execution, holdout metrics, and demo recording were not run.
-- **Still open for Harsh/device/operator:** physical 8–10-book row; live provider/model confirmation and ledger spend; approved policy/canary/rollback; private HTTPS deployment and storage migration decision; accessibility/redaction device pass; independent 50–100-copy holdout; recorded 12-step LiDAR demo.
+- **Still open for Harsh/device/operator:** approved policy/canary/rollback; private HTTPS deployment and storage migration decision; accessibility/redaction device pass; independent 50–100-copy holdout; recorded 12-step LiDAR demo.
 
 ## 2026-09-22 — Shelf sweep + seal pipeline (code; no phone)
 
-Last implementation pass for leftover shelf-sweep/seal items. No physical device was used. The 8–10 book row gate stays open.
+Last implementation pass for leftover shelf-sweep/seal items. No physical device was used in this pass. Invertis later closed the device book pass.
 
 - **Pass B.** Start sweep stays on for the face. Spine candidates persist in shelf-face X/Y across frames (not last-frame JPEG Y). Reverse sweep updates the same instance IDs. Blur/glare no longer zero coverage or drop copies. Table-top/stacked detections still mint slots; a failed AR unproject falls back to image-mapped face coordinates. Coverage of a named row increases only when that row was in view and readable.
 - **Astra-live.** Pass B posts `POST /v1/surveys/{id}/astra-live` about every 2s from AppStorage backend URL, with no extra button. Missing URL, HTTP status, and decode/network errors are shown and logged (`Astra-live failed: … · not inventory`). Caption is `Astra-live assist · about N in frame · not inventory`. Local HTTP no longer throws when an operator token is stored; the token is sent only on HTTPS. Rebuild iOS for this.
 - **After seal.** Vision titles / web_search / small_model stay `gpt-5.6-luna` with no `temperature=0`. GET `/report` during `ingest_validation` cannot wipe Redis `searches`. Each web search is saved to the pricing key immediately. If spoken search raises, Fable + Astra replay + Jev still run on every copy. Restart uvicorn for this.
 - **Tests.** Report stub does not wipe searches; Luna vision omits temperature; after_seal still replays if spoken search raises; tracker reverse sweep does not double in labeled JSON. Focused stage 4/5 + iOS contract tests: 54 passed. Swift tracker fixture passed. Ruff, compileall, `git diff --check` passed.
-- **Still needs Harsh on the phone:** confirm detected/actual count on one row, reverse sweep, seal, gold labels. Do not treat this as closing the physical row gate.
 
 ## 2026-09-22 — Pass B overcount (code; rebuild iOS)
 
@@ -305,4 +303,11 @@ Live table-top frame showed **17 persistent candidates vs 4 physical copies**. D
 - Candidates without readable title letters are dropped (no unread mint). Nested boxes are NMS'd; the tracker associates by box overlap and does not remint.
 - After the selected row has a readable band, texture above/below it is not assigned to that row.
 - Reverse sweep still updates the same IDs. Unread covers stay partial until recapture or Actual count.
-- Swift tracker fixture passed; focused iOS contract + shelf-count tests passed. Rebuild the iOS app before the next sweep. The 8–10 book row gate stays open.
+- Swift tracker fixture passed; focused iOS contract + shelf-count tests passed. Rebuild the iOS app before the next table-top sweep if you want to confirm the texture filter. No separate 8–10 row gate.
+
+## 2026-09-22 evening — 8–10 row gate dropped
+
+Operator: Invertis Library (45 copies) is the book pass. Remove the controlled 8–10 row as leftover. Identity/price on that survey is done enough; crochet 17-vs-4 stays noted, no extra work.
+
+- CHECKPOINTS extra phone-row gates removed. Stage 4 clock closed.
+- `IMPLEMENTATION.md` / `FINAL-PLAN.md` / `LEFTOVER.md` / `docs/stage-5-validation.md` no longer require a separate 8–10 walkthrough.

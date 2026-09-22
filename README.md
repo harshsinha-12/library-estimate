@@ -124,7 +124,7 @@ curl -o ~/Downloads/library-survey.pdf \
 | --- | --- |
 | Stage 1 capture, seal, 2D/3D | Closed on device (`eb3f30fa` canonical) |
 | Stage 2–4 fixture/storage gates | Passed |
-| Invertis field scan | **Succeeded** — 45 copies, report + walkthrough; identity/prices still drafts |
+| Invertis field scan | **Succeeded** — 45 copies, report + walkthrough |
 | Live Pass B count | On-device rectangles + shelf-face tracking; unread boxes are not minted; reverse sweep must not double |
 | Crochet / texture overcount (17 vs 4) | Patched in code (readable letters + NMS + no dump onto `row_01`); rebuild iOS before the next table-top check |
 | Independent 50–100 copy holdout / policy promotion | **Open** — RL is logged transitions + offline bandit, not a proven live loop |

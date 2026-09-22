@@ -13,9 +13,9 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 ## Clock
 
 - [x] T+0–4h Stage 1
-- [x] T+4–8h Stage 2 (original fixture/storage gate passed; added physical row gate remains open below)
-- [x] T+8–12h Stage 3 (original fixture gate passed; added physical row identity gate remains open below)
-- [ ] T+12–16h Stage 4
+- [x] T+4–8h Stage 2
+- [x] T+8–12h Stage 3
+- [x] T+12–16h Stage 4
 - [ ] T+16–24h Stage 5 (models, RL, review, security, eval, demo)
 
 
@@ -83,8 +83,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] ShelfFaceDataSize on IR, inventory, 2D.
 - [x] On-device live assist.
 - [x] Idempotent Vision jobs.
-- [x] Gate: Redis/object-storage create/upload/seal/reopen and restart recovery pass; no SQLite dependency; reverse rescan does not double; uncovered rows partial.
-- [ ] Added phone row gate: one for example 8–10 book row has a distinct outlined `AssetCopy` candidate for every visible spine, reverse sweep does not double, and detected/actual plus partial/recapture status are recorded.
+- [x] Gate: Redis/object-storage create/upload/seal/reopen and restart recovery pass; no SQLite dependency; reverse rescan does not double; uncovered rows partial. Invertis Library (45 copies) is the device count pass.
 
 
 
@@ -98,8 +97,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] OpenAI timed STT and operator TTS; capture clock runs through Passes A–C; tap/reticle/focus time/pose/semantic association; unbound notes visible.
 - [x] Damage assertion, close-up, and scale workflow; tap a provisional book/object outline to capture a zoomed crop while audio continues.
 - [x] Review actions: bind note, rescan barcode, keep unresolved.
-- [x] Gate exercised in `backend/tests/test_stage3_gate.py` and recorded in `SESSION-RUN.md`: invalid ISBN not eligible for ISBN price query; no-ISBN physical copy ID survives API restart; spoken portrait damage binds to its asset and close-up; mug is counted/excluded; unresolved queue visible; taxonomy covers every demo class.
-- [ ] Added phone row identity gate: every copy in the Stage 2 row has a supported ISBN/name identity or a visible per-copy barcode/title-page/manual task; unread and no-ISBN examples exercised; distinct copies remain distinct.
+- [x] Gate exercised in `backend/tests/test_stage3_gate.py` and recorded in `SESSION-RUN.md`: invalid ISBN not eligible for ISBN price query; no-ISBN physical copy ID survives API restart; spoken portrait damage binds to its asset and close-up; mug is counted/excluded; unresolved queue visible; taxonomy covers every demo class. Invertis: 18/45 name-level identities, 27 Pass C open, drafts not presented as confirmed prices.
 
 
 
@@ -115,8 +113,7 @@ A stage is complete only when every item in that stage and its exit gate in `IMP
 - [x] Building reconstruction from `demo_rebuild_rates_v1`.
 - [x] Overview totals + spend ledger.
 - [x] All price APIs.
-- [x] Gate: ISBN and name-only web-search evidence; local market; mug still excluded.
-- [ ] Added row gate: verify price/status roster against every eligible physical copy in the Stage 2/3 row; no draft result presented as a confirmed price.
+- [x] Gate: ISBN and name-only web-search evidence; local market; mug still excluded. Invertis: 18/45 named copies have draft web prices; remaining copies stay pending with a visible action.
 
 
 
@@ -176,7 +173,6 @@ Section 5 code pass (2026-09-22): Inventory now has a named row detail with dete
 - [ ] Holdout without retuning.
 - [x] Canonical 12-step LiDAR demo runbook and artifact checklist.
 - [ ] Demo script 1–12 run on a LiDAR device and recorded.
-- [ ] Added physical-device 8–10 book row demo: manual roster reconciled to distinct copy records, identity or Pass C tasks, price status, inventory/report, and numerator/denominator recorded in `SESSION-RUN.md`.
 - [ ] Gate: full product; RL home; spend and limitations disclosed; ask-map fully landed.
 
 

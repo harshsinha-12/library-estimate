@@ -164,7 +164,7 @@ shelf_04.face_A
     evidence 412 MB
 ```
 
-For a row with 8–10 visible books, the live view should outline each candidate spine as the technician sweeps it. Each outline maps to a distinct physical-copy candidate and row/slot. A reverse sweep updates evidence without adding copies. If occlusion, blur, or missed strips prevent a reliable count, the row remains partial with an explicit count interval and targeted recapture; it cannot be marked complete at a lower count. The physical-device row walkthrough is the first Stage 4 acceptance task in `IMPLEMENTATION.md`; it does not reopen the recorded Stage 2 gate.
+For a shelf row, the live view should outline each candidate spine as the technician sweeps it. Each outline maps to a distinct physical-copy candidate and row/slot. A reverse sweep updates evidence without adding copies. If occlusion, blur, or missed strips prevent a reliable count, the row remains partial with an explicit count interval and targeted recapture; it cannot be marked complete at a lower count. Invertis Library (45 copies) is the recorded device book pass.
 
 ### Pass C — exceptions and valuable assets
 
