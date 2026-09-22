@@ -205,10 +205,34 @@ def usage_for_run(repository: SurveyRepository, survey_id: UUID, run_id: UUID) -
 
 def usage_for_survey(repository: SurveyRepository, survey_id: UUID) -> dict[str, Any]:
     key = f"{repository.key_prefix}:survey:{survey_id}:usage_runs"
-    runs = [
-        usage_for_run(repository, survey_id, UUID(raw))
-        for raw in repository.redis.smembers(key)
-    ]
+    run_ids = sorted(UUID(raw) for raw in repository.redis.smembers(key))
+    pipeline = repository.redis.pipeline()
+    for run_id in run_ids:
+        pipeline.lrange(
+            f"{repository.key_prefix}:survey:{survey_id}:usage:{run_id}", 0, -1
+        )
+    pipeline.get(
+        f"{repository.key_prefix}:survey:{survey_id}:budget_reserved_micros"
+    )
+    responses = pipeline.execute()
+    reserved = Decimal(responses[-1] or 0) / Decimal(1_000_000)
+    runs = []
+    for run_id, raw_events in zip(run_ids, responses[:-1], strict=True):
+        events = [json.loads(raw) for raw in raw_events]
+        total = sum(
+            (Decimal(row["cost_usd"]) for row in events if row["cost_usd"]),
+            Decimal(0),
+        )
+        runs.append(
+            {
+                "survey_id": str(survey_id),
+                "run_id": str(run_id),
+                "events": events,
+                "estimated_cost_usd": str(total.quantize(Decimal("0.000001"))),
+                "unpriced_calls": sum(row["cost_usd"] is None for row in events),
+                "budget_reserved_usd": str(reserved.quantize(Decimal("0.000001"))),
+            }
+        )
     runs.sort(key=lambda row: row["run_id"])
     total = sum((Decimal(row["estimated_cost_usd"]) for row in runs), Decimal(0))
     return {

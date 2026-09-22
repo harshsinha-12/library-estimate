@@ -345,6 +345,13 @@ def replay_survey(
         raise ModelReplayError("survey must be sealed before model replay")
     inventory = repository.get_json(survey_id, "inventory") or {}
     copies = list(inventory.get("asset_copies") or [])
+    copy_ids = sorted(str(asset.get("asset_copy_id") or "") for asset in copies)
+    prior = repository.get_json(survey_id, "model-replay-survey") or {}
+    if (
+        prior.get("package_hash") == survey.package_hash
+        and prior.get("copy_ids") == copy_ids
+    ):
+        return {**prior, "reused": True}
     runs: list[dict] = []
     partials: list[dict] = []
     for asset in copies:
@@ -377,6 +384,9 @@ def replay_survey(
         "disclosed": True,
         "review": "human" if status == "partial" else None,
         "source": "after_seal",
+        "package_hash": survey.package_hash,
+        "copy_ids": copy_ids,
+        "reused": False,
         "runs": runs,
     }
     repository.save_json(survey_id, "model-replay-survey", summary)

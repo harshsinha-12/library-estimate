@@ -14,6 +14,7 @@ from backend.app.providers.usage import (
     reserve_budget,
     unbind_usage,
     usage_for_run,
+    usage_for_survey,
 )
 from backend.app.storage.objects import MemoryObjectStore
 from backend.app.utils.clocks import utc_now
@@ -55,6 +56,27 @@ def test_run_usage_is_saved_to_redis_without_a_spend_cap() -> None:
         assert after["budget_reserved_usd"] == "100.250000"
     finally:
         unbind_usage(token)
+
+
+def test_survey_usage_batches_multiple_run_reads() -> None:
+    client = fakeredis.FakeRedis(decode_responses=True)
+    repository = SurveyRepository(client, MemoryObjectStore(), key_prefix="test:usage-batch")
+    survey_id = uuid4()
+    for _ in range(3):
+        run_id = uuid4()
+        token = bind_usage(UsageContext(repository, survey_id, run_id))
+        try:
+            record_usage(
+                provider="openai",
+                model="gpt-5.5",
+                operation="web_search",
+                response={"usage": {"input_tokens": 1000, "output_tokens": 100}},
+            )
+        finally:
+            unbind_usage(token)
+    usage = usage_for_survey(repository, survey_id)
+    assert len(usage["runs"]) == 3
+    assert usage["estimated_cost_usd"] == "0.024000"
 
 
 def test_http_run_header_retrieves_usage_from_sync_route() -> None:

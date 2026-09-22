@@ -47,9 +47,35 @@ RATES_PATH = Path(__file__).resolve().parents[1] / "data" / "demo_rebuild_rates_
 PIPELINE_VERSION = "stage4-price-v1"
 DRAFT_REASON = "Web search citations are drafts until a technician confirms a physical offer"
 _GENERIC_TITLE = re.compile(
-    r"^(books on the bookshelf|unidentified book.*|isbn\s*\d+)$",
+    (
+        r"^(books? on the bookshelf|unidentified books?.*|"
+        r"book with (?:an? )?(?:unrecorded|unknown|visible) isbn.*|"
+        r"book .*isbn mention.*|isbn\s*\d+)$"
+    ),
     re.IGNORECASE,
 )
+
+
+def _numeric_amount(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(Decimal(str(value).replace(",", "").strip()))
+    except (ArithmeticError, ValueError):
+        return None
+
+
+def _has_price_evidence(
+    state: dict, *, asset_copy_id: str, edition_key: str | None
+) -> bool:
+    return any(
+        item.get("parsed_amount") is not None
+        and (
+            item.get("asset_copy_id") == asset_copy_id
+            or (edition_key and item.get("book_edition_id") == edition_key)
+        )
+        for item in state.get("observations") or []
+    )
 
 
 def load_rebuild_rates() -> dict:
@@ -197,6 +223,36 @@ class PricingWorker:
         target = next((item for item in copies if item["asset_copy_id"] == asset_id), None)
         if target is None:
             raise ValueError("unknown physical asset")
+        if _has_price_evidence(
+            state,
+            asset_copy_id=asset_id,
+            edition_key=target.get("edition_key"),
+        ):
+            drafts = [
+                item
+                for item in state.get("observations") or []
+                if item.get("review_status") == "draft"
+                and (
+                    item.get("asset_copy_id") == asset_id
+                    or item.get("book_edition_id") == target.get("edition_key")
+                )
+            ]
+            lookup = object_key(
+                kind=target.get("query_kind"),
+                title=target.get("title"),
+                category=target.get("category"),
+                isbn=target.get("isbn"),
+            )
+            return {
+                "asset_copy_id": asset_id,
+                "status": target["valuation_status"],
+                "reason": "Existing price evidence reused; no web search was run",
+                "search": priced_search(state, lookup),
+                "drafts": drafts,
+                "copies": self._refresh(
+                    repository, survey_id, state, geography, stage3, inventory
+                ),
+            }
         if not target["eligible"]:
             return {
                 "asset_copy_id": asset_id,
@@ -226,6 +282,7 @@ class PricingWorker:
             book_title=target.get("title"),
             isbn=target.get("isbn"),
             description=target.get("title"),
+            category=target.get("category"),
         )
         self._attach_drafts(state, search, geography)
         copies = self._refresh(repository, survey_id, state, geography, stage3, inventory)
@@ -335,6 +392,7 @@ class PricingWorker:
             book_title=title,
             isbn=isbn,
             description=description,
+            category="book",
         )
         physical = [
             item
@@ -464,6 +522,7 @@ class PricingWorker:
             edition_key=f"live:{kind}:{sha256_bytes(query.encode())[:12]}",
             book_title=label or spoken,
             description=description,
+            category=category,
         )
         physical = [
             item
@@ -538,32 +597,10 @@ class PricingWorker:
                     continue
                 seen.add(key)
                 titles.append(title)
-        survey = repository.get(survey_id)
-        geography = survey.geography.model_dump(mode="json")
-        state = self._state(repository, survey_id)
-        searches = []
-        jobs: list[dict] = []
-        for title in titles[:8]:
-            key = object_key(kind="book", title=title)
-            if already_priced(state, key):
-                cached = priced_search(state, key)
-                if cached:
-                    searches.append(cached)
-                continue
-            if attempt_count(state, key) >= MAX_SEARCHES_PER_OBJECT:
-                continue
-            jobs.append(
-                {
-                    "query": title,
-                    "kind": "name",
-                    "edition_key": f"live:name:{sha256_bytes(title.encode())[:12]}",
-                    "book_title": title,
-                    "isbn": None,
-                    "description": title,
-                }
-            )
-        if jobs:
-            searches.extend(self._search_many(repository, survey_id, state, geography, jobs))
+        # Frame OCR establishes identity candidates only. Pricing is queued later from
+        # copies that actually received that identity, so OCR fragments never trigger
+        # speculative searches on their own.
+        searches: list[dict] = []
         if unread and titles:
             for asset, title in zip(unread, titles, strict=False):
                 identities.append(
@@ -586,10 +623,6 @@ class PricingWorker:
                     item["message"] = "Title read from shelf frame"
             stage3["identities"] = identities
             repository.save_json(survey_id, "stage3", stage3)
-        if titles:
-            self._promote_titles(repository, survey_id, titles, frame_paths[:1])
-            stage3 = repository.get_json(survey_id, "stage3") or {}
-            assets = [item for item in stage3.get("assets") or [] if item.get("category") == "book"]
         self._record_log(
             repository,
             survey_id,
@@ -613,6 +646,21 @@ class PricingWorker:
         visuals = timed_visuals(poses, marks)
         timeline = format_timeline(notes, visuals)
         state = self._state(repository, survey_id)
+        input_fingerprint = sha256_bytes(
+            json.dumps(
+                {"notes": notes, "marks": marks},
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        )
+        if state.get("spoken_pricing_input_sha256") == input_fingerprint:
+            return {
+                "searches": [],
+                "timeline": timeline,
+                "targets": state.get("spoken_pricing_targets") or [],
+                "reused": True,
+            }
         priced_names = [
             str(item.get("title") or "")
             for item in state.get("found_prices") or []
@@ -633,7 +681,7 @@ class PricingWorker:
             name = str(item.get("name") or "").strip()
             kind = str(item.get("kind") or "object")
             category = str(item.get("category") or ("book" if kind == "book" else "object"))
-            if not name or category == "cup":
+            if not name or category == "cup" or _GENERIC_TITLE.match(name):
                 continue
             key = object_key(kind=kind, title=name, category=category)
             if any(keys_match(key, other) for other in seen):
@@ -665,6 +713,10 @@ class PricingWorker:
             state = self._state(repository, survey_id)
             if len(searches) >= 8:
                 break
+        state = self._state(repository, survey_id)
+        state["spoken_pricing_input_sha256"] = input_fingerprint
+        state["spoken_pricing_targets"] = planned
+        repository.save_json(survey_id, "pricing", state)
         self._record_log(
             repository,
             survey_id,
@@ -682,7 +734,6 @@ class PricingWorker:
         )
         identified = self.identify_from_frames(repository, survey_id)
         spoken = self.price_spoken_notes(repository, survey_id)
-        self._promote_searches(repository, survey_id)
         queued = self.queue(repository, survey_id)
         overview = self.overview(repository, survey_id)
         from backend.app.workflows.models import replay_survey
@@ -697,7 +748,6 @@ class PricingWorker:
         }
 
     def queue(self, repository: SurveyRepository, survey_id: UUID) -> dict:
-        self.identify_from_frames(repository, survey_id)
         survey = repository.get(survey_id)
         geography = survey.geography.model_dump(mode="json")
         stage3 = repository.get_json(survey_id, "stage3") or {}
@@ -714,8 +764,18 @@ class PricingWorker:
             lookup = object_key(
                 kind=copy["query_kind"],
                 title=copy.get("title"),
+                category=copy.get("category"),
                 isbn=copy.get("isbn"),
             )
+            if _has_price_evidence(
+                state,
+                asset_copy_id=copy["asset_copy_id"],
+                edition_key=copy.get("edition_key"),
+            ):
+                prior = priced_search(state, lookup)
+                if prior:
+                    queued.append({**prior, "from_cache": True})
+                continue
             cache_id = f"{key}|{geography['market']}|{copy['query']}"
             if cache_id in seen:
                 continue
@@ -735,6 +795,7 @@ class PricingWorker:
                     "book_title": copy.get("title"),
                     "isbn": copy.get("isbn"),
                     "description": copy.get("title"),
+                    "category": copy.get("category"),
                 }
             )
         queued.extend(self._search_many(repository, survey_id, state, geography, jobs))
@@ -903,6 +964,8 @@ class PricingWorker:
         search_id: str,
         citations: list[dict],
         isbn: str | None = None,
+        query_kind: str | None = None,
+        category: str | None = None,
     ) -> None:
         found = state.setdefault("found_prices", [])
         existing = {
@@ -940,6 +1003,8 @@ class PricingWorker:
                     "offer_type": citation.get("offer_type"),
                     "format": citation.get("format"),
                     "query": query,
+                    "query_kind": query_kind,
+                    "category": category,
                     "search_id": search_id,
                     "found_at": utc_now().isoformat(),
                 }
@@ -976,6 +1041,7 @@ class PricingWorker:
         book_title: str | None = None,
         isbn: str | None = None,
         description: str | None = None,
+        category: str | None = None,
     ) -> dict:
         stored = self._search_many(
             repository,
@@ -990,6 +1056,7 @@ class PricingWorker:
                     "book_title": book_title,
                     "isbn": isbn,
                     "description": description,
+                    "category": category,
                 }
             ],
         )
@@ -1009,7 +1076,7 @@ class PricingWorker:
             lookup = object_key(
                 kind=job["kind"],
                 title=job.get("book_title") or job["query"],
-                category="object" if job["kind"] == "object" else None,
+                category=job.get("category"),
                 isbn=job.get("isbn"),
             )
             job["lookup"] = lookup
@@ -1095,6 +1162,7 @@ class PricingWorker:
             "country_code": geography["country_code"],
             "isbn": job.get("isbn"),
             "title": job.get("book_title"),
+            "category": job.get("category"),
         }
 
     def _store_search(
@@ -1147,6 +1215,8 @@ class PricingWorker:
             search_id=search["search_id"],
             citations=search.get("citations") or [],
             isbn=job.get("isbn"),
+            query_kind=job.get("kind"),
+            category=job.get("category"),
         )
         state["ledger"]["lines"].append(
             {
@@ -1247,7 +1317,11 @@ class PricingWorker:
         }
 
     def _copy_rows(self, stage3: dict, inventory: dict, state: dict, geography: dict) -> list[dict]:
-        assets = list(stage3.get("assets") or inventory.get("asset_copies") or [])
+        assets = [
+            item
+            for item in (stage3.get("assets") or inventory.get("asset_copies") or [])
+            if not str(item.get("asset_copy_id") or "").startswith("found_")
+        ]
         evidence_by_observation = {
             item.get("observation_id"): item.get("evidence_ref")
             for item in inventory.get("observations") or []
@@ -1442,19 +1516,6 @@ class PricingWorker:
         return rows
 
     def _rows_from_searches(self, existing: list[dict], state: dict, geography: dict) -> list[dict]:
-        known = []
-        for row in existing:
-            title = str(row.get("title") or row.get("label") or "").strip()
-            if not title:
-                continue
-            known.append(
-                object_key(
-                    kind=row.get("query_kind") or row.get("category") or "object",
-                    title=title,
-                    category=row.get("category"),
-                )
-            )
-        extra = []
         for item in state.get("live_searches") or []:
             title = str(item.get("title") or item.get("query") or "").strip()
             if len(title) < 3 or _GENERIC_TITLE.match(title):
@@ -1479,7 +1540,7 @@ class PricingWorker:
                 ),
                 None,
             )
-            amount = item.get("amount")
+            amount = _numeric_amount(item.get("amount"))
             if matched is not None:
                 if item.get("listing_url") and not matched.get("listing_url"):
                     matched["listing_url"] = item.get("listing_url")
@@ -1513,63 +1574,10 @@ class PricingWorker:
                     if matched.get("valuation_status") in {None, "price_pending"}:
                         matched["valuation_status"] = "price_pending"
                 continue
-            if any(keys_match(key, stored) for stored in known):
-                continue
-            known.append(key)
-            extra.append(
-                {
-                    "asset_copy_id": _found_copy_id(category, title),
-                    "category": category,
-                    "label": title,
-                    "slot": None,
-                    "face_id": None,
-                    "row_id": None,
-                    "isbn": item.get("isbn"),
-                    "title": title,
-                    "eligible": True,
-                    "requires_appraisal": False,
-                    "excluded": False,
-                    "query": item.get("query") or title,
-                    "query_kind": kind,
-                    "edition_key": None,
-                    "identity_task": None,
-                    "identity_status": "name" if category == "book" else category,
-                    "condition": None,
-                    "valuation_status": (
-                        "price_pending"
-                        if item.get("status") == "draft"
-                        else (item.get("status") or "price_pending")
-                    ),
-                    "reason": item.get("reason") or DRAFT_REASON,
-                    "valuation": None
-                    if amount is None
-                    else {
-                        "valuation_id": f"val_{_found_copy_id(category, title)}",
-                        "asset_copy_id": _found_copy_id(category, title),
-                        "basis": "replacement_cost",
-                        "amount": {
-                            "value": amount,
-                            "unit": item.get("currency") or geography.get("currency"),
-                            "status": "draft",
-                            "confidence": 0.45,
-                            "interval": None,
-                            "method": "live-web-search-draft",
-                            "evidence_refs": [],
-                            "run_id": PIPELINE_VERSION,
-                        },
-                        "currency": item.get("currency") or geography.get("currency"),
-                        "price_observation_refs": [],
-                    },
-                    "draft_count": 1 if amount is not None else 0,
-                    "confirmed_count": 0,
-                    "search_id": item.get("search_id"),
-                    "listing_url": item.get("listing_url"),
-                    "evidence_refs": [],
-                    "evidence_paths": [],
-                    "actions": ["confirm_or_manual"],
-                }
-            )
-        return extra
+        # Unbound search results are evidence drafts, not proof that another physical
+        # object exists. They may enrich a matching captured copy above, but never mint
+        # inventory rows.
+        return []
 
     def _promote_titles(
         self,

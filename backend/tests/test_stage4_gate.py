@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -20,7 +21,7 @@ from backend.app.providers.pricing.queries import (
 from backend.app.providers.pricing.schema import BATCH_SIZE, MAX_LISTING_URLS, PRICE_SCHEMA
 from backend.app.providers.pricing.small_model import completion_body
 from backend.app.providers.pricing.web_search import _parse_output, citations_from_schema
-from backend.app.workflows.pricing import load_rebuild_rates
+from backend.app.workflows.pricing import PricingWorker, load_rebuild_rates
 from backend.tests.conftest import isolated_app
 from backend.tests.test_survey_api import STRUCTURE, headers, manifest
 
@@ -704,6 +705,42 @@ def test_live_price_search_stops_after_price_and_caps_retries(monkeypatch) -> No
         assert calls["n"] - priced_calls == 5
 
 
+def test_spoken_pricing_skips_unidentified_book_placeholders() -> None:
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    worker.plan_targets = lambda *args, **kwargs: [
+        {
+            "name": "Book with unrecorded ISBN",
+            "kind": "book",
+            "category": "book",
+            "description": "unresolved shelf item",
+        }
+    ]
+    worker.web_search = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("generic placeholder must not trigger web search")
+    )
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = UUID(survey["survey_id"])
+        app.state.survey_workflow.repository.save_json(
+            survey_id,
+            "stage3",
+            {
+                "assets": [],
+                "identities": [],
+                "queue": [],
+                "notes": [{
+                    "text": "There is a book near the ISBN mention",
+                    "monotonic_seconds": 1.0,
+                }],
+            },
+        )
+        result = worker.price_spoken_notes(
+            app.state.survey_workflow.repository, survey_id
+        )
+    assert result["searches"] == []
+
+
 def test_stage4_row_pricing_gate(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(CatalogChain, "resolve", fake_resolve)
@@ -944,7 +981,7 @@ def test_live_price_search_uses_book_name() -> None:
             assert found
 
 
-def test_identify_from_frames_searches_visible_book_names(monkeypatch) -> None:
+def test_identify_from_frames_does_not_search_unbound_ocr_fragments(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     app, _, _ = isolated_app()
     stub_pricing(
@@ -965,11 +1002,7 @@ def test_identify_from_frames_searches_visible_book_names(monkeypatch) -> None:
         assert identified.status_code == 200
         body = identified.json()
         assert body["titles"] == ["Python Data Science Handbook"]
-        assert body["searches"]
-        search = body["searches"][0]
-        assert search["query_kind"] == "name"
-        assert "Python Data Science Handbook" in (search.get("title") or "")
-        assert search["listing_count"] <= 5
+        assert body["searches"] == []
 
 
 def test_identify_prefers_tagged_crops(monkeypatch) -> None:
@@ -1057,10 +1090,10 @@ def test_identify_reads_later_roomplan_frames(monkeypatch) -> None:
         assert identified.status_code == 200
         payload = identified.json()
         assert payload["titles"] == ["Deep Learning with Python"]
-        assert payload["copy_count"] >= 1
+        assert payload["copy_count"] == 0
 
 
-def test_overview_includes_spoken_object_searches(monkeypatch) -> None:
+def test_overview_keeps_unbound_searches_out_of_inventory(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     app, _, _ = isolated_app()
     worker = app.state.survey_workflow.pricing_worker
@@ -1079,9 +1112,73 @@ def test_overview_includes_spoken_object_searches(monkeypatch) -> None:
         assert named.status_code == 200
         overview = client.get(f"/v1/surveys/{survey_id}/overview")
         assert overview.status_code == 200
-        titles = [
+        copy_titles = [
             str(row.get("title") or row.get("label") or "")
             for row in overview.json().get("copies") or []
         ]
-        assert any("monitor" in title.lower() for title in titles)
+        assert not any("monitor" in title.lower() for title in copy_titles)
+        assert any(
+            "monitor" in str(row.get("title") or "").lower()
+            for row in overview.json().get("live_searches") or []
+        )
+
+
+def test_queue_reuses_live_object_price_without_another_web_search(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    stub_pricing(worker)
+    original = worker.web_search
+    calls: list[str] = []
+
+    def counted(title, **kwargs):
+        calls.append(title)
+        return original(title, **kwargs)
+
+    worker.web_search = counted
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = survey["survey_id"]
+        first = client.post(
+            f"/v1/surveys/{survey_id}/live-price-search",
+            json={
+                "category": "computer",
+                "title": "MacBook Air M1 base variant",
+                "spoken_text": "MacBook Air M1 base variant",
+            },
+        )
+        assert first.status_code == 200
+        assert first.json()["amount"]
+        queued = client.post(f"/v1/surveys/{survey_id}/price-search-queue")
+        assert queued.status_code == 200
+    assert calls == ["MacBook Air M1 base variant"]
+
+
+def test_live_draft_enriches_captured_copy_with_numeric_amount() -> None:
+    worker = PricingWorker()
+    existing = [{
+        "asset_copy_id": "copy-monitor",
+        "category": "monitor",
+        "title": "24-inch monitor",
+        "label": "24-inch monitor",
+        "query": None,
+        "query_kind": None,
+        "valuation": None,
+        "valuation_status": "price_pending",
+        "draft_count": 0,
+    }]
+    state = {
+        "live_searches": [{
+            "title": "24-inch monitor",
+            "category": "monitor",
+            "query_kind": "object",
+            "query": "24-inch monitor",
+            "status": "draft",
+            "amount": "8990",
+            "currency": "INR",
+            "listing_url": "https://example.test/monitor",
+        }]
+    }
+    assert worker._rows_from_searches(existing, state, {"currency": "INR"}) == []
+    assert existing[0]["valuation"]["amount"]["value"] == 8990.0
 

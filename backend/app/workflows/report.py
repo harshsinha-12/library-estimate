@@ -21,7 +21,7 @@ from backend.app.utils.json_codec import canonical_json_bytes
 from backend.app.workflows.astra_live import list_astra_live
 
 
-def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, bytes]:
+def build_report_snapshot(repository: SurveyRepository, survey_id: UUID) -> dict:
     survey = repository.get(survey_id)
     if not survey.package_hash:
         raise ValueError("report requires a sealed survey")
@@ -31,16 +31,26 @@ def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, b
     if not (overview.get("copies") or []):
         overview = {
             **overview,
-            "copies": _rows_from_pricing(pricing),
+            "copies": [],
             "live_searches": pricing.get("live_searches") or overview.get("live_searches") or [],
         }
     stage3 = repository.get_json(survey_id, "stage3") or {}
-    model_key = f"{repository.key_prefix}:survey:{survey_id}:model_runs"
+    replay_summary = repository.get_json(survey_id, "model-replay-survey") or {}
     model_runs = [
-        repository.get_json(survey_id, f"model-run:{raw}")
-        for raw in sorted(repository.redis.smembers(model_key))
+        row for row in replay_summary.get("runs") or [] if isinstance(row, dict)
     ]
-    model_runs = [row for row in model_runs if row]
+    if not model_runs:
+        model_key = f"{repository.key_prefix}:survey:{survey_id}:model_runs"
+        model_runs = [
+            repository.get_json(survey_id, f"model-run:{raw}")
+            for raw in sorted(repository.redis.smembers(model_key))
+        ]
+        model_runs = [row for row in model_runs if row]
+    model_runs = [
+        row
+        for row in model_runs
+        if not str(row.get("asset_copy_id") or "").startswith("found_")
+    ]
     astra_live = list_astra_live(repository, survey_id)
     report = {
         "schema_version": "1.0.0", "survey_id": str(survey_id),
@@ -71,12 +81,17 @@ def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, b
             "Configured default model IDs are not a live confirmation of provider access.",
         ],
     }
-    pdf = render_pdf(report)
     repository.put_bytes(
         survey_id, "derived/report.json", canonical_json_bytes(report), "application/json"
     )
-    repository.put_bytes(survey_id, "derived/report.pdf", pdf, "application/pdf")
     repository.save_json(survey_id, "report", report)
+    return report
+
+
+def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, bytes]:
+    report = build_report_snapshot(repository, survey_id)
+    pdf = render_pdf(report)
+    repository.put_bytes(survey_id, "derived/report.pdf", pdf, "application/pdf")
     return report, pdf
 
 

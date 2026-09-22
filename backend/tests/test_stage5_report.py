@@ -6,7 +6,7 @@ from backend.app.domain.models import SurveyGeography, SurveyRecord
 from backend.app.domain.repository import SurveyRepository
 from backend.app.storage.objects import MemoryObjectStore
 from backend.app.utils.clocks import utc_now
-from backend.app.workflows.report import build_report
+from backend.app.workflows.report import build_report, build_report_snapshot
 
 
 def test_report_keeps_citations_limit_and_spend_visible() -> None:
@@ -61,7 +61,28 @@ def test_report_keeps_citations_limit_and_spend_visible() -> None:
     assert repository.get_bytes(survey_id, "derived/report.pdf") == pdf
 
 
-def test_report_lists_live_object_searches_when_inventory_is_empty() -> None:
+def test_report_snapshot_does_not_render_pdf() -> None:
+    repository = SurveyRepository(
+        fakeredis.FakeRedis(decode_responses=True),
+        MemoryObjectStore(),
+        key_prefix="test:report-snapshot",
+    )
+    survey_id = uuid4()
+    repository.create(SurveyRecord(
+        survey_id=survey_id, display_name="Fast report",
+        geography=SurveyGeography(
+            country_code="IN", city="Bengaluru", currency="INR",
+            market="en-IN", source="manual",
+        ),
+        status="partial", created_at=utc_now(), sealed_at=utc_now(), package_hash="e" * 64,
+    ))
+    report = build_report_snapshot(repository, survey_id)
+    assert report["survey_id"] == str(survey_id)
+    assert repository.exists_bytes(survey_id, "derived/report.json")
+    assert not repository.exists_bytes(survey_id, "derived/report.pdf")
+
+
+def test_report_does_not_turn_unbound_searches_into_inventory() -> None:
     repository = SurveyRepository(
         fakeredis.FakeRedis(decode_responses=True), MemoryObjectStore(), key_prefix="test:report"
     )
@@ -102,10 +123,8 @@ def test_report_lists_live_object_searches_when_inventory_is_empty() -> None:
         ]
     })
     report, pdf = build_report(repository, survey_id)
-    titles = [row["title"] for row in report["valuation"]["copies"]]
-    assert "24-inch monitor" in titles
-    assert "M1 MacBook Air, base variant" in titles
-    assert report["valuation"]["copies"][0]["valuation"]["amount"]["value"] == 8999
+    assert report["valuation"]["copies"] == []
+    assert len(report["valuation"]["live_searches"]) == 2
     assert pdf.startswith(b"%PDF")
     assert report["model_pipelines"]["fable"]["status"] == "not_run"
 

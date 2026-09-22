@@ -39,7 +39,7 @@ from backend.app.utils.paths import validate_package_path
 from backend.app.workflows.astra_live import list_astra_live, record_astra_live
 from backend.app.workflows.models import ModelReplayError, replay_asset
 from backend.app.workflows.operator_failures import failure_actions
-from backend.app.workflows.report import build_report
+from backend.app.workflows.report import build_report, build_report_snapshot
 from backend.app.workflows.stage3 import apply_review, correct_book_identity
 from backend.app.workflows.surveys import ManifestConflictError
 
@@ -126,8 +126,7 @@ def get_survey_usage(request: Request, survey_id: UUID) -> dict:
 @router.get("/surveys/{survey_id}/report")
 def get_report(request: Request, survey_id: UUID) -> dict:
     try:
-        report, _ = build_report(get_survey_workflow(request).repository, survey_id)
-        return report
+        return build_report_snapshot(get_survey_workflow(request).repository, survey_id)
     except SurveyNotFoundError as error:
         raise HTTPException(status_code=404, detail="survey not found") from error
     except ValueError as error:

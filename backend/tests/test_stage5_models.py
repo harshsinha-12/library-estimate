@@ -306,6 +306,11 @@ def test_replay_survey_runs_every_copy_independently() -> None:
         assert run["comparison"]["writes_price"] is False
         assert "isbn" not in run["assessments"]["fable"]
         assert "price" not in run["assessments"]["fable"]
+    repeated = replay_survey(
+        repository, survey_id, fable_call=provider, astra_call=provider, jev_call=_jev_ok,
+    )
+    assert repeated["reused"] is True
+    assert seen == ["copy-1", "copy-1", "copy-2", "copy-2", "copy-3", "copy-3"]
 
 
 def test_unavailable_provider_is_disclosed_partial_not_invented() -> None:
