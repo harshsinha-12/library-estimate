@@ -67,7 +67,10 @@ final class AstraLiveSession: ObservableObject {
     unreadableSlots: [String],
     force: Bool = false
   ) async {
-    guard let backendURL else { return }
+    guard let backendURL else {
+      status = "Astra-live waiting for backend URL · assist only, not inventory"
+      return
+    }
     let due = Date().timeIntervalSince(lastAttempt) >= Self.minInterval
     guard force || due else { return }
     guard let compact = Self.sampledJpeg(jpeg), compact.count > 32 else { return }

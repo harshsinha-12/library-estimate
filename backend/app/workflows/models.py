@@ -117,15 +117,13 @@ def _route(a: dict | None, b: dict | None, asset: dict, jev: dict | None) -> dic
         return {"action": "human_review", "reason": "model_disagreement", "disagreement": True}
     if min(a["confidence"], b["confidence"]) < 0.85:
         return {"action": "human_review", "reason": "low_confidence", "disagreement": False}
+    if a["recommended_action"] == b["recommended_action"] == "accept_candidate":
+        return {"action": "accept_candidate", "reason": "agreement", "disagreement": False}
     if jev is None:
         return {"action": "human_review", "reason": "jev_unavailable", "disagreement": False}
     if jev["confidence"] < 0.8:
         return {"action": "human_review", "reason": "jev_low_confidence", "disagreement": False}
     proposed = jev["choice"]
-    if a["recommended_action"] == b["recommended_action"] == "accept_candidate":
-        if proposed == "accept_candidate":
-            return {"action": proposed, "reason": "agreement", "disagreement": False}
-        return {"action": proposed, "reason": "jev_proposal", "disagreement": False}
     action = (
         a["recommended_action"]
         if a["recommended_action"] == b["recommended_action"]

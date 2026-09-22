@@ -24,6 +24,7 @@ from reportlab.platypus import (
 )
 
 from backend.app.domain.repository import SurveyRepository
+from backend.app.providers.pricing.targets import keys_match, object_key
 from backend.app.providers.usage import usage_for_survey
 from backend.app.utils.clocks import utc_now
 from backend.app.utils.json_codec import canonical_json_bytes
@@ -215,7 +216,10 @@ def _cached_report_objects(
     structured = structure_report_objects(records)
     pricing["report_objects"] = structured
     pricing["report_objects_sha256"] = digest
-    repository.save_json(survey_id, "pricing", pricing)
+    current = dict(repository.get_json(survey_id, "pricing") or {})
+    current["report_objects"] = structured
+    current["report_objects_sha256"] = digest
+    repository.save_json(survey_id, "pricing", current)
     return structured
 
 
@@ -225,8 +229,10 @@ def render_pdf(report: dict) -> bytes:
     inventory = report["inventory"]
     valuation = report["valuation"]
     copies = _unique_copy_rows(valuation.get("copies") or [])
-    books = [row for row in copies if row.get("category") == "book"]
+    physical_books = [row for row in copies if row.get("category") == "book"]
+    books = _unique_book_rows(physical_books, valuation)
     objects = valuation.get("report_objects") or _object_rows(copies, valuation)
+    book_copies = sum(int(row.get("copy_count") or 1) for row in books)
     geography = report["property"]["geography"]
     market = valuation.get("city_market") or (
         f"{geography.get('city')}, {geography.get('country_code')} · {geography.get('market')}"
@@ -246,9 +252,10 @@ def render_pdf(report: dict) -> bytes:
         *_section("Summary", styles),
         _kv_table([
             ["Recorded copies", str(len(inventory.get("asset_copies") or copies))],
-            ["Books / other objects", f"{len(books)} / {len(objects)}"],
+            ["Unique book titles / copies", f"{len(books)} / {book_copies}"],
+            ["Other objects", str(len(objects))],
             [
-                "Priced / eligible books",
+                "Confirmed / eligible books",
                 (
                     f"{(valuation.get('priced_eligible') or {}).get('numerator', 0)}"
                     f" / {(valuation.get('priced_eligible') or {}).get('denominator', 0)}"
@@ -435,8 +442,8 @@ def _item_table(rows: list[dict], styles, *, empty: str, kind: str) -> list:
         header = ["Object", "Category", "Status", "Price", "Listing"]
         widths = [130, 70, 88, 78, 150]
     else:
-        header = ["Title", "Copy", "Status", "Price", "Listing"]
-        widths = [130, 88, 78, 70, 150]
+        header = ["Title", "Qty", "Status", "Price", "Listing"]
+        widths = [150, 40, 88, 78, 160]
     data = [[Paragraph(label, styles["HeadCell"]) for label in header]]
     for row in rows[:150]:
         label = row.get("title") or row.get("label") or row.get("asset_copy_id") or "Unknown"
@@ -456,7 +463,7 @@ def _item_table(rows: list[dict], styles, *, empty: str, kind: str) -> list:
         else:
             cells = [
                 _safe(label),
-                _safe(row.get("asset_copy_id")),
+                _safe(row.get("copy_count") or 1),
                 _safe(_status_label(row)),
                 _safe(_row_price(row)),
                 listing_cell,
@@ -758,6 +765,66 @@ def _unique_copy_rows(rows: list[dict]) -> list[dict]:
             )
             prior["reason"] = row.get("reason") or prior.get("reason")
     return [by_id[key] for key in order]
+
+
+def _unique_book_rows(rows: list[dict], valuation: dict) -> list[dict]:
+    priced = list(valuation.get("live_searches") or []) + list(valuation.get("found_prices") or [])
+    grouped: dict[str, dict] = {}
+    order: list[str] = []
+    for row in rows:
+        key = _book_group_key(row)
+        match = next((item for item in order if keys_match(item, key)), None)
+        if match is None:
+            grouped[key] = dict(row)
+            grouped[key]["copy_count"] = 1
+            order.append(key)
+            _bind_book_draft(grouped[key], priced)
+            continue
+        prior = grouped[match]
+        prior["copy_count"] = int(prior.get("copy_count") or 1) + 1
+        if row.get("listing_url") and not prior.get("listing_url"):
+            prior["listing_url"] = row.get("listing_url")
+        if _amount_of(row) is not None and _amount_of(prior) is None:
+            prior["valuation"] = row.get("valuation")
+            prior["valuation_status"] = row.get("valuation_status") or prior.get("valuation_status")
+        _bind_book_draft(prior, priced)
+    return [grouped[key] for key in order]
+
+
+def _book_group_key(row: dict) -> str:
+    return object_key(
+        kind=row.get("query_kind") or "book",
+        title=row.get("title") or row.get("label"),
+        category="book",
+        isbn=row.get("isbn"),
+    )
+
+
+def _bind_book_draft(row: dict, priced: list[dict]) -> None:
+    if _amount_of(row) is not None:
+        return
+    key = _book_group_key(row)
+    for item in priced:
+        amount = item.get("amount") or item.get("parsed_amount")
+        if amount is None:
+            continue
+        other = object_key(
+            kind=item.get("query_kind") or "book",
+            title=item.get("title") or item.get("query"),
+            category="book",
+            isbn=item.get("isbn"),
+        )
+        if not keys_match(key, other):
+            continue
+        row["valuation"] = {
+            "amount": {"value": amount},
+            "currency": item.get("currency"),
+        }
+        row["listing_url"] = row.get("listing_url") or item.get("listing_url") or item.get("url")
+        row["draft_count"] = max(int(row.get("draft_count") or 0), 1)
+        if row.get("valuation_status") in {None, "price_pending", "pending"}:
+            row["valuation_status"] = "price_pending"
+        return
 
 
 def _unique_model_runs(runs: list[dict]) -> list[dict]:

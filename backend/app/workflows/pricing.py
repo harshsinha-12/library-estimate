@@ -66,16 +66,23 @@ def _numeric_amount(value: object) -> float | None:
 
 
 def _has_price_evidence(
-    state: dict, *, asset_copy_id: str, edition_key: str | None
+    state: dict, *, asset_copy_id: str, edition_key: str | None,
+    title: str | None = None, isbn: str | None = None,
+    category: str | None = None, query_kind: str | None = None,
 ) -> bool:
-    return any(
+    if any(
         item.get("parsed_amount") is not None
         and (
             item.get("asset_copy_id") == asset_copy_id
             or (edition_key and item.get("book_edition_id") == edition_key)
         )
         for item in state.get("observations") or []
+    ):
+        return True
+    lookup = object_key(
+        kind=query_kind, title=title, category=category, isbn=isbn,
     )
+    return already_priced(state, lookup)
 
 
 def load_rebuild_rates() -> dict:
@@ -675,8 +682,10 @@ class PricingWorker:
         if not planned:
             planned = fallback_targets(notes, visuals)
         planned = attach_frames(planned, notes, visuals)
+        geography = repository.get(survey_id).geography.model_dump(mode="json")
         searches = []
         seen: set[str] = set()
+        jobs: list[dict] = []
         for item in planned:
             name = str(item.get("name") or "").strip()
             kind = str(item.get("kind") or "object")
@@ -692,28 +701,52 @@ class PricingWorker:
                 if cached:
                     searches.append(cached)
                 continue
-            encoded = _jpeg_at(repository, survey_id, item.get("frame_path"))
-            description = " ".join(
-                part
-                for part in (name, item.get("description"), item.get("speech"), timeline[:400])
-                if part
+            jobs.append(
+                {
+                    "query": name,
+                    "kind": "name" if kind == "book" else "object",
+                    "edition_key": f"live:{kind}:{sha256_bytes(name.encode())[:12]}",
+                    "book_title": name,
+                    "isbn": None,
+                    "description": " ".join(
+                        part
+                        for part in (name, item.get("description"), item.get("speech"))
+                        if part
+                    ),
+                    "category": category,
+                    "lookup": key,
+                }
             )
-            payload = {
-                "title": name,
-                "spoken_text": str(item.get("speech") or item.get("description") or name),
-                "ocr_text": description,
-                "image_base64": encoded,
-                "asset_copy_id": item.get("asset_copy_id"),
-            }
-            if kind == "book":
-                result = self.live_search(repository, survey_id, payload)
-            else:
-                result = self._object_search(repository, survey_id, payload, category)
-            searches.append(result)
-            state = self._state(repository, survey_id)
-            if len(searches) >= 8:
+            if len(searches) + len(jobs) >= 8:
                 break
-        state = self._state(repository, survey_id)
+        stored = self._search_many(repository, survey_id, state, geography, jobs)
+        live_rows = [
+            self._live_from_stored(row, geography, job.get("category"))
+            for row, job in zip(stored, jobs, strict=False)
+        ]
+        searches.extend(live_rows)
+        existing_keys = [
+            object_key(
+                kind=item.get("query_kind"),
+                title=item.get("title"),
+                category=item.get("category"),
+                isbn=item.get("isbn"),
+            )
+            for item in state.get("live_searches") or []
+        ]
+        for row in live_rows:
+            key = object_key(
+                kind=row.get("query_kind"),
+                title=row.get("title"),
+                category=row.get("category"),
+            )
+            if row.get("amount") and any(keys_match(key, other) for other in existing_keys):
+                continue
+            state.setdefault("live_searches", []).append(
+                {**row, "occurred_at": utc_now().isoformat()}
+            )
+            existing_keys.append(key)
+        state["live_searches"] = (state.get("live_searches") or [])[-40:]
         state["spoken_pricing_input_sha256"] = input_fingerprint
         state["spoken_pricing_targets"] = planned
         repository.save_json(survey_id, "pricing", state)
@@ -732,20 +765,50 @@ class PricingWorker:
             survey_id=str(survey_id),
             model=self.small_model,
         )
-        identified = self.identify_from_frames(repository, survey_id)
-        spoken = self.price_spoken_notes(repository, survey_id)
-        queued = self.queue(repository, survey_id)
-        overview = self.overview(repository, survey_id)
-        from backend.app.workflows.models import replay_survey
+        identified: dict = {}
+        spoken: dict = {"searches": []}
+        queued: dict = {"queued": []}
+        overview: dict = {"copies": []}
+        try:
+            identified = self.identify_from_frames(repository, survey_id)
+            spoken = self.price_spoken_notes(repository, survey_id)
+            queued = self.queue(repository, survey_id)
+            overview = self.overview(repository, survey_id)
+        except Exception as error:
+            pricing_log.warning(
+                "pricing_after_seal pricing failed",
+                survey_id=str(survey_id),
+                error=error.__class__.__name__,
+                detail=str(error)[:240],
+            )
+        replayed: dict = {"copy_count": 0, "runs": []}
+        try:
+            from backend.app.workflows.models import replay_survey
 
-        replayed = replay_survey(repository, survey_id)
-        return {
+            replayed = replay_survey(repository, survey_id)
+        except Exception as error:
+            pricing_log.warning(
+                "pricing_after_seal replay failed",
+                survey_id=str(survey_id),
+                error=error.__class__.__name__,
+                detail=str(error)[:240],
+            )
+        result = {
             "identified": identified,
             "spoken": spoken,
             "queued": queued,
             "overview_copies": len(overview.get("copies") or []),
             "replayed": replayed,
         }
+        self._record_log(
+            repository,
+            survey_id,
+            "pricing_after_seal finished",
+            copies=result["overview_copies"],
+            spoken_searches=len(spoken.get("searches") or []),
+            queued=len(queued.get("queued") or []),
+        )
+        return result
 
     def queue(self, repository: SurveyRepository, survey_id: UUID) -> dict:
         survey = repository.get(survey_id)
@@ -757,6 +820,7 @@ class PricingWorker:
         queued = []
         seen: set[str] = set()
         jobs: list[dict] = []
+        skipped_priced = 0
         for copy in copies:
             if not copy["eligible"] or copy["query"] is None:
                 continue
@@ -771,20 +835,19 @@ class PricingWorker:
                 state,
                 asset_copy_id=copy["asset_copy_id"],
                 edition_key=copy.get("edition_key"),
-            ):
+                title=copy.get("title"),
+                isbn=copy.get("isbn"),
+                category=copy.get("category"),
+                query_kind=copy.get("query_kind"),
+            ) or already_priced(state, lookup):
+                skipped_priced += 1
                 prior = priced_search(state, lookup)
                 if prior:
                     queued.append({**prior, "from_cache": True})
                 continue
-            cache_id = f"{key}|{geography['market']}|{copy['query']}"
-            if cache_id in seen:
+            if any(keys_match(lookup, other) for other in seen):
                 continue
-            seen.add(cache_id)
-            if already_priced(state, lookup):
-                prior = priced_search(state, lookup)
-                if prior:
-                    queued.append(prior)
-                continue
+            seen.add(lookup)
             if attempt_count(state, lookup) >= MAX_SEARCHES_PER_OBJECT:
                 continue
             jobs.append(
@@ -796,11 +859,21 @@ class PricingWorker:
                     "isbn": copy.get("isbn"),
                     "description": copy.get("title"),
                     "category": copy.get("category"),
+                    "lookup": lookup,
                 }
             )
         queued.extend(self._search_many(repository, survey_id, state, geography, jobs))
         self._attach_drafts(state, None, geography)
         copies = self._refresh(repository, survey_id, state, geography, stage3, inventory)
+        self._record_log(
+            repository,
+            survey_id,
+            "price_search_queue finished",
+            copies=len(copies),
+            unique_jobs=len(jobs),
+            skipped_priced=skipped_priced,
+            queued=len(queued),
+        )
         return {"queued": queued, "copies": copies, "ledger": state["ledger"]}
 
     def apply_observation(
@@ -931,29 +1004,26 @@ class PricingWorker:
 
     def _state(self, repository: SurveyRepository, survey_id: UUID) -> dict:
         stored = repository.get_json(survey_id, "pricing")
-        if stored is not None:
-            stored.setdefault("no_comparable", {})
-            stored.setdefault("live_searches", [])
-            stored.setdefault("found_prices", [])
-            stored.setdefault("search_attempts", {})
-            stored.setdefault("log", [])
-            ledger = stored.setdefault("ledger", {"currency": "USD", "lines": []})
-            ledger.pop("cap_usd", None)
-            ledger.pop("spent_usd", None)
-            ledger.setdefault("lines", [])
-            return stored
-        return {
-            "schema_version": "stage4-v1",
-            "pipeline_version": PIPELINE_VERSION,
-            "observations": [],
-            "searches": [],
-            "live_searches": [],
-            "found_prices": [],
-            "search_attempts": {},
-            "log": [],
-            "no_comparable": {},
-            "ledger": {"currency": "USD", "lines": []},
-        }
+        if stored is None:
+            stored = {}
+        stored.setdefault("schema_version", "stage4-v1")
+        stored.setdefault("pipeline_version", PIPELINE_VERSION)
+        stored.setdefault("observations", [])
+        stored.setdefault("searches", [])
+        stored.setdefault("no_comparable", {})
+        stored.setdefault("live_searches", [])
+        stored.setdefault("found_prices", [])
+        stored.setdefault("search_attempts", {})
+        stored.setdefault("log", [])
+        ledger = stored.setdefault("ledger", {"currency": "USD", "lines": []})
+        if not isinstance(ledger, dict):
+            ledger = {"currency": "USD", "lines": []}
+            stored["ledger"] = ledger
+        ledger.pop("cap_usd", None)
+        ledger.pop("spent_usd", None)
+        ledger.setdefault("currency", "USD")
+        ledger.setdefault("lines", [])
+        return stored
 
     def _remember_found(
         self,
@@ -1071,9 +1141,11 @@ class PricingWorker:
         jobs: list[dict],
     ) -> list[dict]:
         results: list[dict] = []
-        pending: list[dict] = []
+        unique: list[dict] = []
+        skipped_priced = 0
+        shared = 0
         for job in jobs:
-            lookup = object_key(
+            lookup = job.get("lookup") or object_key(
                 kind=job["kind"],
                 title=job.get("book_title") or job["query"],
                 category=job.get("category"),
@@ -1081,33 +1153,68 @@ class PricingWorker:
             )
             job["lookup"] = lookup
             if already_priced(state, lookup):
+                skipped_priced += 1
                 prior = priced_search(state, lookup)
                 if prior and prior.get("search_id") and prior.get("edition_key"):
-                    results.append(prior)
+                    results.append({**prior, "from_cache": True})
                     continue
                 results.append(
                     self._empty_search(job, geography, prior=prior, parser="openai_web_search")
                 )
                 continue
+            share = next(
+                (
+                    index
+                    for index, pending in enumerate(unique)
+                    if keys_match(pending["lookup"], lookup)
+                ),
+                None,
+            )
+            if share is not None:
+                shared += 1
+                results.append({"_share": share})
+                continue
             if attempt_count(state, lookup) >= MAX_SEARCHES_PER_OBJECT:
                 results.append(self._empty_search(job, geography, parser="skipped"))
                 continue
-            pending.append(job)
+            job["_share"] = len(unique)
+            unique.append(job)
             results.append(job)
-        for offset in range(0, len(pending), BATCH_SIZE):
-            chunk = pending[offset : offset + BATCH_SIZE]
+        stored_unique: list[dict | None] = [None] * len(unique)
+        for offset in range(0, len(unique), BATCH_SIZE):
+            chunk = unique[offset : offset + BATCH_SIZE]
             for job in chunk:
                 record_attempt(state, job["lookup"])
             parsed_rows = self._run_batch(chunk, geography)
             for job, parsed in zip(chunk, parsed_rows, strict=False):
                 stored = self._store_search(repository, survey_id, state, geography, job, parsed)
-                for index, item in enumerate(results):
-                    if item is job:
-                        results[index] = stored
-                        break
+                stored_unique[job["_share"]] = stored
+        repository.save_json(survey_id, "pricing", state)
+        batches = (len(unique) + BATCH_SIZE - 1) // BATCH_SIZE if unique else 0
+        pricing_log.info(
+            "web_search processing finished",
+            survey_id=str(survey_id),
+            jobs=len(jobs),
+            unique=len(unique),
+            skipped_priced=skipped_priced,
+            shared=shared,
+            batches=batches,
+        )
+        resolved: list[dict] = []
+        for item in results:
+            share = item.get("_share") if isinstance(item, dict) else None
+            if item.get("search_id"):
+                resolved.append(item)
+            elif share is not None and stored_unique[share] is not None:
+                resolved.append(stored_unique[share])
+            elif item in unique:
+                stored = stored_unique[unique.index(item)]
+                resolved.append(stored or self._empty_search(item, geography))
+            else:
+                resolved.append(self._empty_search(item, geography))
         return [
             item if item.get("search_id") else self._empty_search(item, geography)
-            for item in results
+            for item in resolved
         ]
 
     def _run_batch(self, jobs: list[dict], geography: dict) -> list[dict | None]:
@@ -1121,18 +1228,43 @@ class PricingWorker:
             for job in jobs
         ]
         try:
-            if len(payload) == 1:
-                row = self.web_search(
-                    payload[0]["title"],
-                    geography=geography,
-                    isbn=payload[0]["isbn"],
-                    kind=payload[0]["kind"],
-                    description=payload[0]["description"],
-                )
-                return [row]
-            return list(self.web_search_batch(payload, geography=geography) or [])
+            rows = list(self.web_search_batch(payload, geography=geography) or [])
         except (OSError, TypeError, ValueError):
             return [None] * len(jobs)
+        if len(rows) < len(jobs):
+            rows.extend([None] * (len(jobs) - len(rows)))
+        return rows[: len(jobs)]
+
+    def _live_from_stored(self, stored: dict, geography: dict, category: str | None) -> dict:
+        physical = [
+            item
+            for item in stored.get("citations") or []
+            if item.get("offer_type") == "physical" and item.get("parsed_amount")
+        ]
+        chosen = physical[0] if physical else None
+        amount = chosen.get("parsed_amount") if chosen else stored.get("amount")
+        return {
+            "status": "draft" if amount else "unresolved",
+            "reason": DRAFT_REASON if amount else "No local physical comparable",
+            "title": stored.get("title") or stored.get("query"),
+            "isbn": stored.get("isbn"),
+            "query": stored.get("query"),
+            "query_kind": stored.get("query_kind") or "object",
+            "amount": amount,
+            "currency": (
+                (chosen or {}).get("parsed_currency")
+                or stored.get("currency")
+                or geography.get("currency")
+            ),
+            "listing_url": stored.get("listing_url") or (chosen or {}).get("url"),
+            "listing_urls": (stored.get("listing_urls") or [])[:5],
+            "listing_count": min(len(stored.get("listing_urls") or []), 5),
+            "parser": stored.get("parser"),
+            "small_model": stored.get("small_model") or self.small_model,
+            "citations": stored.get("citations") or [],
+            "category": category or stored.get("category"),
+            "from_cache": bool(stored.get("from_cache")),
+        }
 
     def _empty_search(
         self,
@@ -1142,7 +1274,7 @@ class PricingWorker:
         prior: dict | None = None,
         parser: str = "openai_web_search",
     ) -> dict:
-        listing = (prior or {}).get("listing_url") or ""
+        listing = (prior or {}).get("listing_url") or (prior or {}).get("url") or ""
         return {
             "search_id": sha256_bytes(f"found|{job.get('lookup') or job.get('query')}".encode())[
                 :16
@@ -1160,9 +1292,11 @@ class PricingWorker:
             "small_model": (prior or {}).get("small_model") or self.small_model,
             "from_cache": True,
             "country_code": geography["country_code"],
-            "isbn": job.get("isbn"),
-            "title": job.get("book_title"),
-            "category": job.get("category"),
+            "isbn": job.get("isbn") or (prior or {}).get("isbn"),
+            "title": job.get("book_title") or (prior or {}).get("title"),
+            "category": job.get("category") or (prior or {}).get("category"),
+            "amount": (prior or {}).get("amount") or (prior or {}).get("parsed_amount"),
+            "currency": (prior or {}).get("currency"),
         }
 
     def _store_search(
@@ -1205,9 +1339,13 @@ class PricingWorker:
             "country_code": geography["country_code"],
             "isbn": job.get("isbn"),
             "title": job.get("book_title"),
+            "category": job.get("category"),
         }
-        if search["search_id"] not in {item["search_id"] for item in state["searches"]}:
-            state["searches"].append(search)
+        searches = state.setdefault("searches", [])
+        if search["search_id"] not in {
+            item.get("search_id") for item in searches if isinstance(item, dict)
+        }:
+            searches.append(search)
         self._remember_found(
             state,
             title=job.get("book_title"),
@@ -1218,7 +1356,11 @@ class PricingWorker:
             query_kind=job.get("kind"),
             category=job.get("category"),
         )
-        state["ledger"]["lines"].append(
+        ledger = state.setdefault("ledger", {"currency": "USD", "lines": []})
+        if not isinstance(ledger, dict):
+            ledger = {"currency": "USD", "lines": []}
+            state["ledger"] = ledger
+        ledger.setdefault("lines", []).append(
             {
                 "kind": "openai_web_search",
                 "query": job["query"],
@@ -1243,10 +1385,10 @@ class PricingWorker:
         return search
 
     def _attach_drafts(self, state: dict, search: dict | None, geography: dict) -> None:
-        searches = [search] if search is not None else state["searches"]
+        searches = [search] if search is not None else state.setdefault("searches", [])
         existing = {
             (item.get("search_id"), item.get("source_url"), item.get("parsed_amount"))
-            for item in state["observations"]
+            for item in state.setdefault("observations", [])
         }
         for item in searches:
             if item is None:
@@ -1353,6 +1495,16 @@ class PricingWorker:
                 ),
                 None,
             )
+            isbn = (
+                identity.get("normalized")
+                if identity and identity.get("usable_for_isbn_price_query")
+                else None
+            )
+            title = (
+                (identity or {}).get("title")
+                or ((identity or {}).get("catalog") or {}).get("title")
+                or asset.get("label")
+            )
             query, query_kind, edition_key = self._query_for(asset, identity, geography)
             existing_spoken = next(
                 (
@@ -1385,6 +1537,19 @@ class PricingWorker:
                 and (
                     item.get("book_edition_id") == edition_key
                     or item.get("asset_copy_id") == asset_id
+                    or keys_match(
+                        object_key(
+                            kind=query_kind,
+                            title=title,
+                            category=category,
+                            isbn=isbn,
+                        ),
+                        object_key(
+                            kind=item.get("query_kind"),
+                            title=item.get("title") or item.get("query"),
+                            isbn=item.get("isbn"),
+                        ),
+                    )
                 )
             ]
             eligible = bool(policy["valuation_required"]) and not policy["excluded"]
@@ -1448,6 +1613,33 @@ class PricingWorker:
             elif drafts:
                 status = "price_pending"
                 reason = "Web search drafts need human confirmation before they price this copy"
+                priced_drafts = [
+                    item
+                    for item in drafts
+                    if item.get("offer_type") in {None, "physical"}
+                    and item.get("parsed_amount") is not None
+                ]
+                if priced_drafts:
+                    chosen = priced_drafts[-1]
+                    amount = _numeric_amount(chosen.get("parsed_amount") or chosen.get("amount"))
+                    if amount is not None:
+                        valuation = {
+                            "valuation_id": f"val_{asset_id}",
+                            "asset_copy_id": asset_id,
+                            "basis": "replacement_cost",
+                            "amount": {
+                                "value": amount,
+                                "unit": chosen.get("currency") or geography.get("currency"),
+                                "status": "draft",
+                                "confidence": 0.45,
+                                "interval": None,
+                                "method": "web-search-draft",
+                                "evidence_refs": [chosen.get("price_observation_id")],
+                                "run_id": PIPELINE_VERSION,
+                            },
+                            "currency": chosen.get("currency") or geography.get("currency"),
+                            "price_observation_refs": [chosen.get("price_observation_id")],
+                        }
             else:
                 status = "price_pending"
                 reason = "Search by validated ISBN, otherwise by recognized name"
@@ -1467,13 +1659,8 @@ class PricingWorker:
                     "slot": asset.get("slot"),
                     "face_id": asset.get("face_id"),
                     "row_id": asset.get("row_id"),
-                    "isbn": (
-                        identity.get("normalized")
-                        if identity and identity.get("usable_for_isbn_price_query")
-                        else None
-                    ),
-                    "title": (identity or {}).get("title")
-                    or ((identity or {}).get("catalog") or {}).get("title"),
+                    "isbn": isbn,
+                    "title": title,
                     "eligible": eligible,
                     "requires_appraisal": policy["requires_appraisal"],
                     "excluded": policy["excluded"],
@@ -1499,7 +1686,16 @@ class PricingWorker:
                     "draft_count": len(drafts),
                     "confirmed_count": len(comparable),
                     "search_id": None if search is None else search.get("search_id"),
-                    "listing_url": None if search is None else search.get("listing_url"),
+                    "listing_url": (
+                        None if search is None else search.get("listing_url")
+                    ) or next(
+                        (
+                            item.get("listing_url") or item.get("source_url")
+                            for item in drafts
+                            if item.get("listing_url") or item.get("source_url")
+                        ),
+                        None,
+                    ),
                     "evidence_refs": asset.get("observation_refs") or [],
                     "evidence_paths": sorted(
                         {
@@ -1516,13 +1712,14 @@ class PricingWorker:
         return rows
 
     def _rows_from_searches(self, existing: list[dict], state: dict, geography: dict) -> list[dict]:
-        for item in state.get("live_searches") or []:
+        priced = list(state.get("live_searches") or []) + list(state.get("found_prices") or [])
+        for item in priced:
             title = str(item.get("title") or item.get("query") or "").strip()
             if len(title) < 3 or _GENERIC_TITLE.match(title):
                 continue
             category = _search_category(item)
             kind = item.get("query_kind") or ("name" if category == "book" else "object")
-            key = object_key(kind="object", title=title, category=category)
+            key = object_key(kind=kind, title=title, category=category, isbn=item.get("isbn"))
             matched = next(
                 (
                     row
@@ -1530,9 +1727,10 @@ class PricingWorker:
                     if keys_match(
                         key,
                         object_key(
-                            kind="object",
+                            kind=row.get("query_kind") or "object",
                             title=str(row.get("title") or row.get("label") or ""),
                             category=row.get("category"),
+                            isbn=row.get("isbn"),
                         ),
                     )
                     or str(row.get("title") or row.get("label") or "").strip().lower()
@@ -1540,10 +1738,11 @@ class PricingWorker:
                 ),
                 None,
             )
-            amount = _numeric_amount(item.get("amount"))
+            amount = _numeric_amount(item.get("amount") or item.get("parsed_amount"))
+            listing = item.get("listing_url") or item.get("url")
             if matched is not None:
-                if item.get("listing_url") and not matched.get("listing_url"):
-                    matched["listing_url"] = item.get("listing_url")
+                if listing and not matched.get("listing_url"):
+                    matched["listing_url"] = listing
                 if item.get("query") and (
                     not matched.get("query") or "paperback" in str(matched.get("query") or "")
                 ):
@@ -1777,6 +1976,8 @@ class PricingWorker:
             if built is None:
                 return None, None, asset.get("book_edition_ref") or asset["asset_copy_id"]
             query, kind = built
+            if title:
+                return query, kind, object_key(kind=kind, title=title, category=category)
             return query, kind, asset.get("book_edition_ref") or asset["asset_copy_id"]
         built = template_query(
             isbn=isbn,
@@ -1791,10 +1992,8 @@ class PricingWorker:
         if built is None:
             return None, None, asset.get("book_edition_ref") or asset["asset_copy_id"]
         query, kind = built
-        edition_key = (
-            f"edition_{identity.get('scope', 'volume')}_{isbn}_{identity.get('format', 'unknown')}"
-            if isbn and identity
-            else "title_" + sha256_bytes(query.encode())[:12]
+        edition_key = object_key(
+            kind=kind, title=title, category="book", isbn=isbn,
         )
         return query, kind, edition_key
 

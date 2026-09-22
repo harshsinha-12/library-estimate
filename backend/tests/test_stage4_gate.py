@@ -47,6 +47,14 @@ def test_luna_completion_omits_temperature() -> None:
     assert mini["temperature"] == 0
 
 
+def test_vision_model_defaults_to_luna(monkeypatch) -> None:
+    from backend.app.providers.pricing.vision_titles import vision_model
+
+    monkeypatch.delenv("OPENAI_VISION_MODEL", raising=False)
+    monkeypatch.setenv("OPENAI_SMALL_MODEL", "gpt-5.6-luna")
+    assert vision_model() == "gpt-5.6-luna"
+
+
 def _web_result(title: str, amount: str, *, currency: str = "INR", url: str | None = None) -> dict:
     listing = url or "https://www.amazon.in/dp/example"
     return {
@@ -127,10 +135,10 @@ def fake_web_search(title, **kwargs):
     return _web_result(title, "100", currency=currency, url=url)
 
 
-def stub_pricing(worker, *, titles: list[str] | None = None) -> None:
-    worker.web_search = fake_web_search
+def bind_web_search(worker, search_fn) -> None:
+    worker.web_search = search_fn
     worker.web_search_batch = lambda items, geography: [
-        fake_web_search(
+        search_fn(
             item.get("title"),
             geography=geography,
             isbn=item.get("isbn"),
@@ -139,6 +147,10 @@ def stub_pricing(worker, *, titles: list[str] | None = None) -> None:
         )
         for item in items
     ]
+
+
+def stub_pricing(worker, *, titles: list[str] | None = None) -> None:
+    bind_web_search(worker, fake_web_search)
     worker.plan_targets = lambda *args, **kwargs: []
     if titles is not None:
         worker.extract_titles = lambda jpeg, titles=titles: titles if jpeg else []
@@ -516,28 +528,31 @@ def test_web_search_batch_chunks_unique_items(monkeypatch) -> None:
 def test_live_price_search_uses_web_search_when_priced() -> None:
     app, _, _ = isolated_app()
     stub_pricing(app.state.survey_workflow.pricing_worker)
-    app.state.survey_workflow.pricing_worker.web_search = lambda title, **kwargs: {
-        "query": title,
-        "market": "en-IN",
-        "listing_url": "https://www.amazon.in/dp/example",
-        "citations": [
-            {
-                "title": title,
-                "url": "https://www.amazon.in/dp/example",
-                "snippet": "paperback ₹1750",
-                "offer_type": "physical",
-                "parsed_amount": "1750",
-                "parsed_currency": "INR",
-                "format": "paperback",
-                "condition": "new",
-            }
-        ],
-        "listing_urls": ["https://www.amazon.in/dp/example"],
-        "html_sha256": "abc",
-        "listing_count": 1,
-        "parser": "openai_web_search",
-        "small_model": "gpt-5.5",
-    }
+    bind_web_search(
+        app.state.survey_workflow.pricing_worker,
+        lambda title, **kwargs: {
+            "query": title,
+            "market": "en-IN",
+            "listing_url": "https://www.amazon.in/dp/example",
+            "citations": [
+                {
+                    "title": title,
+                    "url": "https://www.amazon.in/dp/example",
+                    "snippet": "paperback ₹1750",
+                    "offer_type": "physical",
+                    "parsed_amount": "1750",
+                    "parsed_currency": "INR",
+                    "format": "paperback",
+                    "condition": "new",
+                }
+            ],
+            "listing_urls": ["https://www.amazon.in/dp/example"],
+            "html_sha256": "abc",
+            "listing_count": 1,
+            "parser": "openai_web_search",
+            "small_model": "gpt-5.5",
+        },
+    )
     with TestClient(app) as client:
         survey, _ = create_survey(client)
         survey_id = survey["survey_id"]
@@ -586,7 +601,7 @@ def test_live_price_search_sends_image_description() -> None:
         }
 
     worker = app.state.survey_workflow.pricing_worker
-    worker.web_search = fake_search
+    bind_web_search(worker, fake_search)
     worker.extract_titles = lambda jpeg: ["Deep Learning"]
     jpeg = base64.b64encode(b"fake-jpeg").decode("ascii")
     with TestClient(app) as client:
@@ -680,7 +695,7 @@ def test_live_price_search_stops_after_price_and_caps_retries(monkeypatch) -> No
         }
 
     worker = app.state.survey_workflow.pricing_worker
-    worker.web_search = fake_search
+    bind_web_search(worker, fake_search)
     worker.plan_targets = lambda *args, **kwargs: []
     with TestClient(app) as client:
         survey, _ = create_survey(client)
@@ -716,8 +731,11 @@ def test_spoken_pricing_skips_unidentified_book_placeholders() -> None:
             "description": "unresolved shelf item",
         }
     ]
-    worker.web_search = lambda *args, **kwargs: (_ for _ in ()).throw(
-        AssertionError("generic placeholder must not trigger web search")
+    bind_web_search(
+        worker,
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("generic placeholder must not trigger web search")
+        ),
     )
     with TestClient(app) as client:
         survey, _ = create_survey(client)
@@ -1136,6 +1154,14 @@ def test_queue_reuses_live_object_price_without_another_web_search(monkeypatch) 
         return original(title, **kwargs)
 
     worker.web_search = counted
+    original_batch = worker.web_search_batch
+    batch_calls: list[str] = []
+
+    def counted_batch(items, geography):
+        batch_calls.extend(str(item.get("title") or "") for item in items)
+        return original_batch(items, geography=geography)
+
+    worker.web_search_batch = counted_batch
     with TestClient(app) as client:
         survey, _ = create_survey(client)
         survey_id = survey["survey_id"]
@@ -1151,7 +1177,10 @@ def test_queue_reuses_live_object_price_without_another_web_search(monkeypatch) 
         assert first.json()["amount"]
         queued = client.post(f"/v1/surveys/{survey_id}/price-search-queue")
         assert queued.status_code == 200
-    assert calls == ["MacBook Air M1 base variant"]
+    assert "MacBook Air M1 base variant" in calls + batch_calls
+    assert calls.count("MacBook Air M1 base variant") + batch_calls.count(
+        "MacBook Air M1 base variant"
+    ) == 1
 
 
 def test_live_draft_enriches_captured_copy_with_numeric_amount() -> None:
@@ -1181,4 +1210,209 @@ def test_live_draft_enriches_captured_copy_with_numeric_amount() -> None:
     }
     assert worker._rows_from_searches(existing, state, {"currency": "INR"}) == []
     assert existing[0]["valuation"]["amount"]["value"] == 8990.0
+
+
+def test_queue_batches_duplicate_titles_and_skips_already_priced() -> None:
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    stub_pricing(worker)
+    batches: list[list[str]] = []
+    original_batch = worker.web_search_batch
+
+    def counted_batch(items, geography):
+        batches.append([str(item.get("title") or "") for item in items])
+        return original_batch(items, geography=geography)
+
+    worker.web_search_batch = counted_batch
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = UUID(survey["survey_id"])
+        repo = app.state.survey_workflow.repository
+        copies = [
+            {"asset_copy_id": "book-1", "category": "book"},
+            {"asset_copy_id": "book-2", "category": "book"},
+            {"asset_copy_id": "book-3", "category": "book"},
+            {
+                "asset_copy_id": "mac-1",
+                "category": "computer",
+                "label": "MacBook Air M1 base variant",
+            },
+        ]
+        repo.save_json(survey_id, "inventory", {"asset_copies": copies, "status": "partial"})
+        repo.save_json(
+            survey_id,
+            "stage3",
+            {
+                "assets": copies,
+                "identities": [
+                    {"asset_copy_id": "book-1", "title": "Clean Code"},
+                    {"asset_copy_id": "book-2", "title": "Clean Code"},
+                    {"asset_copy_id": "book-3", "title": "Clean Code"},
+                    {"asset_copy_id": "mac-1", "title": "MacBook Air M1 base variant"},
+                ],
+                "queue": [],
+                "notes": [],
+            },
+        )
+        repo.save_json(
+            survey_id,
+            "pricing",
+            {
+                "observations": [],
+                "searches": [],
+                "live_searches": [
+                    {
+                        "title": "MacBook Air M1 base variant",
+                        "query_kind": "object",
+                        "category": "computer",
+                        "amount": 65000,
+                        "currency": "INR",
+                        "listing_url": "https://example.test/macbook",
+                    }
+                ],
+                "found_prices": [],
+                "search_attempts": {},
+                "ledger": {"currency": "USD", "lines": []},
+                "no_comparable": {},
+                "log": [],
+            },
+        )
+        worker.queue(repo, survey_id)
+        pricing = repo.get_json(survey_id, "pricing") or {}
+    searched = [title for chunk in batches for title in chunk]
+    assert searched.count("Clean Code") == 1
+    assert not any("MacBook" in title for title in searched)
+    assert all(len(chunk) <= BATCH_SIZE for chunk in batches)
+    assert any(
+        item.get("event") == "price_search_queue finished" for item in pricing.get("log") or []
+    )
+
+
+def test_spoken_notes_search_unique_names_in_batches() -> None:
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    stub_pricing(worker)
+    batches: list[int] = []
+    original_batch = worker.web_search_batch
+
+    def counted_batch(items, geography):
+        batches.append(len(items))
+        return original_batch(items, geography=geography)
+
+    worker.web_search_batch = counted_batch
+    names = [f"Study table {index}" for index in range(6)] + ["Study table 0"]
+    worker.plan_targets = lambda *args, **kwargs: [
+        {
+            "name": name,
+            "kind": "object",
+            "category": "furniture",
+            "description": name,
+        }
+        for name in names
+    ]
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = UUID(survey["survey_id"])
+        app.state.survey_workflow.repository.save_json(
+            survey_id,
+            "stage3",
+            {
+                "assets": [],
+                "identities": [],
+                "queue": [],
+                "notes": [{"text": "furniture around the room", "monotonic_seconds": 1.0}],
+            },
+        )
+        worker.price_spoken_notes(app.state.survey_workflow.repository, survey_id)
+    assert batches == [5, 1]
+
+
+def test_store_search_survives_report_stub_without_searches() -> None:
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = UUID(survey["survey_id"])
+        repository = app.state.survey_workflow.repository
+        repository.save_json(survey_id, "pricing", {"report_objects": []})
+        state = worker._state(repository, survey_id)
+        stored = worker._store_search(
+            repository,
+            survey_id,
+            state,
+            {"market": "in-IN", "country_code": "IN", "currency": "INR"},
+            {
+                "edition_key": "live:object:table",
+                "query": "Study table",
+                "book_title": "Study table",
+                "kind": "object",
+                "lookup": "object:study table",
+            },
+            {
+                "query": "Study table",
+                "citations": [
+                    {
+                        "offer_type": "physical",
+                        "parsed_amount": "100",
+                        "url": "https://www.example.com/table",
+                    }
+                ],
+                "listing_url": "https://www.example.com/table",
+                "listing_urls": ["https://www.example.com/table"],
+                "html_sha256": "abc",
+                "parser": "openai_web_search",
+            },
+        )
+    assert stored["search_id"]
+    assert any(item["search_id"] == stored["search_id"] for item in state["searches"])
+    assert state["found_prices"]
+
+
+def test_report_object_cache_does_not_clobber_searches() -> None:
+    from backend.app.workflows.report import _cached_report_objects
+
+    app, _, _ = isolated_app()
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = UUID(survey["survey_id"])
+        repository = app.state.survey_workflow.repository
+        repository.save_json(
+            survey_id,
+            "pricing",
+            {"searches": [{"search_id": "keep"}], "live_searches": []},
+        )
+        _cached_report_objects(repository, survey_id, {}, {})
+        saved = repository.get_json(survey_id, "pricing")
+    assert saved["searches"] == [{"search_id": "keep"}]
+    assert "report_objects" in saved
+
+
+def test_after_seal_replays_when_spoken_search_raises(monkeypatch) -> None:
+    app, _, _ = isolated_app()
+    worker = app.state.survey_workflow.pricing_worker
+    stub_pricing(worker)
+    worker.identify_from_frames = lambda *args, **kwargs: {
+        "titles": [],
+        "copy_count": 0,
+        "searches": [],
+    }
+
+    def boom(*args, **kwargs):
+        raise KeyError("searches")
+
+    worker.price_spoken_notes = boom
+    replayed: dict[str, str] = {}
+
+    def fake_replay(repository, survey_id, **kwargs):
+        del repository, kwargs
+        replayed["survey_id"] = str(survey_id)
+        return {"copy_count": 2, "runs": [], "status": "empty"}
+
+    monkeypatch.setattr("backend.app.workflows.models.replay_survey", fake_replay)
+    with TestClient(app) as client:
+        survey, _ = create_survey(client)
+        survey_id = UUID(survey["survey_id"])
+        result = worker.after_seal(app.state.survey_workflow.repository, survey_id)
+    assert replayed["survey_id"] == str(survey_id)
+    assert result["replayed"]["copy_count"] == 2
 

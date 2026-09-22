@@ -181,11 +181,16 @@ class SurveyWorkflow:
             geometry_summary_path = geometry.summary_path
             try:
                 self.pricing_worker.after_seal(self.repository, survey_id)
+                pricing_log.info(
+                    "pricing_after_seal finished",
+                    survey_id=str(survey_id),
+                )
             except Exception as error:
                 pricing_log.warning(
                     "pricing_after_seal failed",
                     survey_id=str(survey_id),
                     error=error.__class__.__name__,
+                    detail=str(error)[:240],
                 )
         except GeometryError as error:
             final_status = "partial"

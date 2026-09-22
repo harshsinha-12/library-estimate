@@ -6,18 +6,29 @@ import base64
 import json
 import os
 import time
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from backend.app.providers.llm_trace import record_llm_call
 from backend.app.providers.pricing.queries import titles_from_ocr
+from backend.app.providers.pricing.schema import DEFAULT_SMALL_MODEL
+from backend.app.providers.pricing.small_model import completion_body
 from backend.app.providers.usage import record_usage, reserve_budget
 
-DEFAULT_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+
+def vision_model(explicit: str | None = None) -> str:
+    return (
+        (explicit or "").strip()
+        or os.getenv("OPENAI_VISION_MODEL", "").strip()
+        or os.getenv("OPENAI_SMALL_MODEL", "").strip()
+        or DEFAULT_SMALL_MODEL
+    )
 
 
-def extract_book_titles(jpeg: bytes, *, model: str = DEFAULT_VISION_MODEL) -> list[str]:
+def extract_book_titles(jpeg: bytes, *, model: str | None = None) -> list[str]:
     if not jpeg:
         return []
+    model = vision_model(model)
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
         record_llm_call(
@@ -52,10 +63,11 @@ def describe_object(
     *,
     spoken: str | None = None,
     category: str | None = None,
-    model: str = DEFAULT_VISION_MODEL,
+    model: str | None = None,
 ) -> dict:
     if not jpeg:
         return {}
+    model = vision_model(model)
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
         record_llm_call(
@@ -108,11 +120,10 @@ def _complete_vision(
     )
     user_text = user or "List each distinct book cover or spine you can read."
     encoded = base64.b64encode(jpeg[:400_000]).decode("ascii")
-    body = {
-        "model": model,
-        "temperature": 0,
-        "response_format": {"type": "json_object"},
-        "messages": [
+    body = completion_body(
+        model,
+        response_format={"type": "json_object"},
+        messages=[
             {"role": "system", "content": system_text},
             {
                 "role": "user",
@@ -125,7 +136,7 @@ def _complete_vision(
                 ],
             },
         ],
-    }
+    )
     query = {
         "system": system_text,
         "user": user_text,
@@ -155,6 +166,15 @@ def _complete_vision(
             query=query, response=payload, latency_ms=latency_ms,
         )
         return parsed
+    except HTTPError as error:
+        detail = error.read()[:240].decode("utf-8", errors="replace")
+        record_llm_call(
+            reason=reason, operation=operation, provider="openai", model=model,
+            query=query, status="error",
+            error=f"http_{error.code}: {detail.replace(chr(10), ' ')}",
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        return None
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         record_llm_call(
             reason=reason, operation=operation, provider="openai", model=model,

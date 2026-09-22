@@ -377,3 +377,59 @@ def test_report_structures_object_prices_through_small_model(monkeypatch) -> Non
     assert row["valuation"]["currency"] == "INR"
     assert "invented.example" not in (row.get("listing_url") or "")
     assert "10,390 INR" in _pdf_text(pdf)
+
+
+def test_report_collapses_duplicate_book_titles_and_shows_draft_prices() -> None:
+    repository = SurveyRepository(
+        fakeredis.FakeRedis(decode_responses=True), MemoryObjectStore(), key_prefix="test:books"
+    )
+    survey_id = uuid4()
+    repository.create(SurveyRecord(
+        survey_id=survey_id, display_name="Duplicate books",
+        geography=SurveyGeography(
+            country_code="IN", city="Bengaluru", currency="INR",
+            market="en-IN", source="manual",
+        ),
+        status="partial", created_at=utc_now(), sealed_at=utc_now(), package_hash="d" * 64,
+    ))
+    copies = [
+        {
+            "asset_copy_id": f"book-{index}",
+            "title": "Clean Code",
+            "category": "book",
+            "isbn": "9780132350884",
+            "valuation_status": "price_pending",
+            "query": "Clean Code paperback",
+            "query_kind": "name",
+            "reason": "Web search drafts need human confirmation",
+            "draft_count": 1,
+            "listing_url": "https://example.test/clean-code",
+            "valuation": None,
+        }
+        for index in range(3)
+    ]
+    repository.save_json(survey_id, "inventory", {
+        "status": "partial",
+        "asset_copies": copies,
+    })
+    repository.save_json(survey_id, "overview", {
+        "copies": copies,
+        "priced_eligible": {"numerator": 0, "denominator": 3},
+    })
+    repository.save_json(survey_id, "pricing", {
+        "live_searches": [{
+            "title": "Clean Code",
+            "isbn": "9780132350884",
+            "query_kind": "name",
+            "status": "draft",
+            "amount": 825,
+            "currency": "INR",
+            "listing_url": "https://example.test/clean-code",
+        }],
+    })
+    report, pdf = build_report(repository, survey_id)
+    text = _pdf_text(pdf)
+    assert "1 / 3" in text
+    assert "825 INR" in text
+    assert "Clean Code" in text
+    assert text.count("book-0") + text.count("book-1") + text.count("book-2") == 0

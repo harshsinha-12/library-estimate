@@ -386,8 +386,19 @@ def test_jev_comparison_record_separates_route_from_policy() -> None:
     assert comparison["disagreement"] is False
     assert comparison["chosen_route"] == "recapture"
     assert comparison["confidence"] == 0.91
-    assert result["decision"]["action"] == "recapture"
-    assert result["decision"]["reason"] == "jev_proposal"
+    assert result["decision"]["action"] == "accept_candidate"
+    assert result["decision"]["reason"] == "agreement"
+
+
+def test_route_accepts_high_confidence_agreement_even_if_jev_wants_recapture() -> None:
+    assessment = {
+        "category": "book", "condition": "good", "damage": {"present": False},
+        "confidence": 0.92, "recommended_action": "accept_candidate",
+    }
+    jev = {"confidence": 0.91, "choice": "recapture"}
+    decision = _route(assessment, assessment, {"category": "book"}, jev)
+    assert decision["action"] == "accept_candidate"
+    assert decision["reason"] == "agreement"
 
 
 def test_astra_live_is_sampled_assist_and_skips_without_provider() -> None:
