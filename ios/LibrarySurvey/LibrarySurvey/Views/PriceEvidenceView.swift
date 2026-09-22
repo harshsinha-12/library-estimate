@@ -10,6 +10,12 @@ struct PriceEvidenceView: View {
   @State private var message: String?
   @State private var manualAmount = ""
   @State private var manualReason = ""
+  @State private var correctedTitle = ""
+  @State private var correctedAuthor = ""
+  @State private var correctedISBN = ""
+  @State private var correctionReason = ""
+  @State private var correctionScope = "volume"
+  @State private var correctionFormat = "unknown"
 
   var body: some View {
     Form {
@@ -17,12 +23,109 @@ struct PriceEvidenceView: View {
         Text(copy.title ?? copy.label ?? copy.assetCopyId)
         Text("Status: \(copy.valuationStatus.replacingOccurrences(of: "_", with: " "))")
         Text(copy.reason)
+        Text("Condition: \(copy.condition ?? "unreviewed")")
+        Text("Search: \(copy.query == nil ? "waiting for identity" : copy.draftCount > 0 ? "drafts need review" : "ready or pending")")
+        if let amount = copy.valuation?.amount, ["quoted", "manual"].contains(copy.valuationStatus) {
+          Text("Reviewed physical range: \(amount.unit ?? "") \(amount.interval?.low ?? amount.value, specifier: "%.2f")–\(amount.interval?.high ?? amount.value, specifier: "%.2f")")
+        }
         if let isbn = copy.isbn { Text("ISBN \(isbn)") }
         if let task = copy.identityTask {
           Text("Pass C: \(task)").foregroundStyle(.orange)
         }
         if copy.excluded {
           Text("Counted and excluded from valuation.")
+        }
+      }
+      Section("Count and geometry evidence") {
+        if copy.placement != "operator", copy.faceId != nil {
+          Text("Unregistered overlay: this shelf position is not measured on the RoomPlan plan.")
+            .font(.footnote)
+        }
+        ForEach(copy.countEvidence ?? []) { observation in
+          VStack(alignment: .leading, spacing: 5) {
+            Text("\(observation.faceId ?? "face") / \(observation.rowId ?? "row") / slot \(observation.slot.map(String.init) ?? "?")")
+              .font(.headline)
+            Text("Shelf-face x: \(observation.x.map { String(format: "%.3f", $0) } ?? "unknown") · readable: \(observation.readable == true ? "yes" : "no")")
+              .font(.caption)
+            if observation.stacked == true || observation.leaning == true {
+              Text("Stacked: \(observation.stacked == true ? "yes" : "no") · leaning: \(observation.leaning == true ? "yes" : "no")")
+                .font(.caption)
+            }
+            evidenceLink(observation.evidenceRef, title: "Open count crop")
+          }
+        }
+        if (copy.countEvidence ?? []).isEmpty {
+          Text("No count observation is stored for this copy.")
+        }
+      }
+      if !(copy.damageEvidence ?? []).isEmpty || !(copy.spokenNotes ?? []).isEmpty {
+        Section("Damage and spoken evidence") {
+          ForEach(copy.spokenNotes ?? []) { note in
+            VStack(alignment: .leading) {
+              Text(note.text)
+              Text("Spoken note · \(note.status ?? "unknown") · \(note.associationMethod ?? "unknown binding")")
+                .font(.caption)
+              evidenceLink(note.closeupRef, title: "Open linked close-up")
+            }
+          }
+          ForEach(copy.damageEvidence ?? []) { damage in
+            VStack(alignment: .leading) {
+              Text("\(damage.type) · \(damage.severityCandidate ?? "severity unknown") · \(damage.region ?? "region unknown")")
+              Text(damage.status ?? "needs review").font(.caption)
+              evidenceLink(damage.closeupRef, title: "Open damage close-up")
+              evidenceLink(damage.scaleRef, title: "Open scale reference")
+            }
+          }
+        }
+      }
+      if !(copy.reviewTasks ?? []).isEmpty {
+        Section("Corrections and barcode rescan") {
+          ForEach(copy.reviewTasks ?? []) { task in
+            Text("\(task.kind.replacingOccurrences(of: "_", with: " ")) · \(task.message) · \(task.status)")
+          }
+          NavigationLink("Open review and rescan queue") {
+            Stage3ReviewView(surveyId: surveyId, backendURL: backendURL)
+          }
+        }
+      }
+      if copy.category == "book" {
+        Section("Correct this book") {
+          Text("A correction stays on this physical copy. A typed ISBN is checksum checked and held for catalog review before ISBN price search.")
+            .font(.footnote)
+          TextField("Visible title", text: $correctedTitle)
+          TextField("Author", text: $correctedAuthor)
+          TextField("ISBN, if visible", text: $correctedISBN)
+            .keyboardType(.numbersAndPunctuation)
+          Picker("Identifier scope", selection: $correctionScope) {
+            Text("Volume").tag("volume")
+            Text("Set").tag("set")
+          }
+          Picker("Format", selection: $correctionFormat) {
+            Text("Unknown").tag("unknown")
+            Text("Paperback").tag("paperback")
+            Text("Hardcover").tag("hardcover")
+            Text("Library binding").tag("library_binding")
+          }
+          TextField("Why is this correction needed?", text: $correctionReason, axis: .vertical)
+          Button("Save identity correction") { Task { await correctIdentity() } }
+            .disabled(correctedTitle.trimmingCharacters(in: .whitespaces).count < 2 ||
+                      correctionReason.trimmingCharacters(in: .whitespaces).count < 3)
+        }
+      }
+      if !(copy.confirmedPriceEvidence ?? []).isEmpty {
+        Section("Reviewed value evidence") {
+          ForEach(copy.confirmedPriceEvidence ?? []) { evidence in
+            VStack(alignment: .leading, spacing: 4) {
+              Text("\(evidence.currency ?? "") \(evidence.parsedAmount ?? "unknown") · confirmed physical")
+              Text(evidence.title ?? evidence.snippet ?? "Manual evidence").font(.footnote)
+              if let url = evidence.sourceUrl.flatMap(URL.init(string:)), ["http", "https"].contains(url.scheme ?? "") {
+                Link("Open source listing", destination: url)
+              }
+              if let hash = evidence.evidenceHash {
+                Text("Evidence SHA-256: \(hash)").font(.caption2).textSelection(.enabled)
+              }
+            }
+          }
         }
       }
       if let paths = copy.evidencePaths, !paths.isEmpty {
@@ -104,8 +207,46 @@ struct PriceEvidenceView: View {
     }
     .navigationTitle("Price evidence")
     .task {
+      correctedTitle = copy.title ?? ""
       await loadReplay()
       if copy.eligible, copy.query != nil { await search() }
+    }
+  }
+
+  private func correctIdentity() async {
+    do {
+      struct Body: Encodable {
+        let title: String
+        let author: String
+        let isbn: String
+        let reason: String
+        let scope: String
+        let format: String
+      }
+      var request = URLRequest(url: backendURL.appendingPathComponent(
+        "v1/surveys/\(surveyId.uuidString)/books/\(copy.assetCopyId)/identity-correction"
+      ))
+      request.httpMethod = "POST"
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.httpBody = try JSONCoding.encoder(pretty: false).encode(Body(
+        title: correctedTitle, author: correctedAuthor, isbn: correctedISBN,
+        reason: correctionReason, scope: correctionScope, format: correctionFormat
+      ))
+      let (data, response) = try await OperatorSession.data(for: request)
+      guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+        message = httpDetail(data) ?? "Correction was not saved"
+        return
+      }
+      message = "Correction saved on this copy. Reopen Inventory to see the updated identity. Typed ISBN awaits catalog review."
+    } catch { message = error.localizedDescription }
+  }
+
+  @ViewBuilder
+  private func evidenceLink(_ path: String?, title: String) -> some View {
+    if let path, path.contains("/") {
+      NavigationLink(title) {
+        CaptureEvidenceView(surveyId: surveyId, path: path, backendURL: backendURL)
+      }
     }
   }
 

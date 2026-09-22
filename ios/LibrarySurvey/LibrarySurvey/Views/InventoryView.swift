@@ -16,6 +16,15 @@ struct InventoryView: View {
         }
         ForEach(overview.rows) { row in
           Section(rowTitle(row)) {
+            NavigationLink {
+              InventoryRowDetailView(surveyId: surveyId, row: row, backendURL: backendURL)
+            } label: {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Open row, slots, and evidence").font(.headline)
+                Text("Coverage: \(row.coverage.map { String(format: "%.0f%%", $0 * 100) } ?? "unknown") · \(row.coverageStatus ?? "unknown")")
+                  .font(.caption)
+              }
+            }
             if row.recapture {
               Text("Partial coverage. Recapture this named row.")
                 .foregroundStyle(.orange)

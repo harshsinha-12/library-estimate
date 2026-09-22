@@ -88,6 +88,16 @@ struct PackagePreviewView: View {
         GroupBox("Results") {
           VStack(alignment: .leading, spacing: 10) {
             if let backendURL {
+              if let layout {
+                NavigationLink {
+                  SurveySpatialEvidenceView(
+                    surveyId: package.surveyId, backendURL: backendURL,
+                    layout: layout, usdzURL: package.usdzURL
+                  )
+                } label: {
+                  Label("2D and 3D shelf evidence", systemImage: "square.3.layers.3d")
+                }
+              }
               NavigationLink {
                 ProcessingView(surveyId: package.surveyId, backendURL: backendURL)
               } label: {

@@ -76,6 +76,70 @@ struct Stage4Copy: Decodable, Identifiable {
   let listingUrl: String?
   let evidencePaths: [String]?
   let actions: [String]
+  let condition: String?
+  let valuation: Stage4Valuation?
+  let countEvidence: [Stage4CountEvidence]?
+  let damageEvidence: [Stage4DamageEvidence]?
+  let spokenNotes: [Stage4SpokenNote]?
+  let reviewTasks: [Stage4ReviewTask]?
+  let confirmedPriceEvidence: [Stage4PriceEvidence]?
+  let placement: String?
+}
+
+struct Stage4Valuation: Decodable {
+  let amount: Stage4Measurement
+}
+
+struct Stage4CountEvidence: Decodable, Identifiable {
+  var id: String { observationId }
+  let observationId: String
+  let evidenceRef: String?
+  let faceId: String?
+  let rowId: String?
+  let slot: Int?
+  let x: Double?
+  let readable: Bool?
+  let stacked: Bool?
+  let leaning: Bool?
+}
+
+struct Stage4DamageEvidence: Decodable, Identifiable {
+  var id: String { damageId }
+  let damageId: String
+  let type: String
+  let severityCandidate: String?
+  let region: String?
+  let closeupRef: String?
+  let scaleRef: String?
+  let status: String?
+}
+
+struct Stage4SpokenNote: Decodable, Identifiable {
+  var id: String { noteId }
+  let noteId: String
+  let text: String
+  let status: String?
+  let associationMethod: String?
+  let closeupRef: String?
+}
+
+struct Stage4ReviewTask: Decodable, Identifiable {
+  let id: String
+  let kind: String
+  let message: String
+  let status: String
+}
+
+struct Stage4PriceEvidence: Decodable, Identifiable {
+  var id: String { priceObservationId }
+  let priceObservationId: String
+  let sourceUrl: String?
+  let title: String?
+  let snippet: String?
+  let parsedAmount: String?
+  let currency: String?
+  let evidenceHash: String?
+  let reviewStatus: String
 }
 
 struct Stage4Row: Decodable, Identifiable {
@@ -89,6 +153,8 @@ struct Stage4Row: Decodable, Identifiable {
   let detectedActual: Stage4Fraction
   let recapture: Bool
   let copies: [Stage4Copy]
+  let countInterval: Stage4Interval?
+  let placement: String?
 }
 
 struct Stage4Overview: Decodable {

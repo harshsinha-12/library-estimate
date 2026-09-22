@@ -13,11 +13,24 @@ private struct ProcessingEvent: Decodable, Identifiable {
   var id: Int { sequence }
 }
 
+private struct OperatorAction: Decodable, Identifiable {
+  var id: String { code }
+  let code: String
+  let failure: String
+  let status: String
+  let nextAction: String
+}
+
+private struct OperatorActionsResponse: Decodable {
+  let actions: [OperatorAction]
+}
+
 struct ProcessingView: View {
   let surveyId: UUID
   let backendURL: URL
   @State private var survey: ProcessingSurvey?
   @State private var events: [ProcessingEvent] = []
+  @State private var actions: [OperatorAction] = []
   @State private var message: String?
 
   var body: some View {
@@ -37,6 +50,21 @@ struct ProcessingView: View {
           }
         }
       }
+      Section("Failures and next actions") {
+        Text("Action required means this survey has a matching recorded signal. Not observed does not prove a failure was impossible.")
+          .font(.footnote)
+        ForEach(actions.filter { $0.status == "action_required" }) { action in
+          actionRow(action)
+        }
+        if !actions.contains(where: { $0.status == "action_required" }) {
+          Text("No recorded failure currently needs an action.")
+        }
+      }
+      Section("Failure policy reference") {
+        ForEach(actions.filter { $0.status != "action_required" }) { action in
+          actionRow(action)
+        }
+      }
     }
     .navigationTitle("Processing")
     .task { await refresh() }
@@ -50,13 +78,27 @@ struct ProcessingView: View {
       let (eventsData, eventsResponse) = try await OperatorSession.data(
         from: root.appendingPathComponent("jobs")
       )
+      let (actionsData, actionsResponse) = try await OperatorSession.data(
+        from: root.appendingPathComponent("operator-actions")
+      )
       guard (surveyResponse as? HTTPURLResponse)?.statusCode == 200,
-            (eventsResponse as? HTTPURLResponse)?.statusCode == 200 else {
+            (eventsResponse as? HTTPURLResponse)?.statusCode == 200,
+            (actionsResponse as? HTTPURLResponse)?.statusCode == 200 else {
         throw URLError(.badServerResponse)
       }
       survey = try JSONCoding.decoder().decode(ProcessingSurvey.self, from: surveyData)
       events = try JSONCoding.decoder().decode([ProcessingEvent].self, from: eventsData)
+      actions = try JSONCoding.decoder().decode(OperatorActionsResponse.self, from: actionsData).actions
       message = nil
     } catch { message = error.localizedDescription }
+  }
+
+  private func actionRow(_ action: OperatorAction) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(action.failure).font(.headline)
+      Text("Status: \(action.status.replacingOccurrences(of: "_", with: " "))")
+        .font(.caption)
+      Text(action.nextAction).font(.footnote)
+    }
   }
 }
