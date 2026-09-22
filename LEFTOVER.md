@@ -118,7 +118,7 @@ Left:
 
 ---
 
-## 4. RL
+## 4. RL while mentioning the model/technicque used
 
 `backend/app/rl/offline.py` has a reward table (false merge −5, missed high-value −8, mug exclusion +0.2, and the rest of the §13 weights). Every live transition is stored with `reward: null`. Independent labels are a POST that has not been done on a real survey. Auto-accepts are not audited. `approved_at` is always null. Specialist heads (condition, eligibility, damage, duplicate-features, quality) train on synthetic labels and are never used or credited live.
 

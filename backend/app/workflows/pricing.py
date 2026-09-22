@@ -1703,6 +1703,9 @@ class PricingWorker:
             author = authors[0] if authors else None
             publisher = catalog.get("publisher")
             edition = catalog.get("edition")
+            physical_format = identity.get("format")
+            if physical_format and physical_format != "unknown":
+                edition = " ".join(filter(None, [edition, physical_format.replace("_", " ")]))
         elif identity and identity.get("title"):
             title = identity.get("title")
             catalog = identity.get("catalog") or {}
@@ -1713,6 +1716,9 @@ class PricingWorker:
                 title = title or catalog["candidates"][0].get("title")
                 cand_authors = catalog["candidates"][0].get("authors") or []
                 author = cand_authors[0] if cand_authors else author
+            physical_format = identity.get("format")
+            if physical_format and physical_format != "unknown":
+                edition = physical_format.replace("_", " ")
         elif asset.get("isbn"):
             # Inventory ISBN hints are Stage B OCR and are never a price query key.
             isbn = None
@@ -1745,7 +1751,9 @@ class PricingWorker:
             return None, None, asset.get("book_edition_ref") or asset["asset_copy_id"]
         query, kind = built
         edition_key = (
-            f"edition_{isbn}" if isbn else "title_" + sha256_bytes(query.encode())[:12]
+            f"edition_{identity.get('scope', 'volume')}_{isbn}_"
+            f"{identity.get('format', 'unknown')}"
+            if isbn and identity else "title_" + sha256_bytes(query.encode())[:12]
         )
         return query, kind, edition_key
 

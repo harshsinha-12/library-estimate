@@ -279,6 +279,11 @@ class Stage3Worker:
                         "usable_for_isbn_price_query": False,
                         "reason": typed.reason,
                         "scope": scan.get("scope", "volume"),
+                        "identifier_kind": (
+                            f"{scan.get('scope', 'volume')}_isbn"
+                            if typed.kind.startswith("isbn") else typed.kind
+                        ),
+                        "format": scan.get("format") or "unknown",
                         "evidence_ref": scan.get("evidence_ref"),
                         "ocr_text": scan.get("ocr_text", ""),
                         "ocr_confidence": scan.get("ocr_confidence"),
@@ -290,7 +295,10 @@ class Stage3Worker:
                         if identity["catalog"]["status"] == "candidate":
                             identity["usable_for_isbn_price_query"] = True
                             asset["isbn"] = typed.normalized
-                            asset["book_edition_ref"] = f"edition_{typed.normalized}"
+                            asset["book_edition_ref"] = (
+                                f"edition_{identity['scope']}_{typed.normalized}_"
+                                f"{identity['format']}"
+                            )
                         else:
                             queue.append(
                                 self._queue(
@@ -323,6 +331,8 @@ class Stage3Worker:
                             "status": "manual_title_match",
                             "evidence_ref": scan.get("evidence_ref"),
                             "catalog": catalog,
+                            "format": scan.get("format") or "unknown",
+                            "scope": scan.get("scope", "volume"),
                         }
                     )
                     queue.append(

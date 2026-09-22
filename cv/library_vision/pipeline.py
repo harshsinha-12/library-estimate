@@ -9,7 +9,7 @@ from uuid import uuid4
 
 PIPELINE_VERSION = "shelf-count-v1"
 COVERAGE_COMPLETE = 0.8
-SLOT_MERGE = 0.08
+SLOT_MERGE = 0.035
 FACE_NORMAL_DOT = 0.7
 MOVED_GAP_SECONDS = 2.0
 
@@ -157,7 +157,11 @@ def _track_within_pass(detections: list[SpineDetection]) -> dict[str, str]:
                 current = [item]
                 continue
             previous = current[-1]
-            if abs(item.x - previous.x) <= SLOT_MERGE and abs(item.t - previous.t) <= 1.5:
+            if (
+                item.slot == previous.slot
+                and abs(item.x - previous.x) <= SLOT_MERGE
+                and abs(item.t - previous.t) <= 1.5
+            ):
                 current.append(item)
             else:
                 tracks.append(current)
@@ -185,7 +189,11 @@ def _associate(detections: list[SpineDetection], tracks: dict[str, str]) -> list
             if other.observation_id in used:
                 continue
             isbn_match = bool(item.isbn and other.isbn and item.isbn == other.isbn)
-            spatial = _same_face(item, other) and abs(item.x - other.x) <= SLOT_MERGE
+            spatial = (
+                _same_face(item, other)
+                and abs(item.x - other.x) <= SLOT_MERGE
+                and item.slot == other.slot
+            )
             if spatial:
                 # ISBN is never the merge key; spatial + face membership is.
                 members.append(other)
@@ -287,6 +295,7 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
                 "coverage": float(row.get("coverage", 0)),
                 "capacity_m": float(row.get("capacity_m", scan.get("capacity_m", 1.0))),
                 "actual_count": row.get("actual_count"),
+                "capture_status": row.get("capture_status"),
                 "label": scan.get("label") or scan["face_id"],
                 "min_x": float(scan.get("min_x", 0.4)),
                 "min_z": float(scan.get("min_z", 0.4)),
@@ -307,6 +316,13 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
         row_copies = copies_by_face_row.get((face_id, row_id), [])
         coverage = meta["coverage"]
         status_row = _row_status(coverage, len(row_copies))
+        if (
+            meta.get("capture_status") == "partial"
+            or meta.get("actual_count") is not None
+            and int(meta["actual_count"]) != len(row_copies)
+        ):
+            status_row.status = "partial"
+            status_row.recapture = True
         status_row.row_id = row_id
         if status_row.recapture:
             recapture.append(f"{face_id}/{row_id}")
@@ -315,11 +331,14 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
             0.04
             for copy in row_copies
         )
-        if coverage < COVERAGE_COMPLETE:
+        if status_row.recapture:
             # Never report a silent zero: uncovered rows stay partial with an interval.
             count_value = len(row_copies)
             count_status = "partial"
-            unresolved = 1 if count_value == 0 else 0
+            unresolved = max(
+                1 if count_value == 0 else 0,
+                max(0, int(meta.get("actual_count") or 0) - count_value),
+            )
         else:
             count_value = len(row_copies)
             count_status = "ok"
@@ -350,6 +369,18 @@ def count_labeled_shelf(payload: dict, *, run_id: str | None = None) -> CountRes
                 "status": count_status,
                 "copy_count": count_value,
                 "actual_count": meta.get("actual_count"),
+                "count_interval": {
+                    "low": (
+                        count_value if count_status == "ok"
+                        else max(
+                            0, min(count_value, int(meta.get("actual_count") or count_value)) - 1
+                        )
+                    ),
+                    "high": (
+                        count_value if count_status == "ok"
+                        else max(count_value, int(meta.get("actual_count") or 0)) + 1
+                    ),
+                },
             }
         )
         face["occupied"] += occupied

@@ -116,7 +116,7 @@ final class ExceptionCaptureStore: ObservableObject {
   }
 
   func addScan(kind: String, assetId: String?, faceId: String?, rowId: String?, slot: Int?,
-               identifierKind: String, title: String, scope: String,
+               identifierKind: String, title: String, scope: String, format: String,
                damageType: String, severity: String, region: String, closeupRef: String?, scaleRef: String?) {
     let evidence = latestImageRef ?? "operator_entry"
     scans.append(ExceptionScan(
@@ -126,7 +126,8 @@ final class ExceptionCaptureStore: ObservableObject {
       barcode: latestBarcode.isEmpty ? nil : latestBarcode,
       identifierKind: identifierKind, title: title.isEmpty ? nil : title,
       ocrText: latestText.isEmpty ? nil : latestText, ocrConfidence: latestConfidence,
-      scope: scope, damageType: kind == "damage" ? damageType : nil,
+      scope: scope, format: kind == "damage" ? nil : format,
+      damageType: kind == "damage" ? damageType : nil,
       severity: kind == "damage" ? severity : nil, region: kind == "damage" ? region : nil,
       closeupRef: kind == "damage" ? closeupRef : nil,
       scaleRef: kind == "damage" ? scaleRef : nil
