@@ -4,82 +4,401 @@ iOS capture + FastAPI backend for a **library replacement-cost survey**. A techn
 
 Models classify and propose. They do **not** write count, ISBN, geometry, or money. Draft web prices stay drafts until an operator confirms a physical listing. Price and geography are not vision class labels.
 
-**Diagrams (the full map):** [`docs/architecture.md`](docs/architecture.md) — RoomPlan, shelf/spine identification, voice, non-books, condition, ISBN/catalog, `web_search` pricing, Fable / Astra-live / Astra Extra replay / Jev, and the offline RL loop.
+Alignment contract: [`FINAL-PLAN.md`](FINAL-PLAN.md). Thresholds, schemas, and code map: [`docs/architecture.md`](docs/architecture.md). Build order: [`IMPLEMENTATION.md`](IMPLEMENTATION.md). USB install: [`INSTALLATION.md`](INSTALLATION.md). Remaining work: [`LEFTOVER.md`](LEFTOVER.md). Clocks: [`CHECKPOINTS.md`](CHECKPOINTS.md).
 
-Alignment contract: [`FINAL-PLAN.md`](FINAL-PLAN.md). Build order: [`IMPLEMENTATION.md`](IMPLEMENTATION.md). USB install: [`INSTALLATION.md`](INSTALLATION.md). Remaining work: [`LEFTOVER.md`](LEFTOVER.md). Clocks: [`CHECKPOINTS.md`](CHECKPOINTS.md).
+Governing rule: never trust one frame, one model, or one signal. Combine geometry, tracking, visual evidence, OCR, speech, and metadata, and keep confidence and provenance at every step.
 
 ---
 
-## Architecture at a glance
+## Architecture
+
+### System context
 
 ```mermaid
 flowchart LR
   subgraph Device["LiDAR iPhone / iPad"]
     APP["SwiftUI LibrarySurvey"]
-    RP["Pass A RoomPlan"]
-    SH["Pass B shelf AR + Vision"]
-    EX["Pass C stills / barcode"]
-    AV["Spoken notes on capture clock"]
+    RP["RoomPlan + ARKit"]
+    VN["Apple Vision"]
+    AV["AVFoundation audio"]
+    CL["Core Location"]
+    PKG["Encrypted local package"]
     APP --> RP
-    APP --> SH
-    APP --> EX
+    APP --> VN
     APP --> AV
+    APP --> CL
+    RP --> PKG
+    VN --> PKG
+    AV --> PKG
+    CL --> PKG
   end
 
-  PKG["Sealed hashed package"] --> API["FastAPI /v1"]
-  RP --> PKG
-  SH --> PKG
-  EX --> PKG
-  AV --> PKG
-
-  subgraph AfterSeal["After seal — deterministic first"]
-    GEO["Geometry 2D + 3D"]
-    CV["Spine tracks → AssetCopy"]
-    ID["ISBN / catalog / notes / damage"]
-    PRICE["OpenAI web_search drafts"]
-    GEO --> IR["Survey IR"]
-    CV --> IR
-    ID --> IR
-    PRICE --> IR
+  subgraph Backend["Python FastAPI"]
+    API["/v1 surveys, upload, seal, review"]
+    GEO["Geometry worker"]
+    CV["Vision worker shelf-count-v1"]
+    S3W["Stage 3 identity / notes / damage"]
+    PRICE["Pricing worker"]
+    MOD["Fable + Astra Extra replay + Jev"]
+    RL["Replay buffer + offline trainer"]
+    API --> GEO
+    API --> CV
+    API --> S3W
+    API --> PRICE
+    PRICE --> MOD
+    MOD --> RL
   end
 
-  API --> AfterSeal
-  IR --> AB["Fable A + Astra Extra B on the same bytes"]
-  AB --> JEV["Jev proposes · policy vetoes"]
-  JEV --> HUM["Human review"]
-  HUM --> RPT["JSON + PDF report"]
-  JEV --> RL["RLTransition log → offline shadow policy"]
+  subgraph Stores["Runtime stores"]
+    REDIS["Redis: IR, jobs, RL, cache"]
+    R2["S3-compatible R2: immutable media"]
+  end
+
+  subgraph Providers["External providers"]
+    OL["Open Library / Google Books"]
+    OAI["OpenAI: STT, TTS, vision titles, web_search, Astra"]
+    ANT["Anthropic Fable"]
+    JEV["TypeSafe Jev"]
+  end
+
+  PKG -->|"resumable hashed upload"| API
+  API --> REDIS
+  API --> R2
+  S3W --> OL
+  PRICE --> OAI
+  MOD --> ANT
+  MOD --> OAI
+  MOD --> JEV
 ```
 
-Governing rule: never trust one frame, one model, or one signal. Combine geometry, tracking, visual evidence, OCR, speech, and metadata, and keep confidence and provenance at every step.
+The iOS app holds **no provider keys**. Live Astra during capture is **not** Pipeline B. Report copy uses **Astra Extra** for Pipeline B (`pipeline=astra_replay`) and **Astra-live Extra** for capture assist (`pipeline=astra_live`).
 
-### Three capture passes
+### End-to-end flow
+
+```mermaid
+flowchart TB
+  CREATE["Create survey: consent + When In Use location"] --> GEOG["Reverse-geocode country/city/market; technician may override"]
+  GEOG --> DEV["Device check: LiDAR, storage, camera, mic, location"]
+  DEV --> A["Pass A RoomPlan: walls, floors, USDZ, sampled RGB/poses"]
+  A --> MAP["Shelf map: units, face A/B, operator footprints"]
+  MAP --> B["Pass B shelf-face sweep: quality + spines + coverage"]
+  B --> C["Pass C exceptions: barcode, title page, damage, non-books"]
+  C --> SEAL["Seal hashed package locally"]
+  SEAL --> UP["Resumable upload + manifest validation"]
+  UP --> WORK["Seal pipeline: geometry → vision → stage3 → pricing → A/B replay"]
+  WORK --> IR["Survey IR"]
+  IR --> REVIEW["Human review + Price Evidence"]
+  REVIEW --> REPORT["JSON + PDF report"]
+  REVIEW --> RLLOG["RLTransition log"]
+  RLLOG -.->|"offline only"| POL["Shadow policy registry"]
+```
+
+Order of truth: capture quality → physical count → dedup (ISBN is **not** a merge key) → identity → price evidence → model comparison → guarded review → valuation / report.
+
+### Capture app and camera ownership
+
+```mermaid
+stateDiagram-v2
+  [*] --> CreateSurvey
+  CreateSurvey --> DeviceCheck
+  DeviceCheck --> RoomPassA
+  RoomPassA --> ShelfMap
+  ShelfMap --> ShelfPassB
+  ShelfPassB --> ShelfMap: face finished
+  ShelfMap --> ExceptionPassC
+  ExceptionPassC --> ShelfMap
+  ShelfMap --> SealPackage
+  SealPackage --> PackagePreview
+  PackagePreview --> Processing
+  Processing --> Overview
+  Overview --> Inventory
+  Inventory --> Review
+  Review --> Report
+```
 
 | Pass | Owns the camera | Does | Does not |
 | --- | --- | --- | --- |
 | **A RoomPlan** | RoomPlan AR session | Walls, floors, openings, USDZ, sampled RGB/poses, geography | Count books |
-| **B Shelf face** | Shelf AR after RoomPlan releases | Live quality, spine instances, coverage, Astra-live assist | Invent ISBNs or inventory truth from Astra-live |
+| **B Shelf face** | Shelf AR after RoomPlan releases | Live quality, spine instances, coverage, Astra-live assist | Invent ISBNs or inventory from Astra-live |
 | **C Exceptions** | Still camera after shelf AR stops | Barcode / title page / damage close-up / non-books | Optical zoom during RoomPlan |
 
 Hierarchy: `room → unit → face A/B → row → spine instance → physical copy`. Face B is a different copy. A reverse sweep updates evidence; it does not mint a second copy. Same ISBN in two slots stays two IDs.
 
-### What each intelligence path is for
+### Pass A — RoomPlan
+
+```mermaid
+sequenceDiagram
+  actor T as Technician
+  participant App as LibrarySurvey
+  participant Loc as Core Location
+  participant RP as RoomCaptureSession
+  participant Store as Local package
+
+  T->>App: Create survey + consent
+  App->>Loc: When In Use, one reading
+  Loc-->>App: country, region, city, currency, market
+  T->>App: Confirm or override geography
+  T->>App: Start room scan
+  App->>RP: run Configuration on shared ARSession
+  loop While capturing
+    RP-->>Store: sampled ARFrame JPEG + camera transform
+  end
+  T->>App: Stop
+  RP-->>Store: CapturedRoom, portable structure.json, model.usdz
+  App-->>Store: generated/plan.svg on-device
+```
+
+RoomPlan is geometry only. Compass **N = scan +Z**, not magnetic north. Geography sets the search market and rebuild-rate country (Italy ≠ Japan ≠ India). Denied GPS still proceeds with required manual country/city.
+
+### Pass B — how a spine is identified
+
+```mermaid
+flowchart TB
+  JPEG["ARFrame JPEG ~0.4s"] --> RECT["VNDetectRectanglesRequest"]
+  JPEG --> OCR["VNRecognizeTextRequest fast"]
+  RECT --> FILT{"Keep tall or stacked, narrow, not huge"}
+  OCR --> TXT["Text boxes with ≥3 letters"]
+  FILT --> PROP["SpineRegion: box, stacked, leaning, readable"]
+  TXT --> PROP
+  PROP --> NMS["Drop overlapping boxes"]
+  NMS --> PROJ["Unproject onto shelf plane, else image-x fallback"]
+  PROJ --> ROW["assignRow by faceY band"]
+  ROW --> OBS["SpineFaceObservation in face metres"]
+```
+
+Unread rectangles are **not** minted as copies. Crochet/table squares without title letters leave the row `partial`.
+
+```mermaid
+flowchart TB
+  OBS["New SpineFaceObservation sorted by faceX"] --> MATCH{"Overlap or X/Y gate vs existing instance?"}
+  MATCH -->|"0 matches and readable"| NEW["Create SpineInstance + save JPEG crop"]
+  MATCH -->|"0 matches and unread"| DROP["Do not mint; mark row uncertain"]
+  MATCH -->|"best unused match"| UPD["EMA update pose 3:1, keep ID, refresh crop"]
+  MATCH -->|">1 matches"| UNC["Mark row uncertain; still take the closest"]
+  UPD --> SORT["Sort row by faceX then faceY"]
+  NEW --> SORT
+```
+
+Coverage is 8 cm bins along the face from readable `faceX`. A row is `ok` only if coverage ≥ 0.8, operator `actualCount` equals tracked `copyCount`, and the row is not uncertain.
+
+### After seal — physical copies (no ISBN merge)
+
+```mermaid
+flowchart TB
+  LAB["LabeledPass: faces, rows, spines, quality, face_normal"] --> DET["SpineDetection list"]
+  DET --> TR["Within-pass tracks"]
+  TR --> AS["Cross-pass associate"]
+  AS --> COPY["AssetCopy candidates"]
+  COPY --> FACE["ShelfFaceDataSize + overlays"]
+```
+
+Same ISBN at a different slot/face stays two copies (`possibly_moved` if identity matches and space jumps). Face-normal dot ≥ 0.7 is required to treat two sweeps as the same face.
+
+### Pass C — barcodes and non-book items
+
+```mermaid
+flowchart TB
+  STILL["Still JPEG"] --> BC["VNDetectBarcodesRequest"]
+  STILL --> OCR["VNRecognizeTextRequest accurate"]
+  STILL --> RECT["VNDetectRectanglesRequest"]
+  STILL --> CLS["VNClassifyImageRequest"]
+  BC --> RAW["latestBarcode"]
+  OCR --> TEXT["latestText + confidence"]
+  RECT --> REG["candidateRegions"]
+  CLS --> HINT["suggestedCategory"]
+  HINT --> MARK["OtherAssetMark"]
+  RAW --> SCAN["ExceptionScan barcode / title_page / damage"]
+  TEXT --> SCAN
+```
+
+Closed taxonomy: `book | serial | painting | portrait | sculpture | computer | monitor | printer | furniture | shelf | appliance | cup | decorative_object | other`. A mug is inventoried and **excluded**. Paintings/portraits/sculpture default to appraisal.
+
+### Voice and spoken notes
+
+```mermaid
+sequenceDiagram
+  actor T as Technician
+  participant Rec as AudioNoteRecorder
+  participant Pkg as audio/survey.m4a + timing.json
+  participant STT as OpenAI gpt-4o-transcribe-diarize
+  participant S3 as Stage3Worker
+  participant TTS as OpenAI gpt-4o-mini-tts marin
+
+  T->>Rec: Speak while scanning ("this portrait is damaged")
+  Rec->>Pkg: AAC on capture monotonic clock
+  Note over Rec: Mixes with RoomPlan session; scan continues if mic fails
+  Pkg->>STT: After seal, server-side only
+  STT-->>S3: segments with start/end + speaker
+  S3->>S3: Bind note to asset or leave unbound
+  T->>TTS: Optional operator prompt (barcode / damage / unbound)
+```
+
+Binding scores tap, reticle, pose, time, and transcript keywords. If two objects are equally plausible, the note stays unbound.
+
+### Condition: old vs new (not price, not geography)
+
+```mermaid
+flowchart TB
+  CROP["Per-copy crop + target_identity.title"] --> A["Pipeline A Fable"]
+  CROP --> B["Pipeline B Astra Extra replay"]
+  A --> CA["condition: new / good / worn / damaged / unknown"]
+  B --> CB["condition enum"]
+  CA --> J["Jev comparison"]
+  CB --> J
+  OP["Operator: 'this portrait is damaged'"] --> D["DamageObservation source=operator_assertion"]
+  A --> DA["damage.present / types from Fable"]
+  B --> DB["damage.present / types from Astra"]
+  D --> IR["Survey IR keeps both"]
+  DA --> IR
+  DB --> IR
+  J --> POL["Policy: disagreement or high value → human_review"]
+```
+
+Price is `web_search`. Geography is device location. Neither is a spine class label.
+
+### ISBN and catalog identity
+
+```mermaid
+flowchart TD
+  RAW["Pass C barcode or printed identifier"] --> TYPE["type_identifier"]
+  TYPE -->|valid ISBN-13/10| CAT["CatalogChain: cache → Open Library → Google Books"]
+  TYPE -->|invalid checksum| Q1["Queue: rescan barcode"]
+  TYPE -->|ISSN / library barcode| KEEP["Store typed identifier; not a market ISBN"]
+  CAT -->|title compatible| ED["BookEdition + Work; usable_for_isbn_price_query"]
+  CAT -->|title conflict| Q2["Queue: catalog_review"]
+  NOISBN["No barcode, OCR title only"] --> TCAT["resolve_title"]
+  TCAT --> Q3["Queue: confirm title, author, edition"]
+  NONE["Nothing readable"] --> Q4["Queue: unread_spine"]
+```
+
+Spine OCR must not invent an ISBN. Google Books `saleInfo` never prices a physical copy.
+
+### Price discovery
+
+```mermaid
+flowchart TB
+  COPY["AssetCopy"] --> ID{"Validated ISBN or usable title/name?"}
+  ID -->|No| PEND["price_pending / identity task"]
+  ID -->|Yes| KEY["Unique key: edition or title + market"]
+  KEY --> CACHE{"found_prices / cache hit?"}
+  CACHE -->|Yes| DRAFT["Reuse citations; copies stay separate"]
+  CACHE -->|No| Q["template_query ISBN-first else quoted title"]
+  Q --> BATCH["Batch ≤ 5 unique unpriced objects"]
+  BATCH --> WS["OpenAI Responses web_search + json_schema"]
+  WS --> CIT["≤ 5 listing URLs + snippets"]
+  CIT --> FILT["Drop Kindle / eBook / rental / bundle / wrong edition"]
+  FILT --> UI["Price Evidence screen"]
+  UI --> CONF["Technician confirms physical offer"]
+  CONF --> PO["PriceObservation review_status=accepted"]
+  PO --> VAL["Valuation replacement_cost"]
+  UI --> MAN["Manual entry with reason"]
+  FILT --> RARE{"Rare / high value?"}
+  RARE -->|Yes| APP["requires_appraisal"]
+```
+
+No Bing. No Amazon scrape. Drafts are not confirmed prices. Building value is `floor_area × demo_rebuild_rates_v1[country]`, basis `replacement_cost`, not sale value.
+
+### Fable, Astra-live Extra, Astra Extra replay, Jev
+
+```mermaid
+flowchart TB
+  subgraph Capture["During Pass B/C — not evaluation"]
+    F["Frame + on-device quality"] --> OD["Vision overlays + coverage"]
+    F --> AL["Astra-live Extra gpt-6-astra"]
+    AL --> UX["provisional count, unreadable slots, recapture hint"]
+    OD --> UX
+  end
+
+  subgraph Seal["After seal — parallel evaluation"]
+    PKG["Same frozen evidence package bytes"] --> FA["Pipeline A Fable claude-fable-5-1"]
+    PKG --> AR["Pipeline B Astra Extra replay gpt-6-astra"]
+    FA --> NA["ModelAssessment pipeline=fable"]
+    AR --> NB["ModelAssessment pipeline=astra_replay"]
+    NA --> J["Jev typed route"]
+    NB --> J
+    J --> POL["Deterministic policy"]
+  end
+
+  UX -.->|"logged assist_metadata only"| Seal
+  POL -->|accept_candidate| AC["Accept + auto_accept_audit"]
+  POL -->|recapture| RC["Targeted recapture"]
+  POL -->|human_review / veto| H["Human review"]
+  POL -->|alternate_resolver| ALT["Barcode / catalog"]
+```
 
 | Path | When | Authority |
 | --- | --- | --- |
 | On-device Vision | Pass B/C | Quality, rectangles, OCR, barcodes, live spine overlays |
-| **Astra-live Extra** | Pass B/C, ~2 s samples | Capture UX only (`assist_metadata`). Never inventory. Never Pipeline B. |
-| Catalog (Open Library / Google Books) | After seal | Identity candidates. `saleInfo` never prices a physical copy. |
-| OpenAI `web_search` | After seal / live price search | Listing *drafts* in the survey market (Italy ≠ Japan ≠ India) |
+| **Astra-live Extra** | Pass B/C, ~2 s samples | Capture UX only. Never inventory. Never Pipeline B. |
 | **Fable (Pipeline A)** | After seal, every `AssetCopy` | Condition / category / damage / identity *candidates* |
 | **Astra Extra (Pipeline B)** | After seal, same frozen bytes as A | Independent replay (`pipeline=astra_replay`) |
 | **Jev** | After A and B | Typed route proposal. Does not write count or price. |
 | Deterministic policy | Always | Vetoes high-value auto-accept, eBook-as-physical, ISBN-only merge, A/B disagreement |
-| Offline RL | After labeled feedback | Shadow bandit + specialist heads. **No** per-survey live weight update. |
 
-Condition (`new | good | worn | damaged | unknown`) is how “old vs new” is classified. Damage is a separate operator assertion plus model `damage.present`. A mug is inventoried and excluded. Paintings default to appraisal.
+### RL feedback loop
 
-Full sequence, thresholds, schemas, and code map: [`docs/architecture.md`](docs/architecture.md).
+```mermaid
+flowchart TB
+  DEC["Every Jev/policy/human decision"] --> TR["Append-only RLTransition"]
+  RC["action=recapture"] --> NEXT["Successor state: new evidence hash ≠ previous"]
+  NEXT --> TR
+  HUM["IndependentLabel from gold / reviewer"] --> REW["reward_from_outcome"]
+  REW --> BUF["Replay buffer per survey"]
+  BUF --> FIT["Offline contextual bandit"]
+  FIT --> SPEC["Naive Bayes specialist heads"]
+  SPEC --> REG["Policy registry stage=shadow"]
+  REG --> SHADOW["POST /v1/policies/{id}/shadow on holdout"]
+  SHADOW -.->|"no live write"| LIVE["Live router still route_v0_log_only"]
+```
+
+**No** per-survey live weight update. Rewards come from independent labels, never from “Jev agreed with Fable”.
+
+### Survey IR
+
+```mermaid
+erDiagram
+  SURVEY ||--|| PROPERTY : covers
+  SURVEY ||--|| SURVEY_GEOGRAPHY : located_in
+  PROPERTY ||--o{ SPACE : contains
+  PROPERTY ||--|| BUILDING_VALUATION : valued_as
+  SPACE ||--o{ SHELF : contains
+  SHELF ||--|{ SHELF_FACE : has
+  SHELF_FACE ||--o{ SHELF_LEVEL : has
+  SHELF_FACE ||--|| SHELF_FACE_DATA_SIZE : reports
+  SURVEY ||--o{ EVIDENCE_BLOB : preserves
+  EVIDENCE_BLOB ||--o{ OBSERVATION : yields
+  OBSERVATION }o--|| TRACK : grouped_in
+  OBSERVATION }o--|| ASSET_COPY : supports
+  ASSET_COPY }o--o| BOOK_EDITION : resolves_to
+  BOOK_EDITION }o--o| WORK : expresses
+  BOOK_EDITION ||--o{ IDENTIFIER : has
+  ASSET_COPY ||--o{ DAMAGE_OBSERVATION : has
+  ASSET_COPY ||--o{ PRICE_OBSERVATION : priced_by
+  ASSET_COPY ||--o{ VALUATION : valued_as
+  ASSET_COPY ||--o{ MODEL_ASSESSMENT : assessed_by
+  ASSET_COPY ||--o{ REVIEW_DECISION : reviewed_by
+  SURVEY ||--o{ PIPELINE_RUN : processed_by
+  SURVEY ||--o{ RL_TRANSITION : logs
+```
+
+An ISBN is never the primary key of `AssetCopy`.
+
+### Seal state machine
+
+```mermaid
+stateDiagram-v2
+  [*] --> created
+  created --> capturing: first upload
+  capturing --> uploading
+  uploading --> ingest_validation: POST seal
+  ingest_validation --> recapture_required: hash/schema/path failure
+  ingest_validation --> geometry: workers succeed + USDZ
+  ingest_validation --> partial: recoverable weakness / missing USDZ
+  ingest_validation --> failed: unrecoverable
+  geometry --> partial: later disclosed gaps
+```
+
+Seal workers, in order: geometry → vision count → Stage 3 identity/notes/damage → pricing drafts → Fable + Astra Extra replay + Jev on every copy.
 
 ---
 
