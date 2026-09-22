@@ -1,5 +1,6 @@
 import base64
 import json
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import fakeredis
@@ -7,6 +8,11 @@ from fastapi.testclient import TestClient
 
 from backend.app.domain.models import SurveyGeography, SurveyRecord, UploadedFile
 from backend.app.main import create_app
+from backend.app.security.encryption_migration import (
+    build_encryption_migration_plan,
+    execute_encryption_migration,
+)
+from backend.app.security.retention import build_retention_plan, execute_retention_plan
 from backend.app.storage.encrypted import MAGIC, EncryptedObjectStore
 from backend.app.storage.objects import MemoryObjectStore
 from backend.app.utils.clocks import utc_now
@@ -28,6 +34,59 @@ def test_encrypted_objects_bind_ciphertext_to_path() -> None:
         pass
     else:
         raise AssertionError("ciphertext was accepted under another object key")
+
+
+def test_plaintext_encryption_migration_is_review_bound_and_idempotent() -> None:
+    raw = MemoryObjectStore()
+    raw.put("survey/a.jpg", b"private image", "image/jpeg")
+    secret = base64.b64encode(bytes(range(32))).decode()
+    encrypted = EncryptedObjectStore(raw, secret)
+    plan = build_encryption_migration_plan(raw, prefix="survey/")
+    assert plan.plaintext_keys == ("survey/a.jpg",)
+    try:
+        execute_encryption_migration(raw, encrypted, plan, approved_plan_id="wrong")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("migration accepted an unreviewed plan")
+    assert raw.get("survey/a.jpg") == b"private image"
+    assert execute_encryption_migration(
+        raw, encrypted, plan, approved_plan_id=plan.plan_id
+    )["migrated"] == 1
+    assert encrypted.get("survey/a.jpg") == b"private image"
+    second = execute_encryption_migration(raw, encrypted, plan, approved_plan_id=plan.plan_id)
+    assert second == {"migrated": 0, "already_encrypted": 1, "changed_since_review": 0}
+
+
+def test_retention_execution_requires_reviewed_plan_and_is_idempotent() -> None:
+    redis = fakeredis.FakeRedis(decode_responses=True)
+    repository = create_app(
+        redis_client=redis, object_store=MemoryObjectStore(), key_prefix="test:retention"
+    ).state.survey_workflow.repository
+    survey_id = uuid4()
+    now = datetime(2026, 9, 22, tzinfo=UTC)
+    repository.create(SurveyRecord(
+        survey_id=survey_id,
+        display_name="Expired",
+        geography=SurveyGeography(
+            country_code="IN", city="Bengaluru", currency="INR",
+            market="en-IN", source="manual",
+        ),
+        status="created",
+        created_at=now - timedelta(days=31),
+    ))
+    plan = build_retention_plan(repository, retention_days=30, now=now)
+    assert plan.survey_ids == (survey_id,)
+    try:
+        execute_retention_plan(repository, plan, approved_plan_id="wrong")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("retention accepted an unreviewed plan")
+    first = execute_retention_plan(repository, plan, approved_plan_id=plan.plan_id)
+    second = execute_retention_plan(repository, plan, approved_plan_id=plan.plan_id)
+    assert first["deleted_surveys"] == 1
+    assert second["already_absent"] == 1
 
 
 def test_operator_auth_evidence_and_confirmed_deletion() -> None:
