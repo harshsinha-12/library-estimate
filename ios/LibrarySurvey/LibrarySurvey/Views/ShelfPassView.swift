@@ -18,6 +18,8 @@ struct ShelfPassView: View {
     ZStack(alignment: .bottom) {
       ShelfCameraContainer(store: store, camera: camera)
         .ignoresSafeArea()
+        .accessibilityLabel("Live shelf camera and augmented reality view")
+        .accessibilityHint("Center the selected shelf row in the guide. Detected spine controls are listed as accessibility elements.")
       if store.capturing {
         GeometryReader { geometry in
           RoundedRectangle(cornerRadius: 8)
@@ -57,7 +59,9 @@ struct ShelfPassView: View {
             }
             .frame(width: max(44, rect.width), height: max(44, rect.height))
             .position(x: rect.midX, y: rect.midY)
-            .accessibilityLabel("\(spine.rowId) slot \(spine.slot + 1), tap for Pass C")
+            .accessibilityLabel("\(spine.rowId) slot \(spine.slot + 1)")
+            .accessibilityValue(highlight?.caption ?? "Needs review")
+            .accessibilityHint("Opens this spine in Exception Pass C")
           }
         }
         VStack(spacing: 8) {
@@ -70,6 +74,9 @@ struct ShelfPassView: View {
               }
               .buttonStyle(.bordered)
               .tint(store.activeRowId == row.rowId ? .blue : .gray)
+              .minimumScaledTouchTarget()
+              .accessibilityLabel("Select \(row.rowId)")
+              .accessibilityValue(store.activeRowId == row.rowId ? "Selected" : "Not selected")
             }
           }
           .frame(maxWidth: .infinity)
@@ -78,21 +85,20 @@ struct ShelfPassView: View {
           if let row = store.rowCoverage.first(where: { $0.rowId == store.activeRowId }) {
             Text("Readable coverage \(Int(row.coverage * 100))% · \(row.status). Count \(row.copyCount) / actual \(row.actualCount.map(String.init) ?? "unconfirmed").")
               .font(.caption2)
-            HStack {
-              Stepper("Actual \(row.actualCount ?? row.copyCount)", value: Binding(
-                get: { row.actualCount ?? row.copyCount },
-                set: { store.setActualCount($0, for: row.rowId) }
-              ), in: 0...40)
-              Button("Confirm \(row.copyCount)") {
-                store.confirmActualCount(for: row.rowId)
+            ViewThatFits {
+              HStack {
+                actualCountStepper(row)
+                confirmCountButton(row)
               }
-              .buttonStyle(.bordered)
+              VStack(alignment: .leading) {
+                actualCountStepper(row)
+                confirmCountButton(row)
+              }
             }
           }
           if let warning = store.quality.messages.first {
-            Label(warning, systemImage: "exclamationmark.triangle")
+            AccessibleStatusLabel(text: warning, kind: .warning)
               .font(.caption)
-              .foregroundStyle(.orange)
           }
           ScrollView(.horizontal) {
             HStack(spacing: 8) {
@@ -111,7 +117,10 @@ struct ShelfPassView: View {
                       .font(.caption2)
                   }
                 }
-                .accessibilityLabel("Saved spine slot \(slot + 1), \(instance.hasReadableText ? "readable" : "needs Pass C")")
+                .minimumScaledTouchTarget()
+                .accessibilityLabel("Saved spine slot \(slot + 1)")
+                .accessibilityValue(instance.hasReadableText ? "Readable" : "Needs Exception Pass C")
+                .accessibilityHint("Opens evidence for this spine")
               }
             }
           }
@@ -120,13 +129,14 @@ struct ShelfPassView: View {
             onFinished()
           }
           .buttonStyle(.borderedProminent)
+          .minimumScaledTouchTarget()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         .padding()
         if !astraLive.status.isEmpty {
-          Text(astraLive.caption)
+          AccessibleStatusLabel(text: astraLive.caption, kind: .progress)
             .font(.caption2)
             .padding(8)
             .background(.ultraThinMaterial, in: Capsule())
@@ -139,36 +149,34 @@ struct ShelfPassView: View {
           Text(camera.statusLine)
             .font(.caption)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Camera status")
+            .accessibilityValue(camera.statusLine)
           if camera.owner == .roomPlan {
-            Label(
-              "Waiting for RoomPlan to release the camera. Pass B does not start a second session.",
-              systemImage: "camera.fill"
+            AccessibleStatusLabel(
+              text: "Waiting for RoomPlan to release the camera. Pass B does not start a second session.",
+              kind: .warning
             )
             .font(.caption)
-            .foregroundStyle(.orange)
           }
           if store.assistCount > 0 {
-            Label("About \(store.assistCount) visible copies", systemImage: "sparkles")
-              .foregroundStyle(.yellow)
+            AccessibleStatusLabel(text: "About \(store.assistCount) visible copies", kind: .neutral)
           }
           if !astraLive.status.isEmpty {
-            Text(astraLive.caption)
+            AccessibleStatusLabel(text: astraLive.caption, kind: .progress)
               .font(.caption)
-              .foregroundStyle(.orange)
           }
           Text("Coverage marks distinct readable regions of the selected row. Confirm the actual count before sealing; any mismatch stays partial.")
             .font(.caption)
           coverageHeatmap
-          HStack {
-            Button("Point out object", systemImage: "hand.point.up.left") {
-              onOther(store.currentImage())
+          ViewThatFits {
+            HStack {
+              pointOutButton
+              startSweepButton
             }
-            .buttonStyle(.bordered)
-            Button("Start sweep", systemImage: "record.circle") {
-              store.startFace(unit: unit, face: face)
+            VStack(alignment: .leading) {
+              pointOutButton
+              startSweepButton
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(camera.owner != .shelfAR)
           }
           Text(unit.footprint?.isOperatorPlaced == true
             ? "This face is registered with an operator-placed footprint on the RoomPlan plan."
@@ -182,6 +190,7 @@ struct ShelfPassView: View {
       }
     }
     .navigationBarTitleDisplayMode(.inline)
+    .accessibilityStatusAnnouncements(accessibilityCaptureStatus)
     .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
       store.ingestCurrentFrame()
       if store.capturing, let jpeg = store.currentJpeg(), let backendURL {
@@ -204,20 +213,72 @@ struct ShelfPassView: View {
     }
   }
 
+  private func actualCountStepper(_ row: ShelfRowCoverage) -> some View {
+    Stepper("Actual \(row.actualCount ?? row.copyCount)", value: Binding(
+      get: { row.actualCount ?? row.copyCount },
+      set: { store.setActualCount($0, for: row.rowId) }
+    ), in: 0...40)
+    .minimumScaledTouchTarget()
+    .accessibilityHint("Adjust the verified number of physical copies on this row")
+  }
+
+  private func confirmCountButton(_ row: ShelfRowCoverage) -> some View {
+    Button("Confirm \(row.copyCount)") {
+      store.confirmActualCount(for: row.rowId)
+    }
+    .buttonStyle(.bordered)
+    .minimumScaledTouchTarget()
+    .accessibilityHint("Confirms the detected count as the actual count")
+  }
+
+  private var pointOutButton: some View {
+    Button("Point out object", systemImage: "hand.point.up.left") {
+      onOther(store.currentImage())
+    }
+    .buttonStyle(.bordered)
+    .minimumScaledTouchTarget()
+  }
+
+  private var startSweepButton: some View {
+    Button("Start sweep", systemImage: "record.circle") {
+      store.startFace(unit: unit, face: face)
+    }
+    .buttonStyle(.borderedProminent)
+    .minimumScaledTouchTarget()
+    .disabled(camera.owner != .shelfAR)
+  }
+
+  private var accessibilityCaptureStatus: String {
+    if store.capturing {
+      return "Shelf capture active for \(unit.name), face \(face.rawValue), \(store.activeRowId)"
+    }
+    return camera.owner == .roomPlan
+      ? "Shelf capture waiting for the room camera"
+      : "Shelf capture ready for \(unit.name), face \(face.rawValue)"
+  }
+
   private var backendURL: URL? {
     URL(string: backendURLString.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
   private var coverageHeatmap: some View {
-    HStack(spacing: 6) {
+    ScrollView(.horizontal) {
+      HStack(spacing: 12) {
         ForEach(Array(store.rowCoverage.indices), id: \.self) { index in
-          VStack {
+          VStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 4)
               .fill(store.rowCoverage[index].status == "ok" ? Color.green : Color.orange)
               .opacity(0.35 + store.rowCoverage[index].coverage * 0.65)
               .frame(height: 36)
             Text(store.rowCoverage[index].rowId.replacingOccurrences(of: "row_", with: "R"))
               .font(.caption2)
+            Label(
+              store.rowCoverage[index].status == "ok" ? "Covered" : "Needs review",
+              systemImage: store.rowCoverage[index].status == "ok"
+                ? "checkmark.circle.fill"
+                : "exclamationmark.triangle.fill"
+            )
+            .font(.caption2)
             Stepper(
               "Actual \(store.rowCoverage[index].actualCount.map(String.init) ?? "unconfirmed")",
               value: Binding(
@@ -228,15 +289,17 @@ struct ShelfPassView: View {
             )
             .font(.caption2)
             .labelsHidden()
+            .minimumScaledTouchTarget()
             Text("det \(store.rowCoverage[index].copyCount)")
               .font(.caption2)
             Button("Confirm \(store.rowCoverage[index].copyCount)") {
               store.confirmActualCount(for: store.rowCoverage[index].rowId)
             }
             .font(.caption2)
+            .minimumScaledTouchTarget()
           }
         }
+      }
     }
-    .accessibilityLabel("Readable coverage and confirmed count by shelf row")
   }
 }

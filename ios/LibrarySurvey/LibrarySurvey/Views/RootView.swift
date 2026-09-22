@@ -138,6 +138,7 @@ struct RootView: View {
       }
       .navigationTitle(title)
       .navigationBarTitleDisplayMode(.inline)
+      .accessibilityStatusAnnouncements("Opened \(title)")
       .onAppear(perform: restoreSealedPackageIfNeeded)
       .overlay {
         if isRestoring {

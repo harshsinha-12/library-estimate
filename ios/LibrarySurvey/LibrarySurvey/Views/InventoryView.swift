@@ -11,6 +11,8 @@ struct InventoryView: View {
       if let overview {
         Section("Row roster") {
           Button("Search prices for every found edition") { Task { await queue() } }
+            .minimumScaledTouchTarget()
+            .accessibilityHint("Queues price searches for all identified eligible editions")
           Text("Detected/actual and priced/eligible stay visible. Drafts are not confirmed prices. After seal, Fable and Astra run on every copy automatically. Open a copy to see the Jev comparison; the button there is optional replay.")
             .font(.footnote)
         }
@@ -24,10 +26,10 @@ struct InventoryView: View {
                 Text("Coverage: \(row.coverage.map { String(format: "%.0f%%", $0 * 100) } ?? "unknown") · \(row.coverageStatus ?? "unknown")")
                   .font(.caption)
               }
+              .accessibilityElement(children: .combine)
             }
             if row.recapture {
-              Text("Partial coverage. Recapture this named row.")
-                .foregroundStyle(.orange)
+              AccessibleStatusLabel(text: "Partial coverage. Recapture this named row.", kind: .warning)
             }
             ForEach(row.copies) { copy in
               NavigationLink {
@@ -43,6 +45,8 @@ struct InventoryView: View {
                     .foregroundStyle(.secondary)
                 }
               }
+              .accessibilityElement(children: .combine)
+              .accessibilityLabel("\(copy.title ?? copy.label ?? "Unidentified copy"), \(copyLine(copy)). \(copy.reason)")
             }
             if row.copies.isEmpty {
               Text("No copies on this row yet.")
@@ -61,11 +65,18 @@ struct InventoryView: View {
       } else {
         ProgressView("Loading inventory")
       }
-      if let message { Text(message).foregroundStyle(.orange) }
+      if let message { AccessibleStatusLabel(text: message, kind: .error) }
     }
     .navigationTitle("Inventory")
     .task { await load() }
     .refreshable { await load() }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  private var accessibilityStatus: String {
+    if let message { return "Inventory error. \(message)" }
+    guard let overview else { return "Loading inventory" }
+    return "Inventory loaded. \(overview.copyCount) physical copies, \(overview.unresolvedCount) unresolved"
   }
 
   private func rowTitle(_ row: Stage4Row) -> String {

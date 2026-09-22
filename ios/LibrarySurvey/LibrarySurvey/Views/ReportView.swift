@@ -27,15 +27,20 @@ struct ReportView: View {
     List {
       if let report {
         Section("Report") {
-          Text("Status: \(report.status)")
+          AccessibleStatusLabel(
+            text: "Status: \(report.status)",
+            kind: report.status.localizedCaseInsensitiveContains("fail") ? .error : .success
+          )
           Text("Generated: \(report.generatedAt)")
           Text("Package SHA-256: \(report.packageHash)")
             .font(.caption)
             .textSelection(.enabled)
           Text("Estimated provider spend: $\(report.spend.estimatedCostUsd)")
           if report.spend.unpricedCalls > 0 {
-            Text("\(report.spend.unpricedCalls) provider calls lack a price")
-              .foregroundStyle(.orange)
+            AccessibleStatusLabel(
+              text: "\(report.spend.unpricedCalls) provider calls lack a price",
+              kind: .warning
+            )
           }
         }
         Section("Fable, Astra, and Jev") {
@@ -67,18 +72,27 @@ struct ReportView: View {
             ShareLink(item: pdfURL) {
               Label("Share PDF report", systemImage: "square.and.arrow.up")
             }
+            .minimumScaledTouchTarget()
           } else {
             Button("Prepare PDF") { Task { await loadPDF() } }
+              .minimumScaledTouchTarget()
           }
         }
       } else {
         ProgressView("Loading report")
       }
-      if let message { Text(message).foregroundStyle(.orange) }
+      if let message { AccessibleStatusLabel(text: message, kind: .error) }
     }
     .navigationTitle("Report")
     .task { await load() }
     .refreshable { await load() }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  private var accessibilityStatus: String {
+    if let message { return "Report error. \(message)" }
+    if pdfURL != nil { return "PDF report is ready to share" }
+    return report.map { "Report loaded with status \($0.status)" } ?? "Loading report"
   }
 
   private func load() async {

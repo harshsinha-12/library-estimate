@@ -64,9 +64,9 @@ struct TaggedFloorPlanView: View {
         .font(.subheadline.weight(.semibold))
       ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
         HStack(spacing: 8) {
-          Circle()
-            .fill(row.color)
-            .frame(width: 8, height: 8)
+          Image(systemName: "line.diagonal")
+            .foregroundStyle(row.color)
+            .accessibilityHidden(true)
           Text(row.text)
             .font(.footnote.monospacedDigit())
         }
@@ -136,6 +136,8 @@ struct TaggedFloorPlanCanvas: View {
       }
     }
     .accessibilityLabel("Tagged floor plan with numbered walls and openings")
+    .accessibilityValue(layout.summaryLine)
+    .accessibilityHint("Use the text legends below for wall, opening, and shelf details.")
   }
 }
 
@@ -150,6 +152,13 @@ struct RoomModelPreview: UIViewRepresentable {
     view.antialiasingMode = .multisampling2X
     view.rendersContinuously = false
     view.scene = try? SCNScene(url: url, options: [.checkConsistency: false])
+    view.isAccessibilityElement = true
+    view.accessibilityLabel = view.scene == nil
+      ? "RoomPlan 3D model unavailable"
+      : "Interactive RoomPlan 3D model"
+    view.accessibilityHint = view.scene == nil
+      ? "Use the 2D tagged floor plan and text legends instead."
+      : "Direct manipulation is visual. The 2D tagged floor plan and text legends provide an accessible alternative."
     return view
   }
 

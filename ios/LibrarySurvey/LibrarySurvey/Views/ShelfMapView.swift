@@ -17,15 +17,18 @@ struct ShelfMapView: View {
     List {
       Section("Camera") {
         Text(camera.statusLine)
+          .accessibilityLabel("Camera status")
+          .accessibilityValue(camera.statusLine)
         if camera.geometrySessionActive {
-          Text("Pass C stills wait until this geometry session has stopped.")
-            .font(.footnote)
-            .foregroundStyle(.orange)
+          AccessibleStatusLabel(
+            text: "Pass C stills wait until this geometry session has stopped.",
+            kind: .warning
+          )
+          .font(.footnote)
         }
         if let sequentialFallbackDetail {
-          Label(sequentialFallbackDetail, systemImage: "camera.badge.ellipsis")
+          AccessibleStatusLabel(text: sequentialFallbackDetail, kind: .warning)
             .font(.footnote)
-            .foregroundStyle(.orange)
         } else if rgbEvidenceMode == .sampledDuringScan {
           Text("Pass A RGB was copied from RoomPlan. Shelf Pass B is a later AR session. Register each unit on the plan so the two spaces meet.")
             .font(.footnote)
@@ -60,6 +63,7 @@ struct ShelfMapView: View {
                   }
               )
               .accessibilityLabel("RoomPlan floor plan. Drag to place the selected shelf footprint.")
+              .accessibilityHint("Drag placement is visual. Select a shelf below to hear whether it is registered; physical placement requires sighted assistance.")
           }
           .frame(height: 280)
           .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -78,6 +82,7 @@ struct ShelfMapView: View {
             .font(.caption)
             Button("Clear footprint") { store.clearFootprint(unitId: unit.id) }
               .disabled(unit.footprint == nil)
+              .minimumScaledTouchTarget()
           }
         }
       } else {
@@ -92,26 +97,35 @@ struct ShelfMapView: View {
           VStack(alignment: .leading, spacing: 8) {
             TextField("Unit name", text: $unit.name)
             Stepper("Rows: \(unit.rowCount)", value: $unit.rowCount, in: 1...12)
-            HStack {
-              Button("Scan face A") { onScanFace(unit, .a) }
-                .buttonStyle(.borderedProminent)
-                .disabled(camera.owner == .roomPlan)
-              Button("Scan face B") { onScanFace(unit, .b) }
-                .buttonStyle(.bordered)
-                .disabled(camera.owner == .roomPlan)
+            ViewThatFits {
+              HStack {
+                scanButton(unit, face: .a)
+                scanButton(unit, face: .b)
+              }
+              VStack(alignment: .leading) {
+                scanButton(unit, face: .a)
+                scanButton(unit, face: .b)
+              }
             }
             if let capture = store.captures.first(where: { $0.unitId == unit.id && $0.face == .a }) {
-              Text("A: \(capture.frames) frames · \(capture.rows.filter { $0.status == "ok" }.count)/\(capture.rows.count) rows covered")
+              AccessibleStatusLabel(
+                text: "Face A: \(capture.frames) frames · \(capture.rows.filter { $0.status == "ok" }.count)/\(capture.rows.count) rows covered",
+                kind: capture.rows.allSatisfy { $0.status == "ok" } ? .success : .warning
+              )
                 .font(.caption)
             }
             if let capture = store.captures.first(where: { $0.unitId == unit.id && $0.face == .b }) {
-              Text("B: \(capture.frames) frames · \(capture.rows.filter { $0.status == "ok" }.count)/\(capture.rows.count) rows covered")
+              AccessibleStatusLabel(
+                text: "Face B: \(capture.frames) frames · \(capture.rows.filter { $0.status == "ok" }.count)/\(capture.rows.count) rows covered",
+                kind: capture.rows.allSatisfy { $0.status == "ok" } ? .success : .warning
+              )
                 .font(.caption)
             }
           }
           .padding(.vertical, 4)
         }
         Button("Add shelf unit", systemImage: "plus", action: store.addUnit)
+          .minimumScaledTouchTarget()
       }
       Section {
         Text("The room scan collected geometry only. Review coverage here; scan an uncovered face or row only when needed. Face A and B remain separate. Exception Pass C uses a still camera after RoomPlan and the shelf AR view have stopped.")
@@ -119,12 +133,32 @@ struct ShelfMapView: View {
           .foregroundStyle(.secondary)
         Button("Seal Package", systemImage: "lock.fill", action: onSeal)
           .buttonStyle(.borderedProminent)
+          .minimumScaledTouchTarget()
         Button("Other assets and Exception Pass C", systemImage: "barcode.viewfinder", action: onExceptions)
           .buttonStyle(.bordered)
           .disabled(camera.geometrySessionActive)
+          .minimumScaledTouchTarget()
       }
     }
     .navigationTitle("Review Shelves")
+    .accessibilityStatusAnnouncements(camera.statusLine)
+  }
+
+  @ViewBuilder
+  private func scanButton(_ unit: ShelfUnit, face: ShelfFaceSide) -> some View {
+    if face == .a {
+      Button("Scan face A") { onScanFace(unit, face) }
+        .buttonStyle(.borderedProminent)
+        .disabled(camera.owner == .roomPlan)
+        .minimumScaledTouchTarget()
+        .accessibilityHint("Starts Shelf Pass B for \(unit.name), face A")
+    } else {
+      Button("Scan face B") { onScanFace(unit, face) }
+        .buttonStyle(.bordered)
+        .disabled(camera.owner == .roomPlan)
+        .minimumScaledTouchTarget()
+        .accessibilityHint("Starts Shelf Pass B for \(unit.name), face B")
+    }
   }
 
   private var selectedUnitBinding: Binding<UUID?> {

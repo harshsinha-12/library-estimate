@@ -67,11 +67,18 @@ struct OverviewView: View {
       } else {
         ProgressView("Loading overview")
       }
-      if let message { Text(message).foregroundStyle(.orange) }
+      if let message { AccessibleStatusLabel(text: message, kind: .error) }
     }
     .navigationTitle("Overview")
     .task { await load() }
     .refreshable { await load() }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  private var accessibilityStatus: String {
+    if let message { return "Overview error. \(message)" }
+    guard let overview else { return "Loading overview" }
+    return "Overview loaded. \(overview.copyCount) physical copies, \(overview.unresolvedCount) unresolved"
   }
 
   private func load() async {

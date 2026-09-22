@@ -33,8 +33,11 @@ struct Stage3ReviewView: View {
         Section("Unresolved queue") {
           ForEach(review.queue.filter { $0.status == "open" }) { item in
             VStack(alignment: .leading, spacing: 8) {
-              Text(item.kind.replacingOccurrences(of: "_", with: " ").capitalized)
-                .font(.headline)
+              AccessibleStatusLabel(
+                text: item.kind.replacingOccurrences(of: "_", with: " ").capitalized,
+                kind: .warning
+              )
+              .font(.headline)
               Text(item.message)
               if let asset = item.assetCopyId { Text("Asset: \(asset)").font(.caption) }
               if item.kind == "unbound_note" {
@@ -47,14 +50,18 @@ struct Stage3ReviewView: View {
                 }
                 Button("Bind note") { Task { await decide(item, action: "bind_note") } }
                   .disabled(selectedAssetId.isEmpty)
+                  .minimumScaledTouchTarget()
               }
-              HStack {
-                if item.kind == "rescan_barcode" {
-                  Button("Rescan barcode") { Task { await decide(item, action: "rescan_barcode") } }
+              ViewThatFits {
+                HStack {
+                  decisionButtons(item)
                 }
-                Button("Keep unresolved") { Task { await decide(item, action: "keep_unresolved") } }
+                VStack(alignment: .leading) {
+                  decisionButtons(item)
+                }
               }
             }
+            .accessibilityElement(children: .contain)
           }
           if !review.queue.contains(where: { $0.status == "open" }) {
             Text("No open Stage 3 exceptions")
@@ -66,10 +73,28 @@ struct Stage3ReviewView: View {
       } else {
         ProgressView("Loading review queue")
       }
-      if let message { Text(message).foregroundStyle(.orange) }
+      if let message { AccessibleStatusLabel(text: message, kind: .error) }
     }
     .navigationTitle("Stage 3 Review")
     .task { await load() }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  @ViewBuilder
+  private func decisionButtons(_ item: ReviewItem) -> some View {
+    if item.kind == "rescan_barcode" {
+      Button("Rescan barcode") { Task { await decide(item, action: "rescan_barcode") } }
+        .minimumScaledTouchTarget()
+    }
+    Button("Keep unresolved") { Task { await decide(item, action: "keep_unresolved") } }
+      .minimumScaledTouchTarget()
+  }
+
+  private var accessibilityStatus: String {
+    if let message { return "Review error. \(message)" }
+    guard let review else { return "Loading review queue" }
+    let count = review.queue.filter { $0.status == "open" }.count
+    return count == 1 ? "One open review item" : "\(count) open review items"
   }
 
   private func load() async {

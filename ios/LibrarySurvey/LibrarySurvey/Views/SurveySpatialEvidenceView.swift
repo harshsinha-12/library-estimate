@@ -28,6 +28,8 @@ struct SurveySpatialEvidenceView: View {
               }
               .position(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
               .accessibilityLabel("Select \(shelf.label), \(shelf.placementLabel)")
+              .accessibilityValue(selectedFaceId == shelf.faceId ? "Selected" : "Not selected")
+              .accessibilityHint("Shows copies and evidence for this shelf")
             }
           }
         }
@@ -37,6 +39,14 @@ struct SurveySpatialEvidenceView: View {
       Section("3D shelf selection") {
         RegisteredShelfScene(url: usdzURL, shelves: layout.shelves, selectedFaceId: $selectedFaceId)
           .frame(height: 300)
+          .accessibilityLabel("Interactive RoomPlan 3D model")
+          .accessibilityValue(selectedFaceId.map { "Selected shelf \($0)" } ?? "No shelf selected")
+          .accessibilityHint("Use the shelf actions to select an operator-placed shelf. Unregistered shelves have no measured 3D target.")
+          .accessibilityActions {
+            ForEach(layout.shelves.filter { $0.placement == ShelfFootprint.operatorKind }) { shelf in
+              Button("Select \(shelf.label)") { selectedFaceId = shelf.faceId }
+            }
+          }
         Text("Blue 3D volumes use operator-placed shelf footprints. They are approximate. Unregistered shelves have no 3D hit target.")
           .font(.footnote)
       }
@@ -45,6 +55,8 @@ struct SurveySpatialEvidenceView: View {
           Button("\(shelf.label) · \(shelf.placementLabel)") {
             selectedFaceId = shelf.faceId
           }
+          .minimumScaledTouchTarget()
+          .accessibilityValue(selectedFaceId == shelf.faceId ? "Selected" : "Not selected")
         }
       }
       if let faceId = selectedFaceId {
@@ -60,10 +72,17 @@ struct SurveySpatialEvidenceView: View {
           if copies.isEmpty { Text("No processed copies on this face yet.") }
         }
       }
-      if let message { Text(message).foregroundStyle(.orange) }
+      if let message { AccessibleStatusLabel(text: message, kind: .error) }
     }
     .navigationTitle("Spatial evidence")
     .task { await load() }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  private var accessibilityStatus: String {
+    if let message { return "Spatial evidence error. \(message)" }
+    if let selectedFaceId { return "Selected shelf \(selectedFaceId)" }
+    return overview == nil ? "Loading spatial evidence" : "Spatial evidence loaded"
   }
 
   private func load() async {
@@ -94,6 +113,11 @@ private struct RegisteredShelfScene: UIViewRepresentable {
     view.allowsCameraControl = true
     view.backgroundColor = UIColor(white: 0.16, alpha: 1)
     view.scene = try? SCNScene(url: url, options: [.checkConsistency: false])
+    view.isAccessibilityElement = true
+    view.accessibilityLabel = view.scene == nil
+      ? "3D RoomPlan model unavailable"
+      : "Interactive RoomPlan 3D model"
+    view.accessibilityHint = "Direct 3D manipulation is visual. Use the adjacent shelf list or accessibility actions to select a shelf."
     addShelves(to: view.scene)
     let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap(_:)))
     view.addGestureRecognizer(tap)

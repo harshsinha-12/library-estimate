@@ -36,18 +36,28 @@ struct ProcessingView: View {
   var body: some View {
     List {
       Section("Current state") {
-        Text(survey?.status.replacingOccurrences(of: "_", with: " ") ?? "Loading")
+        AccessibleStatusLabel(
+          text: survey?.status.replacingOccurrences(of: "_", with: " ") ?? "Loading",
+          kind: processingStatusKind
+        )
           .font(.headline)
-        Text(survey?.packageHash == nil ? "Package not sealed" : "Package sealed")
-        if let message { Text(message).foregroundStyle(.orange) }
+        AccessibleStatusLabel(
+          text: survey?.packageHash == nil ? "Package not sealed" : "Package sealed",
+          kind: survey?.packageHash == nil ? .warning : .success
+        )
+        if let message { AccessibleStatusLabel(text: message, kind: .error) }
       }
       Section("Processing timeline") {
         ForEach(events) { event in
           VStack(alignment: .leading, spacing: 4) {
-            Text(event.state.replacingOccurrences(of: "_", with: " "))
-              .font(.headline)
+            AccessibleStatusLabel(
+              text: event.state.replacingOccurrences(of: "_", with: " "),
+              kind: event.state.localizedCaseInsensitiveContains("fail") ? .error : .neutral
+            )
+            .font(.headline)
             Text(event.detail ?? event.occurredAt).font(.caption)
           }
+          .accessibilityElement(children: .combine)
         }
       }
       Section("Failures and next actions") {
@@ -69,6 +79,20 @@ struct ProcessingView: View {
     .navigationTitle("Processing")
     .task { await refresh() }
     .refreshable { await refresh() }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  private var accessibilityStatus: String {
+    if let message { return "Processing refresh failed. \(message)" }
+    return survey.map { "Survey processing status: \($0.status.replacingOccurrences(of: "_", with: " "))" }
+      ?? "Loading processing status"
+  }
+
+  private var processingStatusKind: AccessibleStatusLabel.Kind {
+    guard let status = survey?.status.lowercased() else { return .progress }
+    if status.contains("fail") || status.contains("error") { return .error }
+    if status.contains("complete") || status.contains("ready") { return .success }
+    return .progress
   }
 
   private func refresh() async {
@@ -96,9 +120,13 @@ struct ProcessingView: View {
   private func actionRow(_ action: OperatorAction) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(action.failure).font(.headline)
-      Text("Status: \(action.status.replacingOccurrences(of: "_", with: " "))")
+      AccessibleStatusLabel(
+        text: "Status: \(action.status.replacingOccurrences(of: "_", with: " "))",
+        kind: action.status == "action_required" ? .warning : .neutral
+      )
         .font(.caption)
       Text(action.nextAction).font(.footnote)
     }
+    .accessibilityElement(children: .combine)
   }
 }

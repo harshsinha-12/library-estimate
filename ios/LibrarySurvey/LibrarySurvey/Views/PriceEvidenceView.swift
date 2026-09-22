@@ -21,7 +21,10 @@ struct PriceEvidenceView: View {
     Form {
       Section("Copy") {
         Text(copy.title ?? copy.label ?? copy.assetCopyId)
-        Text("Status: \(copy.valuationStatus.replacingOccurrences(of: "_", with: " "))")
+        AccessibleStatusLabel(
+          text: "Status: \(copy.valuationStatus.replacingOccurrences(of: "_", with: " "))",
+          kind: copy.valuationStatus == "quoted" || copy.valuationStatus == "manual" ? .success : .warning
+        )
         Text(copy.reason)
         Text("Condition: \(copy.condition ?? "unreviewed")")
         Text("Search: \(copy.query == nil ? "waiting for identity" : copy.draftCount > 0 ? "drafts need review" : "ready or pending")")
@@ -30,7 +33,7 @@ struct PriceEvidenceView: View {
         }
         if let isbn = copy.isbn { Text("ISBN \(isbn)") }
         if let task = copy.identityTask {
-          Text("Pass C: \(task)").foregroundStyle(.orange)
+          AccessibleStatusLabel(text: "Pass C: \(task)", kind: .warning)
         }
         if copy.excluded {
           Text("Counted and excluded from valuation.")
@@ -144,6 +147,7 @@ struct PriceEvidenceView: View {
           ProgressView("Running Fable, then Astra, then Jev")
         } else {
           Button("Run Fable, Astra, and Jev") { Task { await runReplay() } }
+            .minimumScaledTouchTarget()
         }
         if let replay {
           ModelReplayResultBlock(run: replay, title: copy.title ?? copy.label)
@@ -181,7 +185,9 @@ struct PriceEvidenceView: View {
             HStack {
               Button("Confirm physical price") { Task { await decide(action: "confirm", draft: draft) } }
                 .disabled(draft.offerType != "physical" || draft.parsedAmount == nil)
+                .minimumScaledTouchTarget()
               Button("Reject") { Task { await decide(action: "reject", draft: draft) } }
+                .minimumScaledTouchTarget()
             }
           }
         }
@@ -203,7 +209,7 @@ struct PriceEvidenceView: View {
         Button("Search prices for this copy") { Task { await search() } }
           .disabled(!copy.eligible || copy.query == nil)
       }
-      if let message { Text(message).foregroundStyle(.orange) }
+      if let message { AccessibleStatusLabel(text: message, kind: .neutral) }
     }
     .navigationTitle("Price evidence")
     .task {
@@ -211,6 +217,14 @@ struct PriceEvidenceView: View {
       await loadReplay()
       if copy.eligible, copy.query != nil { await search() }
     }
+    .accessibilityStatusAnnouncements(accessibilityStatus)
+  }
+
+  private var accessibilityStatus: String {
+    if replaying { return "Running Fable, Astra, and Jev assessments" }
+    if let message { return message }
+    if replay != nil { return "Model assessment results loaded" }
+    return "Price evidence loaded for \(copy.title ?? copy.label ?? "this copy")"
   }
 
   private func correctIdentity() async {
@@ -361,12 +375,14 @@ struct ModelReplayResultBlock: View {
         )
         .font(.footnote)
         if comparison.writesCount == true || comparison.writesPrice == true {
-          Text("Unexpected model write").foregroundStyle(.orange)
+          AccessibleStatusLabel(text: "Unexpected model write", kind: .error)
         }
       }
       if run.partial == true {
-        Text("Disclosed partial. Human review. No invented assessment.")
-          .foregroundStyle(.orange)
+        AccessibleStatusLabel(
+          text: "Disclosed partial. Human review. No invented assessment.",
+          kind: .warning
+        )
       }
       assessment("Fable", run.assessments?.fable)
       assessment("Astra", run.assessments?.astraReplay)
@@ -374,8 +390,10 @@ struct ModelReplayResultBlock: View {
         Text("Jev: \((jev.choice ?? "no choice").replacingOccurrences(of: "_", with: " ")) \(confidence(jev.confidence))")
       }
       if let failures = run.failures, !failures.isEmpty {
-        Text("Failures: \(failures.map { "\($0.key) \($0.value)" }.joined(separator: ", "))")
-          .foregroundStyle(.orange)
+        AccessibleStatusLabel(
+          text: "Failures: \(failures.map { "\($0.key) \($0.value)" }.joined(separator: ", "))",
+          kind: .error
+        )
       }
     }
   }
@@ -396,7 +414,7 @@ struct ModelReplayResultBlock: View {
         }
       }
     } else {
-      Text("\(name): not returned").foregroundStyle(.orange)
+      AccessibleStatusLabel(text: "\(name): not returned", kind: .warning)
     }
   }
 

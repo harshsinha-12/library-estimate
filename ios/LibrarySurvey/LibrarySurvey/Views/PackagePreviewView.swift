@@ -13,8 +13,7 @@ struct PackagePreviewView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
-        Label("Hashes verified locally", systemImage: "checkmark.seal.fill")
-          .foregroundStyle(.green)
+        AccessibleStatusLabel(text: "Hashes verified locally", kind: .success)
 
         PackageMediaPreviews(
           layout: layout,
@@ -60,6 +59,7 @@ struct PackagePreviewView: View {
               Task { await pingBackend() }
             }
             .disabled(uploader.isBusy || backendURL == nil)
+            .minimumScaledTouchTarget()
           }
           .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -71,7 +71,7 @@ struct PackagePreviewView: View {
             Text(uploader.status).font(.callout)
           }
           if let error = uploader.errorMessage {
-            Text(error).foregroundStyle(.red)
+            AccessibleStatusLabel(text: error, kind: .error)
             Text("The local package is intact. Retry resumes after the last acknowledged file.")
               .font(.caption)
               .foregroundStyle(.secondary)
@@ -84,6 +84,7 @@ struct PackagePreviewView: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .disabled(uploader.isBusy || backendURL == nil)
+        .minimumScaledTouchTarget()
 
         GroupBox("Results") {
           VStack(alignment: .leading, spacing: 10) {
@@ -134,11 +135,18 @@ struct PackagePreviewView: View {
 
         Button("Start Another Survey", action: onNewSurvey)
           .buttonStyle(.bordered)
+          .minimumScaledTouchTarget()
       }
       .padding()
     }
     .onAppear(perform: loadPlan)
     .onAppear { operatorToken = OperatorCredentials.load() }
+    .accessibilityStatusAnnouncements(uploaderAccessibilityStatus)
+  }
+
+  private var uploaderAccessibilityStatus: String {
+    if let error = uploader.errorMessage { return "Upload error. \(error)" }
+    return uploader.status
   }
 
   private var backendURL: URL? {
@@ -205,14 +213,14 @@ private struct PackageMediaPreviews: View {
       } else {
         FloorPlanPreview(url: svgURL)
           .frame(height: 280)
-          .accessibilityLabel("Estimated RoomPlan wall outline")
+          .accessibilityLabel("Estimated RoomPlan wall outline preview")
+          .accessibilityHint("Static visual preview. Open spatial evidence for the tagged shelf list.")
       }
     }
     GroupBox("3D RoomPlan model") {
       RoomModelPreview(url: usdzURL)
         .frame(height: 280)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityLabel("Interactive RoomPlan 3D model")
     }
   }
 }
