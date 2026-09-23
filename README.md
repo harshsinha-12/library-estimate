@@ -1,8 +1,10 @@
 # Library Survey
 
-iOS capture + FastAPI backend for a **library replacement-cost survey**. A technician scans rooms and shelves on a LiDAR iPhone; the backend turns that sealed package into geometry, physical-copy inventory, identity, local price *drafts*, model comparison, and a signed report.
+iOS capture + FastAPI backend for a **library replacement-cost survey**. A technician scans the room with RoomPlan, then photographs each shelf or attaches photos already on the phone. Each photo goes to a language model. The model names the books it can read, estimates how many books are in the picture, looks up physical prices with web search, and calculates the shelf total. That shelf path does not use a computer-vision spine counter.
 
-This is past scaffold. Stage 1–5 fixture gates passed. Invertis Library was walked on a phone: 45 physical-copy records, RoomPlan 2D/3D, web-search drafts, live Fable-role / Astra / Jev calls, and a signed PDF. Models classify and propose. They do **not** write count, ISBN, geometry, or money. Draft web prices stay drafts until an operator confirms a physical listing. Price and geography are not vision class labels. Price search is OpenAI Responses `web_search` (`user_location` from survey geography). Building value is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`, shown on the report summary next to estimated provider spend.
+RoomPlan still produces the floor plan and 3D model. Building value is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`. A package that has no shelf photos, and still contains a labeled shelf sweep, keeps the older vision counter. On that older path, web prices stay drafts until an operator confirms a physical listing.
+
+This is past scaffold. Stage 1–5 fixture gates passed. Invertis Library was walked on a phone before this photo path: 45 physical-copy records, RoomPlan 2D/3D, web-search drafts, live Fable-role / Astra / Jev calls, and a signed PDF.
 
 Alignment contract: [`FINAL-PLAN.md`](FINAL-PLAN.md). Thresholds, schemas, and code map: [`docs/architecture.md`](docs/architecture.md). Build order: [`IMPLEMENTATION.md`](IMPLEMENTATION.md). USB install: [`INSTALLATION.md`](INSTALLATION.md). Clocks: [`CHECKPOINTS.md`](CHECKPOINTS.md).
 
@@ -265,12 +267,10 @@ flowchart TB
   CREATE["Create survey: consent + When In Use location"] --> GEOG["Reverse-geocode country/city/market; technician may override"]
   GEOG --> DEV["Device check: LiDAR, storage, camera, mic, location"]
   DEV --> A["Pass A RoomPlan: walls, floors, USDZ, sampled RGB/poses"]
-  A --> MAP["Shelf map: units, face A/B, operator footprints"]
-  MAP --> B["Pass B shelf-face sweep: quality + spines + coverage"]
-  B --> C["Pass C exceptions: barcode, title page, damage, non-books"]
-  C --> SEAL["Seal hashed package locally"]
+  A --> B["Shelf photos: one shelf at a time, each image to the language model"]
+  B --> SEAL["Seal hashed package locally"]
   SEAL --> UP["Resumable upload + manifest validation"]
-  UP --> WORK["Seal pipeline: geometry → vision → stage3 → pricing → A/B replay"]
+  UP --> WORK["Seal pipeline: geometry, then the shelf-photo model"]
   WORK --> IR["Survey IR"]
   IR --> REVIEW["Human review + Price Evidence"]
   REVIEW --> REPORT["JSON + PDF report"]
@@ -287,12 +287,8 @@ stateDiagram-v2
   [*] --> CreateSurvey
   CreateSurvey --> DeviceCheck
   DeviceCheck --> RoomPassA
-  RoomPassA --> ShelfMap
-  ShelfMap --> ShelfPassB
-  ShelfPassB --> ShelfMap: face finished
-  ShelfMap --> ExceptionPassC
-  ExceptionPassC --> ShelfMap
-  ShelfMap --> SealPackage
+  RoomPassA --> ShelfPhotos
+  ShelfPhotos --> SealPackage
   SealPackage --> PackagePreview
   PackagePreview --> Processing
   Processing --> Overview
@@ -304,8 +300,8 @@ stateDiagram-v2
 | Pass | Owns the camera | Does | Does not |
 | --- | --- | --- | --- |
 | **A RoomPlan** | RoomPlan AR session | Walls, floors, openings, USDZ, sampled RGB/poses, geography | Count books |
-| **B Shelf face** | Shelf AR after RoomPlan releases | Live quality, spine instances, coverage, Astra-live assist | Invent ISBNs or inventory from Astra-live |
-| **C Exceptions** | Still camera after shelf AR stops | Barcode / title page / damage close-up / non-books | Optical zoom during RoomPlan |
+| **B Shelf photos** | Still camera or photo library after RoomPlan releases | One or more photos per shelf. Each image goes to the language model for identity, count, web prices, and the shelf total | Spine detection or optical zoom during RoomPlan |
+| **C Exceptions** | Not on the photo survey | Older barcode and damage close-ups | Optical zoom during RoomPlan |
 
 Hierarchy: `room → unit → face A/B → row → spine instance → physical copy`. Face B is a different copy. A reverse sweep updates evidence; it does not mint a second copy. Same ISBN in two slots stays two IDs.
 

@@ -129,7 +129,7 @@ struct RoomPassView: View {
   }
 
   private var reviewButton: some View {
-    Button("Review Capture", systemImage: "books.vertical", action: onContinue)
+    Button("Photograph Shelves", systemImage: "books.vertical", action: onContinue)
       .buttonStyle(.borderedProminent)
       .minimumScaledTouchTarget()
   }

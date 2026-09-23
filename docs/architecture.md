@@ -2,11 +2,11 @@
 
 This is the diagram-first map of **how the running system works**, not a restatement of the alignment plan. The alignment contract remains [`FINAL-PLAN.md`](../FINAL-PLAN.md). Code paths below are the current implementation.
 
-Governing rule:
+Current shelf path:
 
-> Never trust one frame, one model, or one signal. Combine geometry + tracking + visual evidence + OCR + speech + metadata, and preserve confidence and provenance at every step.
+> Scan the room with RoomPlan. Then photograph each shelf, or attach photos. Each image is one language-model request: identify the readable books, estimate the count, look up physical prices with web search, and calculate the shelf total. There is no spine detector on this path.
 
-Models never write geometry, ISBN checksums, physical-copy merges, currency arithmetic, or prices. Price and geography are not vision class labels.
+The model does not write room geometry. It does estimate book counts and attach the prices it looked up. Unidentified books are counted and left unpriced. Each photo is counted on its own, so a second photo of the same books is a second count. Packages that still contain `shelf_scans/labeled.json` and no `shelf_photos/manifest.json` keep the older vision counter described below. On that older path, models do not write count, ISBN, geometry, or money.
 
 ---
 
@@ -106,12 +106,10 @@ flowchart TB
   CREATE["Create survey: consent + When In Use location"] --> GEOG["Reverse-geocode country/city/market; technician may override"]
   GEOG --> DEV["Device check: LiDAR, storage, camera, mic, location"]
   DEV --> A["Pass A RoomPlan: walls, floors, USDZ, sampled RGB/poses"]
-  A --> MAP["Shelf map: units, face A/B, operator footprints"]
-  MAP --> B["Pass B shelf-face sweep: quality + spines + coverage"]
-  B --> C["Pass C exceptions: barcode, title page, damage, non-books"]
-  C --> SEAL["Seal hashed package locally"]
+  A --> B["Shelf photos: one shelf at a time, each image to the language model"]
+  B --> SEAL["Seal hashed package locally"]
   SEAL --> UP["Resumable upload + manifest validation"]
-  UP --> WORK["Seal pipeline: geometry → vision → stage3 → pricing → A/B replay"]
+  UP --> WORK["Seal pipeline: geometry, then the shelf-photo model"]
   WORK --> IR["Survey IR"]
   IR --> REVIEW["Human review + Price Evidence"]
   REVIEW --> REPORT["JSON + PDF report"]
@@ -141,12 +139,8 @@ stateDiagram-v2
   [*] --> CreateSurvey
   CreateSurvey --> DeviceCheck
   DeviceCheck --> RoomPassA
-  RoomPassA --> ShelfMap
-  ShelfMap --> ShelfPassB
-  ShelfPassB --> ShelfMap: face finished
-  ShelfMap --> ExceptionPassC
-  ExceptionPassC --> ShelfMap
-  ShelfMap --> SealPackage
+  RoomPassA --> ShelfPhotos
+  ShelfPhotos --> SealPackage
   SealPackage --> PackagePreview
   PackagePreview --> Processing
   Processing --> Overview
@@ -160,8 +154,8 @@ Camera ownership is exclusive (`CameraSessionCoordinator`):
 | Owner | Pass | Why |
 | --- | --- | --- |
 | `roomPlan` | A | RoomPlan owns the AR session; RGB is sampled from that session |
-| `shelfAR` | B | A second AR session starts only after RoomPlan released the camera |
-| `stillCamera` | C | Close-ups / `UIImagePicker` only after RoomPlan and shelf AR have stopped |
+| `stillCamera` | Shelf photos | A still camera starts only after RoomPlan released the session. Attached photos do not take the camera |
+| `shelfAR` | Older sweeps | Unused on the photo path. Kept so a labeled shelf package can still be read |
 | `idle` | between passes | Next pass may start |
 
 If RoomPlan cannot sample RGB live, the app falls back to a sequential final frame (`sequential_final_frame`) rather than claiming two camera owners ran concurrently.

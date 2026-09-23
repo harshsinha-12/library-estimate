@@ -46,10 +46,10 @@ struct DeviceCheckView: View {
 
       Section("Capture fallback") {
         Text(
-          "RoomPlan owns the camera during Pass A. The shelf AR view starts only after that session stops. Exception close-ups use a still camera after both geometry sessions are released. Apple does not allow a second AVCaptureSession or optical zoom during RoomPlan."
+          "RoomPlan owns the camera during the room scan. Shelf photos use a still camera only after that session stops. Apple does not allow a second AVCaptureSession or optical zoom during RoomPlan."
         )
         Text(
-          "If sampled RGB frames cannot be collected during RoomPlan, the capture screen shows Sequential fallback as a status, keeps the processed room, and uses the final AR frame. Shelf Pass B then runs as a later session."
+          "If sampled RGB frames cannot be collected during RoomPlan, the capture screen shows Sequential fallback as a status, keeps the processed room, and uses the final AR frame. After the room scan, photograph each shelf or attach photos."
         )
       }
     }

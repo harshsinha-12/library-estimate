@@ -1577,8 +1577,13 @@ class PricingWorker:
             elif owned:
                 amounts = [Decimal(str(item["parsed_amount"])) for item in owned]
                 low, high, central = min(amounts), max(amounts), Decimal(str(median(amounts)))
+                llm = any(item.get("parser") == "llm_shelf_photo" for item in owned)
                 status = "manual" if owned[-1].get("query_kind") == "manual" else "quoted"
-                reason = "Technician-confirmed physical replacement evidence"
+                reason = (
+                    "Language model estimate from the shelf photo and a web price lookup"
+                    if llm
+                    else "Technician-confirmed physical replacement evidence"
+                )
                 valuation = {
                     "valuation_id": f"val_{asset_id}",
                     "asset_copy_id": asset_id,
@@ -1587,13 +1592,13 @@ class PricingWorker:
                         "value": float(central),
                         "unit": owned[-1]["currency"],
                         "status": "ok",
-                        "confidence": 0.7 if len(owned) == 1 else 0.85,
+                        "confidence": 0.55 if llm else (0.7 if len(owned) == 1 else 0.85),
                         "interval": {
                             "low": float(low),
                             "high": float(high),
                             "level": 0.8,
                         },
-                        "method": "confirmed-web-search-or-manual",
+                        "method": "llm-shelf-photo" if llm else "confirmed-web-search-or-manual",
                         "evidence_refs": [item["price_observation_id"] for item in owned],
                         "run_id": PIPELINE_VERSION,
                     },
@@ -1704,7 +1709,7 @@ class PricingWorker:
                     ) or next(
                         (
                             item.get("listing_url") or item.get("source_url")
-                            for item in drafts
+                            for item in [*drafts, *owned]
                             if item.get("listing_url") or item.get("source_url")
                         ),
                         None,
@@ -2136,7 +2141,18 @@ class PricingWorker:
             "status": "estimated",
             "basis": "replacement_cost",
             "note": (
-                "Sum of technician-confirmed physical replacement evidence. Drafts are excluded."
+                "Sum of language-model shelf estimates. Each priced line is a web lookup "
+                "the model attached to a visible title. Unidentified books are counted "
+                "and left unpriced."
+                if any(
+                    ((copy.get("valuation") or {}).get("amount") or {}).get("method")
+                    == "llm-shelf-photo"
+                    for copy in copies
+                )
+                else (
+                    "Sum of technician-confirmed physical replacement evidence. "
+                    "Drafts are excluded."
+                )
             ),
         }
 

@@ -32,6 +32,10 @@ enum CapturePackageWriter {
     monotonicAnchor: Double,
     shelfPackage: LabeledShelfPackage = LabeledShelfPackage(passes: []),
     shelfFrames: [FrameSample] = [],
+    shelfPhotos: ShelfPhotoExport = ShelfPhotoExport(
+      manifest: ShelfPhotoManifest(schemaVersion: "shelf-photos-v1", shelves: []),
+      files: [:]
+    ),
     exceptionPackage: PassCPackage = PassCPackage(scans: [], notes: [], focusEvents: []),
     otherAssets: [OtherAssetMark] = [],
     exceptionImages: [String: Data] = [:],
@@ -117,6 +121,14 @@ enum CapturePackageWriter {
     try writeFrames(
       samples, root: root, files: &files, redactionRecords: &redactionRecords,
       faceRedactionEnabled: faceRedactionEnabled, fileManager: fileManager
+    )
+    try writeShelfPhotos(
+      export: shelfPhotos,
+      root: root,
+      files: &files,
+      redactionRecords: &redactionRecords,
+      faceRedactionEnabled: faceRedactionEnabled,
+      fileManager: fileManager
     )
     try writeShelfScans(
       package: shelfPackage,
@@ -224,8 +236,9 @@ enum CapturePackageWriter {
         timezone: TimeZone.current.identifier
       ),
       captureState: "complete",
-      captureModes: (shelfPackage.passes.isEmpty ? ["room"] : ["room", "shelf"]) +
-        ((!exceptionPackage.scans.isEmpty || !otherAssets.isEmpty || !exceptionPackage.focusEvents.isEmpty) ? ["exception"] : []),
+      captureModes: (shelfPackage.passes.isEmpty ? ["room"] : ["room", "shelf"])
+        + (shelfPhotos.manifest.shelves.isEmpty ? [] : ["shelf_photos"])
+        + ((!exceptionPackage.scans.isEmpty || !otherAssets.isEmpty || !exceptionPackage.focusEvents.isEmpty) ? ["exception"] : []),
       files: files
     )
     let manifestURL = root.appendingPathComponent("manifest.json")
@@ -289,6 +302,35 @@ enum CapturePackageWriter {
       guard size == file.bytes, digest == file.sha256 else {
         throw PackageWriterError.verificationFailed(file.path)
       }
+    }
+  }
+
+  private static func writeShelfPhotos(
+    export: ShelfPhotoExport,
+    root: URL,
+    files: inout [PackageFile],
+    redactionRecords: inout [EvidenceRedactionRecord],
+    faceRedactionEnabled: Bool,
+    fileManager: FileManager
+  ) throws {
+    guard !export.manifest.shelves.isEmpty else { return }
+    try writeJSON(
+      export.manifest,
+      relativePath: "shelf_photos/manifest.json",
+      mimeType: "application/json",
+      root: root,
+      files: &files,
+      fileManager: fileManager
+    )
+    for path in export.files.keys.sorted() {
+      guard path.hasPrefix("shelf_photos/"), path.hasSuffix(".jpg"), !path.contains(".."),
+            let bytes = export.files[path]
+      else { continue }
+      try writeJPEG(
+        bytes, relativePath: path, root: root, files: &files,
+        redactionRecords: &redactionRecords, faceRedactionEnabled: faceRedactionEnabled,
+        fileManager: fileManager
+      )
     }
   }
 

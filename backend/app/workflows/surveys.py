@@ -22,6 +22,7 @@ from backend.app.utils.hashing import sha256_bytes
 from backend.app.utils.json_codec import canonical_json_bytes
 from backend.app.workflows.geometry import GeometryError, GeometryWorker
 from backend.app.workflows.pricing import PricingWorker
+from backend.app.workflows.shelf_photos import ShelfPhotoWorker
 from backend.app.workflows.stage3 import Stage3Worker
 from backend.app.workflows.vision import VisionWorker
 
@@ -41,6 +42,7 @@ class SurveyWorkflow:
         vision_worker: VisionWorker | None = None,
         stage3_worker: Stage3Worker | None = None,
         pricing_worker: PricingWorker | None = None,
+        shelf_photo_worker: ShelfPhotoWorker | None = None,
         small_model: str | None = None,
     ) -> None:
         self.repository = repository
@@ -50,6 +52,7 @@ class SurveyWorkflow:
         self.pricing_worker = pricing_worker or PricingWorker(
             small_model=small_model or "gpt-5.6-luna"
         )
+        self.shelf_photo_worker = shelf_photo_worker or ShelfPhotoWorker()
 
     def create(self, request: SurveyCreate, *, idempotency_key: str) -> SurveyRecord:
         request_hash = sha256_bytes(canonical_json_bytes(request.model_dump(mode="json")))
@@ -162,8 +165,13 @@ class SurveyWorkflow:
         usdz_path = None
         try:
             geometry = self.geometry_worker.process(self.repository, survey_id)
-            inventory = self.vision_worker.process(self.repository, survey_id)
-            self.stage3_worker.process(self.repository, survey_id)
+            shelf_inventory = None
+            if self.repository.exists_bytes(survey_id, "shelf_photos/manifest.json"):
+                shelf_inventory = self.shelf_photo_worker.process(self.repository, survey_id)
+            inventory = shelf_inventory
+            if shelf_inventory is None:
+                inventory = self.vision_worker.process(self.repository, survey_id)
+                self.stage3_worker.process(self.repository, survey_id)
             if inventory and inventory.overlays:
                 geometry = self.geometry_worker.process(
                     self.repository,
@@ -180,11 +188,18 @@ class SurveyWorkflow:
             geometry_svg_path = geometry.svg_path
             geometry_summary_path = geometry.summary_path
             try:
-                self.pricing_worker.after_seal(self.repository, survey_id)
-                pricing_log.info(
-                    "pricing_after_seal finished",
-                    survey_id=str(survey_id),
-                )
+                if shelf_inventory is not None:
+                    self.pricing_worker.overview(self.repository, survey_id)
+                    pricing_log.info(
+                        "shelf_photo_overview finished",
+                        survey_id=str(survey_id),
+                    )
+                else:
+                    self.pricing_worker.after_seal(self.repository, survey_id)
+                    pricing_log.info(
+                        "pricing_after_seal finished",
+                        survey_id=str(survey_id),
+                    )
             except Exception as error:
                 pricing_log.warning(
                     "pricing_after_seal failed",
