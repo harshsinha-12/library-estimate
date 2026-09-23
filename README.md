@@ -229,6 +229,14 @@ curl -o ~/Downloads/library-survey.pdf \
 
 Home scan **2026-09-23** (Bareilly, 88 recorded copies): [`docs/library-survey-17C8DCDC-26B1-458B-9D8A-6443309A5F26.pdf`](docs/library-survey-17C8DCDC-26B1-458B-9D8A-6443309A5F26.pdf). Survey `17c8dcdc-26b1-458b-9d8a-6443309a5f26`.
 
+Pass B on that shelf. The first frame is the thin outline bar (row chips, count, confirm, finish). The next two are the same stacks with the earlier YOLO scores and the larger control panel.
+
+![Shelf Pass B, landscape, thin outlines on the physics stacks](docs/home-scan/pass-b-outlines.jpg)
+
+![Shelf Pass B, portrait, YOLO boxes and the count panel](docs/home-scan/pass-b-yolo-portrait.jpg)
+
+![Shelf Pass B, landscape, YOLO boxes over University Physics](docs/home-scan/pass-b-yolo-landscape.jpg)
+
 ---
 
 ## Layout
