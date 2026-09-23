@@ -82,6 +82,7 @@ def test_yolo_pass_becomes_labeled_when_device_has_no_spines() -> None:
     merged = merge_yolo_into_labeled(None, [scan])
     assert merged is not None
     assert merged["segmentation"] == PIPELINE_NAME
+    assert merged["count_source"] == "yolo"
     spines = merged["passes"][0]["rows"][0]["spines"]
     assert [item["evidence_ref"] for item in spines] == [
         "derived/yolo-spines/row_01_slot0.jpg",
@@ -90,12 +91,14 @@ def test_yolo_pass_becomes_labeled_when_device_has_no_spines() -> None:
     assert labeled_has_spines(merged)
 
 
-def test_yolo_attaches_crops_without_inventing_extra_copies() -> None:
+def test_yolo_is_the_initial_count_even_when_vision_found_fewer() -> None:
     labeled = {
         "passes": [
             {
                 "pass_id": "pass_a",
                 "face_id": "shelf.face_A",
+                "room_id": "library",
+                "shelf_id": "shelf_01",
                 "rows": [
                     {
                         "row_id": "row_01",
@@ -112,12 +115,68 @@ def test_yolo_attaches_crops_without_inventing_extra_copies() -> None:
         [_spine(0, 0.2), _spine(1, 0.55), _spine(2, 0.9)],
         frame_path="shelf_scans/frames/0001.jpg",
         pass_id="yolo_0",
+        row_id="row_01",
     )
     merged = merge_yolo_into_labeled(labeled, [yolo])
+    assert merged["count_source"] == "yolo"
+    assert merged["passes"][0]["face_id"] == "shelf.face_A"
+    spines = merged["passes"][0]["rows"][0]["spines"]
+    assert len(spines) == 3
+    assert [item["evidence_ref"] for item in spines] == [
+        crop_path("row_01", 0),
+        crop_path("row_01", 1),
+        crop_path("row_01", 2),
+    ]
+
+
+def test_yolo_is_the_initial_count_even_when_it_found_fewer() -> None:
+    labeled = {
+        "passes": [
+            {
+                "pass_id": "pass_a",
+                "face_id": "shelf.face_A",
+                "rows": [
+                    {
+                        "row_id": "row_01",
+                        "spines": [
+                            {"slot": 0, "x": 0.10, "evidence_ref": "vision_0"},
+                            {"slot": 1, "x": 0.25, "evidence_ref": "vision_1"},
+                            {"slot": 2, "x": 0.40, "evidence_ref": "vision_2"},
+                            {"slot": 3, "x": 0.55, "evidence_ref": "vision_3"},
+                            {"slot": 4, "x": 0.70, "evidence_ref": "vision_4"},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    yolo = labeled_pass_from_spines(
+        [_spine(0, 0.2), _spine(1, 0.7)],
+        frame_path="shelf_scans/frames/0001.jpg",
+        pass_id="yolo_0",
+        row_id="row_01",
+    )
+    merged = merge_yolo_into_labeled(labeled, [yolo])
+    assert merged["count_source"] == "yolo"
     spines = merged["passes"][0]["rows"][0]["spines"]
     assert len(spines) == 2
-    assert spines[0]["evidence_ref"] == crop_path("row_01", 0)
-    assert spines[1]["evidence_ref"] == crop_path("row_01", 1)
+    assert [item["evidence_ref"] for item in spines] == [
+        crop_path("row_01", 0),
+        crop_path("row_01", 1),
+    ]
+
+
+def test_vision_labeled_is_fallback_when_yolo_is_empty() -> None:
+    labeled = {
+        "passes": [
+            {
+                "rows": [
+                    {"row_id": "row_01", "spines": [{"slot": 0, "evidence_ref": "keep-me"}]}
+                ]
+            }
+        ]
+    }
+    assert merge_yolo_into_labeled(labeled, []) is labeled
 
 
 def test_attach_keeps_unmatched_device_spines() -> None:
@@ -294,7 +353,7 @@ def test_yolo_crops_go_to_fable_astra_then_jev() -> None:
     assert result["decision"]["action"] == "accept_candidate"
 
 
-def test_replay_prefers_apple_vision_crop_over_yolo_mask() -> None:
+def test_replay_prefers_yolo_crop_then_apple_vision() -> None:
     repository, survey_id = _repository()
     repository.save_json(
         survey_id,
@@ -340,9 +399,63 @@ def test_replay_prefers_apple_vision_crop_over_yolo_mask() -> None:
             }},
         },
     )
-    assert packages[0]["evidence_refs"][0] == "shelf_scans/crops/row_01_slot0.jpg"
-    assert "derived/yolo-spines/row_01_slot0.jpg" in packages[0]["evidence_refs"]
-    assert packages[0]["media"][0]["evidence_ref"] == "shelf_scans/crops/row_01_slot0.jpg"
+    assert packages[0]["evidence_refs"][0] == "derived/yolo-spines/row_01_slot0.jpg"
+    assert "shelf_scans/crops/row_01_slot0.jpg" in packages[0]["evidence_refs"]
+    assert packages[0]["media"][0]["evidence_ref"] == "derived/yolo-spines/row_01_slot0.jpg"
+
+
+def test_identify_assigns_title_from_each_yolo_crop() -> None:
+    from backend.app.domain.models import UploadedFile
+    from backend.app.workflows.pricing import PricingWorker
+
+    repository, survey_id = _repository()
+    frame = TINY_JPEG + b"shelf"
+    repository.store_upload(
+        survey_id,
+        UploadedFile(
+            path="shelf_scans/frames/0001.jpg",
+            mime_type="image/jpeg",
+            bytes=len(frame),
+            sha256="d" * 64,
+        ),
+        frame,
+    )
+    VisionWorker(segment_spines=_fake_segmenter([_spine(0, 0.2), _spine(1, 0.7)])).process(
+        repository, survey_id
+    )
+    inventory = repository.get_json(survey_id, "inventory") or {}
+    copies = inventory["asset_copies"]
+    repository.save_json(
+        survey_id,
+        "stage3",
+        {
+            "assets": [
+                {"asset_copy_id": copies[0]["asset_copy_id"], "category": "book"},
+                {"asset_copy_id": copies[1]["asset_copy_id"], "category": "book"},
+            ],
+            "identities": [],
+            "queue": [
+                {
+                    "kind": "unread_spine",
+                    "asset_copy_id": copies[0]["asset_copy_id"],
+                    "status": "open",
+                }
+            ],
+        },
+    )
+
+    def extract(jpeg: bytes) -> list[str]:
+        if jpeg == TINY_JPEG:
+            return ["Organization Theory: Management"]
+        return ["Brand Management Handbook"]
+
+    result = PricingWorker(extract_titles=extract).identify_from_frames(repository, survey_id)
+    assert "Organization Theory: Management" in result["titles"]
+    stage3 = repository.get_json(survey_id, "stage3") or {}
+    by_id = {item["asset_copy_id"]: item["title"] for item in stage3["identities"]}
+    assert by_id[copies[0]["asset_copy_id"]]
+    assert by_id[copies[1]["asset_copy_id"]]
+    assert stage3["queue"][0]["status"] == "closed"
 
 
 def test_yolo_module_does_not_load_moondream() -> None:

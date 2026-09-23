@@ -77,7 +77,7 @@ Scoped to the 50–100 book demo. The 200,000-spine production problem is not th
 
 Honest for $50 and 50–100 books. Not a 200k-spine production claim.
 
-18. Detect and track on device. Do not send every frame to a model. After-seal YOLO 11x-seg is an optional mask crop on already-tracked slots, not a replacement for Apple Vision Pass B (see `docs/architecture.md` §5.7).
+18. Detect and track on device during Pass B. After seal, YOLO 11x-seg from bookshelf-scanner is the initial count and crop source when it returns books — not only when it finds more spines than Vision. Those crops go to Fable/Astra and to title identity (`docs/architecture.md` §5.7).
 19. Price search once per unique edition + market; reuse evidence per copy.
 20. Do not skip Astra/Fable on most books to save money (see section 3). For this demo, run A and B on every copy in the sealed zone. At 200k, unique-edition search plus on-device count is the only affordable split; say that on the report instead of hiding it.
 

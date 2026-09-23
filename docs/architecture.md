@@ -58,7 +58,7 @@ flowchart LR
   subgraph Backend["Python FastAPI"]
     API["/v1 surveys, upload, seal, review"]
     GEO["Geometry worker"]
-    CV["Vision worker shelf-count-v1"]
+    CV["Vision worker: YOLO then shelf-count-v1"]
     S3W["Stage 3 identity / notes / damage"]
     PRICE["Pricing worker"]
     MOD["Fable + Astra-replay + Jev"]
@@ -349,35 +349,39 @@ It may return `provisional_count`, `unreadable_slots`, `recapture_hint`, blur/gl
 
 ### 5.7 Who segments a spine (Apple Vision vs YOLO)
 
-**Apple Vision rectangles own count and identity.** YOLO does not replace Pass B, `SpineInstanceTracker`, or `shelf-count-v1`. Fable, Astra Extra, and Jev are unchanged: they still receive one crop per already-tracked copy and still must not write count, ISBN, merge, or money. **Moondream2 is not used.**
+**YOLO 11x-seg from [bookshelf-scanner](https://github.com/suxrobGM/bookshelf-scanner) is the initial after-seal count and crop source** when it returns books. That is not gated on finding more spines than Apple Vision. Live Pass B still draws Apple Vision rectangles. Fable, Astra Extra, and Jev are unchanged: they receive one crop per copy and still must not write count, ISBN, merge, or money. **Moondream2 is not used.**
 
 | | Apple Vision (`VNDetectRectanglesRequest`) | YOLO 11x-seg (bookshelf-scanner path) |
 | --- | --- | --- |
 | Job | Tall/thin or stacked rectangles with ≥3 letters | COCO class 73 (`book`) instance masks |
-| When | Live on the iPhone during the sweep | After seal, on the server, optional |
-| Output | Tracked `SpineInstance` + axis-aligned JPEG crop | Masked, possibly rotated JPEG |
-| Rows, face A/B, reverse sweep | Yes — shelf-face metres | No |
+| When | Live on the iPhone during the sweep | After seal, on the server — **initial** count and crops |
+| Output | Overlay + `SpineInstance` + axis-aligned JPEG | Masked, possibly rotated JPEG + `AssetCopy` list |
+| Rows, face A/B, reverse sweep | Yes — shelf-face metres | Geometry copied from `labeled.json` when present |
 | Trained on library spines | No — geometry + OCR gate | No — generic COCO “book” |
-| Invertis | 45 copies on device | Not the field count |
+| Invertis | 45 copies on device (live overlay) | Initial after-seal count when detections exist |
 
-Vision is the better **segmenter for this survey** because the product rules are live overlay, reverse-sweep association, face B as a different copy, and unread boxes not minted. Invertis already ran that path. Leftover work is explicit: detect and track on device; do not treat this demo as a generic object classifier. COCO YOLO is that classifier. It cannot see slot, face, or that the same spine appeared twice.
+YOLO is the better **photo and initial count** for this merge. Invertis Vision crops sometimes included two or three pressed-together spines, which confused Fable. A mask that isolates one spine is the image sent to A/B and to title extraction. The switch is not “use YOLO only when N is larger.” If YOLO returns books, those detections are the copy list even when Vision tracked more or fewer.
 
-YOLO can still help as a **tighter photo**. Invertis Vision crops sometimes included two or three pressed-together spines, which confused Fable. A mask that really isolates one spine is a better image to send to A/B. On a dense stack the same COCO model often blobs a whole row, misses thin spines, or tags a binder. bookshelf-scanner was a single uploaded photo, not a LiDAR sweep.
+Live overlay stays Apple Vision because that path still owns reverse-sweep association, face B as a different copy, and unread boxes not minted during capture. COCO YOLO cannot see slot, face, or that the same spine appeared twice in a LiDAR sweep. That geometry is copied from `labeled.json` onto the YOLO pass when it exists. On a dense stack the same COCO model can still blob a row, miss a thin spine, or tag a binder — disable with `YOLO_SPINE_DISABLED=1` to fall back to Vision.
 
 Authority after seal:
 
-1. **Count / `AssetCopy`:** `labeled.json` from Apple Vision + `shelf-count-v1`. YOLO must not mint extra copies when iOS already tracked that row.
-2. **Image sent to Fable and Astra Extra:** prefer `shelf_scans/crops/…` for that slot. Attach a YOLO mask as the second image only when it exists for the same slot. If there is no Vision crop, the YOLO crop is the fallback.
-3. **Jev:** still a typed route proposal on A vs B. Policy still vetoes. Neither Vision nor YOLO is a price or identity oracle.
-4. **Frames-only packages** (no labeled spines): YOLO may create provisional copies so A/B/Jev still have something to score. That is a fallback, not the live Pass B design.
+1. **Count / `AssetCopy`:** YOLO 11x-seg (`count_source: yolo`) when it found spines. Apple Vision `labeled.json` + `shelf-count-v1` if YOLO is disabled or empty.
+2. **Image sent to Fable and Astra Extra:** prefer `derived/yolo-spines/{row}_slot{n}.jpg`. Attach the Vision crop as the second image when it exists for the same slot.
+3. **Identity:** `identify_from_frames` reads each YOLO crop and binds that title to that copy.
+4. **Jev:** still a typed route proposal on A vs B. Policy still vetoes. Neither Vision nor YOLO is a price or identity oracle.
 
 ```mermaid
 flowchart TB
-  LIVE["Pass B Apple Vision + OCR + shelf-face tracker"] --> COPY["AssetCopy + shelf_scans/crops"]
-  FRAME["Sealed shelf_scans/frames JPEG"] --> YOLO["Optional YOLO11x-seg class=book"]
+  LIVE["Pass B Apple Vision + OCR + shelf-face tracker"] --> OVERLAY["Live overlay + labeled.json geometry"]
+  FRAME["Sealed shelf_scans/frames JPEG"] --> YOLO["YOLO11x-seg class=book (bookshelf-scanner)"]
   YOLO --> MASK["derived/yolo-spines/{row}_slot{n}.jpg"]
-  COPY --> PKG["Evidence package: Vision crop first, YOLO mask second"]
-  MASK --> PKG
+  YOLO --> COPY["AssetCopy list, count_source yolo"]
+  OVERLAY -->|"fallback when YOLO empty"| COPY
+  MASK --> ID["identify_from_frames per crop"]
+  MASK --> PKG["Evidence package: YOLO crop first, Vision crop second"]
+  OVERLAY --> PKG
+  ID --> PKG
   PKG --> FA["Pipeline A Fable"]
   PKG --> AR["Pipeline B Astra Extra"]
   FA --> JEV["Jev typed route + policy"]
@@ -390,11 +394,11 @@ Implementation: `cv/library_vision/yolo_spines.py` (scale ≤2560, contrast, den
 
 ## 6. Physical-copy tracking and deduplication
 
-After seal, `VisionWorker` reads `shelf_scans/labeled.json` (or `quality.json` with `passes`) and runs `count_labeled_shelf` (`shelf-count-v1`). That labeled JSON is the Apple Vision track. Optional YOLO 11x-seg may stamp a mask crop onto an existing slot; it does not replace this count. See [§5.7](#57-who-segments-a-spine-apple-vision-vs-yolo).
+After seal, `VisionWorker` runs YOLO 11x-seg on shelf frames when available (`count_source: yolo`) and then `count_labeled_shelf`. Apple Vision `labeled.json` is the fallback if YOLO is off or empty. See [§5.7](#57-who-segments-a-spine-apple-vision-vs-yolo).
 
 ```mermaid
 flowchart TB
-  LAB["LabeledPass from Apple Vision tracks"] --> DET["SpineDetection list"]
+  LAB["YOLO spines, else Apple Vision LabeledPass"] --> DET["SpineDetection list"]
   DET --> TR["Within-pass tracks"]
   TR --> AS["Cross-pass associate"]
   AS --> COPY["AssetCopy candidates"]
@@ -762,7 +766,7 @@ Built in `replay_asset`:
 
 - `asset_copy_id`, sealed `package_hash`
 - observations for that copy
-- up to **two** JPEG/PNG refs (Apple Vision `shelf_scans/crops/` first, optional YOLO mask second), each ≤ 2 MB, base64
+- up to **two** JPEG/PNG refs (YOLO mask first when present, then Apple Vision `shelf_scans/crops/`), each ≤ 2 MB, base64
 - `target_identity`: title, ISBN already extracted, instruction “assess only this named copy”
 - `task` string
 - **No** Fable output in the Astra prompt and vice versa
@@ -1084,8 +1088,8 @@ Mutations require `Idempotency-Key`. Job keys are `survey_id + stage + input_has
 | Geography | `ios/.../Services/LocationService.swift` |
 | Face redaction | `ios/.../Security/EvidenceFaceRedactor.swift` |
 | Geometry / 2D plan | `backend/app/workflows/geometry.py`, `floor_plan.py` |
-| Spine count / dedup | `cv/library_vision/pipeline.py`, `backend/app/workflows/vision.py` (Apple Vision `labeled.json`) |
-| Optional YOLO mask crops | `cv/library_vision/yolo_spines.py` — not the copy tracker; not Moondream2; Fable/Astra/Jev still score the evidence package |
+| Spine count / dedup | `cv/library_vision/yolo_spines.py` (initial YOLO 11x-seg), then `pipeline.py` + `vision.py`; Apple Vision `labeled.json` if YOLO is empty |
+| YOLO crops → Fable / Astra / identity | `derived/yolo-spines/`; `identify_from_frames` per crop; not Moondream2 |
 | Identity / notes / damage | `backend/app/workflows/stage3.py`, `identifiers.py` |
 | Catalog | `backend/app/providers/catalog/chain.py` |
 | Voice server | `backend/app/providers/voice.py` |

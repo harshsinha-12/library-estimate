@@ -167,6 +167,7 @@ class VisionWorker:
                 {
                     "schema_version": "1.0.0",
                     "pipeline": "yolo11x-seg-book-spines",
+                    "count_source": "yolo",
                     "recognizer": "fable_astra_jev",
                     "moondream2": False,
                     "frames": frames[:8],

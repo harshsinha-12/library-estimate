@@ -491,9 +491,9 @@ def _target_identity(repository: SurveyRepository, survey_id: UUID, asset: dict)
 
 def _evidence_rank(path: str) -> int:
     lower = path.lower()
-    if "/crops/" in lower:
-        return 0
     if "/yolo-spines/" in lower and lower.endswith((".jpg", ".jpeg", ".png")):
+        return 0
+    if "/crops/" in lower:
         return 1
     return 2
 
@@ -510,8 +510,8 @@ def _crop_refs(repository: SurveyRepository, survey_id: UUID, asset: dict) -> li
     if row_id is not None and slot is not None:
         from cv.library_vision.yolo_spines import crop_path
 
-        candidates.append(f"shelf_scans/crops/{row_id}_slot{slot}.jpg")
         candidates.append(crop_path(str(row_id), int(slot)))
+        candidates.append(f"shelf_scans/crops/{row_id}_slot{slot}.jpg")
     detections = _yolo_detections(repository, survey_id)
     asset_id = str(asset.get("asset_copy_id") or "")
     for row in detections.get("crops") or []:

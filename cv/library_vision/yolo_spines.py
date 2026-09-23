@@ -1,9 +1,9 @@
-"""Optional YOLO11 mask crops for already-tracked spines.
+"""Initial after-seal spine count and crops from YOLO 11x-seg.
 
-Apple Vision rectangles + shelf-face tracking own count and identity.
-This module follows suxrobGM/bookshelf-scanner (YOLO 11x-seg, COCO class 73)
-only to cut a tighter photo. Moondream2 is not used. Title, condition, and
-routing stay on the sealed Fable + Astra-replay + Jev flow.
+Follows suxrobGM/bookshelf-scanner (YOLO 11x-seg, COCO class 73). Live Pass B
+still draws Apple Vision rectangles. When YOLO returns books, those detections
+are the initial count and the crops sent to Fable / Astra Extra / Jev.
+Moondream2 is not used.
 """
 
 from __future__ import annotations
@@ -210,16 +210,45 @@ def attach_yolo_crops(labeled: dict, spines: list[SpineCrop], *, row_id: str | N
 
 
 def merge_yolo_into_labeled(labeled: dict | None, yolo_passes: list[dict]) -> dict | None:
+    """YOLO is the initial after-seal count when it found spines, not only when N is larger."""
     if not yolo_passes:
         return labeled
-    if not labeled_has_spines(labeled):
-        return {"passes": yolo_passes, "segmentation": PIPELINE_NAME}
-    merged = dict(labeled or {"passes": []})
+    geometry = _geometry_from_labeled(labeled)
+    passes = []
     for scan in yolo_passes:
-        rows = scan.get("rows") or [{}]
-        row_id = rows[0].get("row_id") if isinstance(rows[0], dict) else None
-        merged = attach_yolo_crops(merged, _spines_from_pass(scan), row_id=row_id)
-    return merged
+        row = dict(scan)
+        for key, value in geometry.items():
+            if value not in (None, "", []) and not row.get(key):
+                row[key] = value
+        if geometry.get("face_id"):
+            row["face_id"] = geometry["face_id"]
+            row["label"] = geometry.get("label") or geometry["face_id"]
+        passes.append(row)
+    return {
+        "passes": passes,
+        "segmentation": PIPELINE_NAME,
+        "count_source": "yolo",
+    }
+
+
+def _geometry_from_labeled(labeled: dict | None) -> dict:
+    if not isinstance(labeled, dict):
+        return {}
+    for scan in labeled.get("passes") or []:
+        if not isinstance(scan, dict):
+            continue
+        return {
+            "room_id": scan.get("room_id"),
+            "shelf_id": scan.get("shelf_id"),
+            "face_id": scan.get("face_id"),
+            "label": scan.get("label") or scan.get("face_id"),
+            "face_normal": scan.get("face_normal"),
+            "min_x": scan.get("min_x"),
+            "min_z": scan.get("min_z"),
+            "max_x": scan.get("max_x"),
+            "max_z": scan.get("max_z"),
+        }
+    return {}
 
 
 def _spines_from_pass(scan: dict) -> list[SpineCrop]:

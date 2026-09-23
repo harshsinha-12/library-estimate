@@ -582,12 +582,52 @@ class PricingWorker:
 
     def identify_from_frames(self, repository: SurveyRepository, survey_id: UUID) -> dict:
         stage3 = repository.get_json(survey_id, "stage3") or {}
+        inventory = repository.get_json(survey_id, "inventory") or {}
         assets = [item for item in stage3.get("assets") or [] if item.get("category") == "book"]
         identities = list(stage3.get("identities") or [])
         identified = {item.get("asset_copy_id") for item in identities if item.get("title")}
         unread = [item for item in assets if item["asset_copy_id"] not in identified]
         titles: list[str] = []
         seen: set[str] = set()
+        copies_by_id = {
+            str(item.get("asset_copy_id")): item
+            for item in inventory.get("asset_copies") or []
+            if item.get("asset_copy_id")
+        }
+        remaining: list[dict] = []
+        for asset in unread:
+            copy = copies_by_id.get(str(asset.get("asset_copy_id"))) or asset
+            crop = _identity_crop_path(repository, survey_id, copy)
+            if not crop:
+                remaining.append(asset)
+                continue
+            try:
+                jpeg = repository.get_bytes(survey_id, crop)
+            except FileNotFoundError:
+                remaining.append(asset)
+                continue
+            try:
+                extracted = self.extract_titles(jpeg) or []
+            except (OSError, TypeError, ValueError):
+                extracted = []
+            title = next((item for item in extracted if len(str(item).strip()) >= 8), None)
+            if not title:
+                remaining.append(asset)
+                continue
+            key = title.lower()
+            if key not in seen:
+                seen.add(key)
+                titles.append(title)
+            identities.append(
+                {
+                    "asset_copy_id": asset["asset_copy_id"],
+                    "title": title,
+                    "author": "",
+                    "status": "vision_title",
+                    "evidence_ref": crop,
+                }
+            )
+        unread = remaining
         frame_paths = _frame_paths(repository, survey_id)
         for path in frame_paths[:12]:
             try:
@@ -604,12 +644,16 @@ class PricingWorker:
                     continue
                 seen.add(key)
                 titles.append(title)
-        # Frame OCR establishes identity candidates only. Pricing is queued later from
-        # copies that actually received that identity, so OCR fragments never trigger
-        # speculative searches on their own.
         searches: list[dict] = []
         if unread and titles:
-            for asset, title in zip(unread, titles, strict=False):
+            unused = [
+                title
+                for title in titles
+                if title.lower()
+                not in {str(item.get("title") or "").lower() for item in identities if item.get("title")}
+            ]
+            pool = unused or titles
+            for asset, title in zip(unread, pool, strict=False):
                 identities.append(
                     {
                         "asset_copy_id": asset["asset_copy_id"],
@@ -619,7 +663,8 @@ class PricingWorker:
                         "evidence_ref": "shelf_scans/frames",
                     }
                 )
-            assigned = {item["asset_copy_id"] for item in identities if item.get("title")}
+        assigned = {item["asset_copy_id"] for item in identities if item.get("title")}
+        if assigned - identified:
             for item in stage3.get("queue") or []:
                 if (
                     item.get("kind") == "unread_spine"
@@ -627,7 +672,7 @@ class PricingWorker:
                     and item.get("status") == "open"
                 ):
                     item["status"] = "closed"
-                    item["message"] = "Title read from shelf frame"
+                    item["message"] = "Title read from spine crop"
             stage3["identities"] = identities
             repository.save_json(survey_id, "stage3", stage3)
         self._record_log(
@@ -2210,6 +2255,39 @@ class PricingWorker:
             },
             "rates": band,
         }
+
+
+def _identity_crop_path(repository: SurveyRepository, survey_id: UUID, asset: dict) -> str | None:
+    from cv.library_vision.yolo_spines import crop_path, detections_path
+
+    row_id = asset.get("row_id")
+    slot = asset.get("slot")
+    candidates: list[str] = []
+    if repository.exists_bytes(survey_id, detections_path()):
+        try:
+            payload = json.loads(repository.get_bytes(survey_id, detections_path()).decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError, FileNotFoundError):
+            payload = {}
+        for row in payload.get("crops") or []:
+            path = str(row.get("path") or "")
+            if not path:
+                continue
+            if row_id is not None and slot is not None:
+                if str(row.get("row_id")) == str(row_id) and int(row.get("slot", -1)) == int(slot):
+                    candidates.append(path)
+            else:
+                candidates.append(path)
+    if row_id is not None and slot is not None:
+        candidates.append(crop_path(str(row_id), int(slot)))
+        candidates.append(f"shelf_scans/crops/{row_id}_slot{slot}.jpg")
+    seen: set[str] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        if repository.exists_bytes(survey_id, path):
+            return path
+    return None
 
 
 def _frame_paths(repository: SurveyRepository, survey_id: UUID) -> list[str]:
