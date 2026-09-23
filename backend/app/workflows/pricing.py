@@ -646,12 +646,12 @@ class PricingWorker:
                 titles.append(title)
         searches: list[dict] = []
         if unread and titles:
-            unused = [
-                title
-                for title in titles
-                if title.lower()
-                not in {str(item.get("title") or "").lower() for item in identities if item.get("title")}
-            ]
+            bound = {
+                str(item.get("title") or "").lower()
+                for item in identities
+                if item.get("title")
+            }
+            unused = [title for title in titles if title.lower() not in bound]
             pool = unused or titles
             for asset, title in zip(unread, pool, strict=False):
                 identities.append(
