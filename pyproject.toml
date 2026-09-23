@@ -26,6 +26,11 @@ dev = [
   "pytest>=8.3,<9",
   "ruff>=0.9,<1",
 ]
+yolo = [
+  "ultralytics>=8.3,<9",
+  "opencv-python-headless>=4.10,<5",
+  "pillow>=11,<12",
+]
 
 [tool.setuptools.packages.find]
 include = ["backend*", "cv*"]

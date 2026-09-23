@@ -58,7 +58,7 @@ flowchart LR
   subgraph Backend["Python FastAPI"]
     API["/v1 surveys, upload, seal, review"]
     GEO["Geometry worker"]
-    CV["Vision worker shelf-count-v1"]
+    CV["Vision worker YOLO spines + shelf-count-v1"]
     S3W["Stage 3 identity / notes / damage"]
     PRICE["Pricing worker"]
     MOD["Fable + Astra-replay + Jev"]
@@ -347,15 +347,32 @@ Optional sampled Astra Extra live assist (`POST /v1/surveys/{id}/astra-live`):
 
 It may return `provisional_count`, `unreadable_slots`, `recapture_hint`, blur/glare/readable flags. On-device Vision remains the primary live overlay.
 
+### 5.7 After-seal YOLO spine segmentation (not Moondream2)
+
+Live Pass B still uses Apple Vision rectangles. After seal, `VisionWorker` runs the [bookshelf-scanner](https://github.com/suxrobGM/bookshelf-scanner) YOLO 11x-seg book-spine path on `shelf_scans/frames/*.jpg` (COCO class 73, contrast/denoise, mask crop, rotate if height/width > 2). **Moondream2 is not used.** Each crop is stored under `derived/yolo-spines/{row}_slot{n}.jpg` and is the preferred image sent to Pipeline A (Fable), Pipeline B (Astra Extra replay), and then Jev.
+
+```mermaid
+flowchart TB
+  FRAME["Sealed shelf_scans/frames JPEG"] --> PRE["Scale ≤2560, contrast, denoise"]
+  PRE --> YOLO["YOLO11x-seg class=book (73)"]
+  YOLO --> CROP["Mask, crop, rotate if spine"]
+  CROP --> STORE["derived/yolo-spines/{row}_slot{n}.jpg"]
+  STORE --> COUNT["shelf-count-v1 AssetCopy"]
+  COUNT --> AB["Same crop bytes → Fable and Astra Extra"]
+  AB --> JEV["Jev typed route + policy"]
+```
+
+If iOS already tracked spines in `labeled.json`, YOLO stamps crops onto those slots and does not mint extra copies. If the package has frames but no labeled spines, YOLO detections become the copies. Optional extra: `pip install -e '.[yolo]'`. Disable with `YOLO_SPINE_DISABLED=1`.
+
 ---
 
 ## 6. Physical-copy tracking and deduplication
 
-After seal, `VisionWorker` reads `shelf_scans/labeled.json` (or `quality.json` with `passes`) and runs `cv.library_vision.pipeline.count_labeled_shelf` (`shelf-count-v1`).
+After seal, `VisionWorker` reads `shelf_scans/labeled.json` (or `quality.json` with `passes`). When shelf frames are present it also runs YOLO 11x-seg book-spine crops (`cv.library_vision.yolo_spines`, not Moondream2), then `count_labeled_shelf` (`shelf-count-v1`).
 
 ```mermaid
 flowchart TB
-  LAB["LabeledPass: faces, rows, spines, quality, face_normal"] --> DET["SpineDetection list"]
+  LAB["LabeledPass and/or YOLO 11x-seg crops"] --> DET["SpineDetection list"]
   DET --> TR["Within-pass tracks"]
   TR --> AS["Cross-pass associate"]
   AS --> COPY["AssetCopy candidates"]
@@ -723,7 +740,7 @@ Built in `replay_asset`:
 
 - `asset_copy_id`, sealed `package_hash`
 - observations for that copy
-- up to **two** JPEG/PNG refs (crop preferred), each ≤ 2 MB, base64
+- up to **two** JPEG/PNG refs (YOLO spine crop preferred, then `shelf_scans/crops/`), each ≤ 2 MB, base64
 - `target_identity`: title, ISBN already extracted, instruction “assess only this named copy”
 - `task` string
 - **No** Fable output in the Astra prompt and vice versa
@@ -1046,6 +1063,7 @@ Mutations require `Idempotency-Key`. Job keys are `survey_id + stage + input_has
 | Face redaction | `ios/.../Security/EvidenceFaceRedactor.swift` |
 | Geometry / 2D plan | `backend/app/workflows/geometry.py`, `floor_plan.py` |
 | Spine count / dedup | `cv/library_vision/pipeline.py`, `backend/app/workflows/vision.py` |
+| YOLO book-spine crops | `cv/library_vision/yolo_spines.py` (YOLO11x-seg; Fable/Astra/Jev, not Moondream2) |
 | Identity / notes / damage | `backend/app/workflows/stage3.py`, `identifiers.py` |
 | Catalog | `backend/app/providers/catalog/chain.py` |
 | Voice server | `backend/app/providers/voice.py` |

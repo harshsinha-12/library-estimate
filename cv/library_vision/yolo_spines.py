@@ -1,0 +1,410 @@
+"""YOLO11 instance segmentation of book spines, then Fable / Astra / Jev.
+
+The crop/rotate path follows suxrobGM/bookshelf-scanner (YOLO 11x-seg, COCO
+class 73 = book). Moondream2 is not used: title, condition, and routing stay
+on the sealed Fable + Astra-replay + Jev flow.
+"""
+
+from __future__ import annotations
+
+import io
+import os
+from dataclasses import asdict, dataclass
+from typing import Protocol
+
+PIPELINE_NAME = "yolo11x-seg-book-spines"
+COCO_BOOK_CLASS = 73
+MAX_EDGE = 2560
+SPINE_ASPECT_THRESHOLD = 2.0
+DEFAULT_CONFIDENCE = 0.25
+DEFAULT_MODEL = "yolo11x-seg.pt"
+
+
+@dataclass(slots=True)
+class SpineCrop:
+    slot: int
+    x: float
+    y: float
+    width: float
+    height: float
+    confidence: float
+    jpeg: bytes
+    rotated: bool
+    stacked: bool
+    xyxy: tuple[float, float, float, float]
+    source_path: str = ""
+
+    def meta(self) -> dict:
+        payload = asdict(self)
+        payload.pop("jpeg")
+        payload["xyxy"] = list(self.xyxy)
+        payload["jpeg_bytes"] = len(self.jpeg)
+        return payload
+
+
+class SpineSegmenter(Protocol):
+    def __call__(self, jpeg: bytes, *, source_path: str = "") -> list[SpineCrop]: ...
+
+
+def yolo_enabled() -> bool:
+    if os.getenv("YOLO_SPINE_DISABLED", "").strip() in {"1", "true", "yes"}:
+        return False
+    try:
+        import ultralytics  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def should_rotate_spine(
+    width: float, height: float, threshold: float = SPINE_ASPECT_THRESHOLD
+) -> bool:
+    if width <= 0:
+        return False
+    return (height / width) > threshold
+
+
+def sort_spines_left_to_right(spines: list[SpineCrop]) -> list[SpineCrop]:
+    ordered = sorted(spines, key=lambda item: (item.x, item.slot, item.y))
+    for index, item in enumerate(ordered):
+        item.slot = index
+    return ordered
+
+
+def crop_path(row_id: str, slot: int) -> str:
+    safe_row = str(row_id).replace("/", "_")
+    return f"derived/yolo-spines/{safe_row}_slot{int(slot)}.jpg"
+
+
+def detections_path() -> str:
+    return "derived/yolo-spines/detections.json"
+
+
+def overlay_path(source_path: str) -> str:
+    name = source_path.rsplit("/", 1)[-1] or "frame.jpg"
+    if not name.lower().endswith((".jpg", ".jpeg", ".png")):
+        name = f"{name}.jpg"
+    return f"derived/yolo-spines/overlays/{name}"
+
+
+def labeled_has_spines(labeled: dict | None) -> bool:
+    if not isinstance(labeled, dict):
+        return False
+    for scan in labeled.get("passes") or []:
+        if not isinstance(scan, dict):
+            continue
+        for row in scan.get("rows") or []:
+            if isinstance(row, dict) and row.get("spines"):
+                return True
+    return False
+
+
+def labeled_pass_from_spines(
+    spines: list[SpineCrop],
+    *,
+    frame_path: str,
+    pass_id: str,
+    room_id: str = "room",
+    shelf_id: str = "shelf",
+    face_id: str = "shelf.face_A",
+    row_id: str = "row_01",
+    t: float = 1.0,
+    face_normal: tuple[float, float, float] = (0.0, 0.0, 1.0),
+) -> dict:
+    ordered = sort_spines_left_to_right(list(spines))
+    coverage = 0.85 if ordered else 0.0
+    return {
+        "pass_id": pass_id,
+        "room_id": room_id,
+        "shelf_id": shelf_id,
+        "face_id": face_id,
+        "face_normal": list(face_normal),
+        "label": face_id,
+        "min_x": 0.4,
+        "min_z": 0.4,
+        "max_x": 1.2,
+        "max_z": 0.7,
+        "capacity_m": 1.0,
+        "evidence_bytes": sum(len(item.jpeg) for item in ordered),
+        "t": t,
+        "quality": {
+            "blur": 0.1,
+            "glare": 0.05,
+            "speed": 0.1,
+            "text_pixel_height": 22,
+            "occlusion": 0.0,
+        },
+        "segmentation": PIPELINE_NAME,
+        "source_frame": frame_path,
+        "rows": [
+            {
+                "row_id": row_id,
+                "coverage": coverage,
+                "capacity_m": 1.0,
+                "capture_status": "ok" if ordered else "partial",
+                "spines": [
+                    {
+                        "observation_id": f"yolo_{row_id}_{item.slot}",
+                        "slot": item.slot,
+                        "x": round(0.4 + item.x * 0.8, 4),
+                        "t": t,
+                        "appearance": f"yolo-spine-{item.slot}",
+                        "evidence_ref": crop_path(row_id, item.slot),
+                        "readable": True,
+                        "stacked": item.stacked,
+                        "leaning": item.rotated,
+                        "confidence": item.confidence,
+                    }
+                    for item in ordered
+                ],
+            }
+        ],
+    }
+
+
+def attach_yolo_crops(labeled: dict, spines: list[SpineCrop], *, row_id: str | None = None) -> dict:
+    """Keep existing iOS tracks; stamp YOLO crops onto matching slots."""
+    merged = dict(labeled)
+    passes = [dict(scan) for scan in merged.get("passes") or []]
+    target_row = row_id
+    attached = 0
+    for scan in passes:
+        rows = []
+        for row in scan.get("rows") or []:
+            row = dict(row)
+            if target_row and row.get("row_id") != target_row:
+                rows.append(row)
+                continue
+            existing = list(row.get("spines") or [])
+            ordered_existing = sorted(
+                existing,
+                key=lambda item: (float(item.get("x", 0)), int(item.get("slot", 0))),
+            )
+            ordered_yolo = sort_spines_left_to_right(list(spines))
+            updated: list[dict] = []
+            for index, spine in enumerate(ordered_existing):
+                item = dict(spine)
+                slot = int(item.get("slot", index))
+                crop = next(
+                    (candidate for candidate in ordered_yolo if candidate.slot == slot),
+                    None,
+                )
+                if crop is None and index < len(ordered_yolo):
+                    crop = ordered_yolo[index]
+                if crop is not None:
+                    item["evidence_ref"] = crop_path(row.get("row_id") or "row_01", crop.slot)
+                    item["appearance"] = item.get("appearance") or f"yolo-spine-{crop.slot}"
+                    item["readable"] = True if item.get("readable") is None else item["readable"]
+                    attached += 1
+                updated.append(item)
+            row["spines"] = updated
+            rows.append(row)
+            if target_row is None:
+                target_row = row.get("row_id")
+        scan["rows"] = rows
+        scan["segmentation"] = PIPELINE_NAME
+    merged["passes"] = passes
+    merged["yolo_attached"] = attached
+    return merged
+
+
+def merge_yolo_into_labeled(labeled: dict | None, yolo_passes: list[dict]) -> dict | None:
+    if not yolo_passes:
+        return labeled
+    if not labeled_has_spines(labeled):
+        return {"passes": yolo_passes, "segmentation": PIPELINE_NAME}
+    merged = dict(labeled or {"passes": []})
+    for scan in yolo_passes:
+        rows = scan.get("rows") or [{}]
+        row_id = rows[0].get("row_id") if isinstance(rows[0], dict) else None
+        merged = attach_yolo_crops(merged, _spines_from_pass(scan), row_id=row_id)
+    return merged
+
+
+def _spines_from_pass(scan: dict) -> list[SpineCrop]:
+    spines: list[SpineCrop] = []
+    for row in scan.get("rows") or []:
+        for item in row.get("spines") or []:
+            spines.append(
+                SpineCrop(
+                    slot=int(item.get("slot", len(spines))),
+                    x=float(item.get("x", 0)),
+                    y=0.5,
+                    width=0.04,
+                    height=0.4,
+                    confidence=float(item.get("confidence", 0.5)),
+                    jpeg=b"",
+                    rotated=bool(item.get("leaning")),
+                    stacked=bool(item.get("stacked")),
+                    xyxy=(0, 0, 0, 0),
+                    source_path=str(scan.get("source_frame") or ""),
+                )
+            )
+    return spines
+
+
+def segment_book_spines(jpeg: bytes, *, source_path: str = "") -> list[SpineCrop]:
+    """Run YOLO 11x-seg on a shelf JPEG. Returns [] if weights/runtime are unavailable."""
+    if not jpeg or not yolo_enabled():
+        return []
+    predictor = UltralyticsBookSegmenter()
+    return predictor(jpeg, source_path=source_path)
+
+
+class UltralyticsBookSegmenter:
+    """Adapter around ultralytics YOLO11x-seg. Loads the model once per process."""
+
+    _model = None
+
+    def __init__(self, model_path: str | None = None) -> None:
+        self.model_path = (
+            (model_path or "").strip()
+            or os.getenv("YOLO_SPINE_MODEL", "").strip()
+            or DEFAULT_MODEL
+        )
+        self.book_class = int(os.getenv("YOLO_BOOK_CLASS", str(COCO_BOOK_CLASS)))
+        self.confidence = float(os.getenv("YOLO_SPINE_CONFIDENCE", str(DEFAULT_CONFIDENCE)))
+
+    def __call__(self, jpeg: bytes, *, source_path: str = "") -> list[SpineCrop]:
+        image = _load_rgb(jpeg)
+        if image is None:
+            return []
+        enhanced = _preprocess(image)
+        model = self._load_model()
+        kwargs = {
+            "imgsz": max(32, int(enhanced.size[0])),
+            "classes": [self.book_class],
+            "retina_masks": True,
+            "conf": self.confidence,
+            "verbose": False,
+        }
+        if _cuda_available():
+            kwargs["half"] = True
+        results = model.predict(enhanced, **kwargs)
+        if not results:
+            return []
+        result = results[0]
+        boxes = getattr(result, "boxes", None)
+        masks = getattr(result, "masks", None)
+        if boxes is None or len(boxes) == 0:
+            return []
+        spines: list[SpineCrop] = []
+        mask_data = getattr(masks, "data", None) if masks is not None else None
+        for index, box in enumerate(boxes):
+            xyxy = _xyxy(box)
+            conf = _confidence(box)
+            mask = mask_data[index] if mask_data is not None else None
+            crop = _mask_and_crop(enhanced, mask, xyxy)
+            width = max(1.0, xyxy[2] - xyxy[0])
+            height = max(1.0, xyxy[3] - xyxy[1])
+            rotated = should_rotate_spine(width, height)
+            if rotated:
+                crop = crop.rotate(90, expand=True)
+            image_width, image_height = enhanced.size
+            spines.append(
+                SpineCrop(
+                    slot=index,
+                    x=_clamp((xyxy[0] + xyxy[2]) / 2 / image_width),
+                    y=_clamp((xyxy[1] + xyxy[3]) / 2 / image_height),
+                    width=_clamp(width / image_width),
+                    height=_clamp(height / image_height),
+                    confidence=conf,
+                    jpeg=_to_jpeg(crop),
+                    rotated=rotated,
+                    stacked=width > height * 1.4,
+                    xyxy=xyxy,
+                    source_path=source_path,
+                )
+            )
+        return sort_spines_left_to_right(spines)
+
+    def _load_model(self):
+        if UltralyticsBookSegmenter._model is None:
+            from ultralytics import YOLO
+
+            UltralyticsBookSegmenter._model = YOLO(self.model_path, task="segment")
+        return UltralyticsBookSegmenter._model
+
+
+def _load_rgb(jpeg: bytes):
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(jpeg))
+    image = image.convert("RGB")
+    from PIL import ImageOps
+
+    ImageOps.exif_transpose(image, in_place=True)
+    if image.size[0] > MAX_EDGE or image.size[1] > MAX_EDGE:
+        image.thumbnail((MAX_EDGE, MAX_EDGE))
+    if image.width > image.height:
+        image = image.rotate(-90, expand=True)
+    return image
+
+
+def _preprocess(image):
+    from PIL import ImageEnhance
+
+    enhanced = ImageEnhance.Contrast(image).enhance(1.5)
+    enhanced = ImageEnhance.Brightness(enhanced).enhance(1.1)
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return enhanced
+    array = cv2.cvtColor(np.array(enhanced), cv2.COLOR_RGB2BGR)
+    array = cv2.fastNlMeansDenoisingColored(array, None, 10, 10, 7, 21)
+    from PIL import Image
+
+    return Image.fromarray(cv2.cvtColor(array, cv2.COLOR_BGR2RGB))
+
+
+def _mask_and_crop(image, mask_tensor, xyxy: tuple[float, float, float, float]):
+    from PIL import Image
+
+    x1, y1, x2, y2 = (int(value) for value in xyxy)
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = max(x1 + 1, x2), max(y1 + 1, y2)
+    if mask_tensor is None:
+        return image.crop((x1, y1, x2, y2))
+    array = mask_tensor.detach().cpu().numpy() if hasattr(mask_tensor, "detach") else mask_tensor
+    mask = Image.fromarray(array.astype("uint8") * 255)
+    if mask.size != image.size:
+        mask = mask.resize(image.size)
+    masked = Image.new("RGB", image.size)
+    masked.paste(image, mask=mask)
+    return masked.crop((x1, y1, x2, y2))
+
+
+def _to_jpeg(image) -> bytes:
+    buffer = io.BytesIO()
+    image.convert("RGB").save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue()
+
+
+def _xyxy(box) -> tuple[float, float, float, float]:
+    raw = box.xyxy[0]
+    values = raw.tolist() if hasattr(raw, "tolist") else list(raw)
+    return float(values[0]), float(values[1]), float(values[2]), float(values[3])
+
+
+def _confidence(box) -> float:
+    conf = getattr(box, "conf", None)
+    if conf is None:
+        return 0.5
+    value = conf[0] if hasattr(conf, "__getitem__") else conf
+    if hasattr(value, "item"):
+        value = value.item()
+    return float(value)
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except ImportError:
+        return False
+
+
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))

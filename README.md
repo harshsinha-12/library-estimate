@@ -140,7 +140,7 @@ curl -o ~/Downloads/library-survey.pdf \
 2. **Live spines.** Apple Vision rectangles + OCR; only boxes with readable letters become copies. Association is in shelf-face metres. Coverage is 8 cm bins along the face of readable detections.
 3. **Voice.** AAC on the RoomPlan session clock. After seal, server STT; notes bind by tap / reticle / pose / time / semantics, or stay unbound.
 4. **Astra-live Extra** during Pass B/C is assist metadata, not inventory.
-5. **After seal.** Geometry → vision count → identity/notes/damage → `web_search` drafts → Fable (A) and Astra Extra (B) on the same sealed bytes → Jev + policy. Every decision appends an `RLTransition`.
+5. **After seal.** Geometry → YOLO 11x-seg spine crops (no Moondream2) → vision count → identity/notes/damage → `web_search` drafts → Fable (A) and Astra Extra (B) on the same sealed crop bytes → Jev + policy. Every decision appends an `RLTransition`.
 6. **Price search** once per unique edition + market via OpenAI Responses `web_search` (`user_location` from survey geography). ISBN first, else name. No Bing. Amazon scraping was a deliberate refusal; web_search is the shipped path.
 7. **Building value** is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`, shown on the report summary next to estimated provider spend. Not a sale price.
 
@@ -171,7 +171,7 @@ Physical install: [`INSTALLATION.md`](INSTALLATION.md).
 ```text
 backend/     FastAPI, Redis, R2, pricing, Fable/Astra Extra/Jev, RL, reports
 ios/          LibrarySurvey (SwiftUI, RoomPlan, Vision, live spine tracker)
-cv/           labeled-JSON shelf count helpers (shelf-count-v1)
+cv/           labeled-JSON shelf count plus YOLO 11x-seg spine crops (no Moondream2)
 schemas/      Survey IR, evidence package, model assessment, RL transition
 docs/         architecture.md, gates, Invertis PDF, screenshots, LLM-trace excerpts
 eval/         holdout/preflight (templates are not device accuracy)
@@ -221,7 +221,7 @@ flowchart LR
   subgraph Backend["Python FastAPI"]
     API["/v1 surveys, upload, seal, review"]
     GEO["Geometry worker"]
-    CV["Vision worker shelf-count-v1"]
+    CV["Vision worker YOLO spines + shelf-count-v1"]
     S3W["Stage 3 identity / notes / damage"]
     PRICE["Pricing worker"]
     MOD["Fable + Astra Extra replay + Jev"]

@@ -208,7 +208,7 @@ def _replay_body(
     crop = _crop_ref(repository, survey_id, asset)
     if crop:
         refs.add(crop)
-    refs = sorted(refs, key=lambda path: (0 if "/crops/" in path else 1, path))
+    refs = sorted(refs, key=lambda path: (_evidence_rank(path), path))
     if not refs:
         raise ModelReplayError("asset has no evidence references")
     target = _target_identity(repository, survey_id, asset)
@@ -490,12 +490,49 @@ def _target_identity(repository: SurveyRepository, survey_id: UUID, asset: dict)
     }
 
 
+def _evidence_rank(path: str) -> int:
+    lower = path.lower()
+    if "/yolo-spines/" in lower and lower.endswith((".jpg", ".jpeg", ".png")):
+        return 0
+    if "/crops/" in lower:
+        return 1
+    return 2
+
+
 def _crop_ref(repository: SurveyRepository, survey_id: UUID, asset: dict) -> str | None:
     row_id = asset.get("row_id")
     slot = asset.get("slot")
-    if row_id is None or slot is None:
-        return None
-    path = f"shelf_scans/crops/{row_id}_slot{slot}.jpg"
-    if repository.exists_bytes(survey_id, path):
-        return path
+    candidates: list[str] = []
+    if row_id is not None and slot is not None:
+        from cv.library_vision.yolo_spines import crop_path
+
+        candidates.append(crop_path(str(row_id), int(slot)))
+        candidates.append(f"shelf_scans/crops/{row_id}_slot{slot}.jpg")
+    detections = _yolo_detections(repository, survey_id)
+    asset_id = str(asset.get("asset_copy_id") or "")
+    for row in detections.get("crops") or []:
+        path = str(row.get("path") or "")
+        if not path:
+            continue
+        if row_id is not None and slot is not None:
+            if str(row.get("row_id")) == str(row_id) and int(row.get("slot", -1)) == int(slot):
+                candidates.insert(0, path)
+        elif asset_id and str(row.get("asset_copy_id") or "") == asset_id:
+            candidates.append(path)
+    for path in candidates:
+        if repository.exists_bytes(survey_id, path):
+            return path
     return None
+
+
+def _yolo_detections(repository: SurveyRepository, survey_id: UUID) -> dict:
+    from cv.library_vision.yolo_spines import detections_path
+
+    path = detections_path()
+    if not repository.exists_bytes(survey_id, path):
+        return {}
+    try:
+        payload = json.loads(repository.get_bytes(survey_id, path).decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, FileNotFoundError):
+        return {}
+    return payload if isinstance(payload, dict) else {}

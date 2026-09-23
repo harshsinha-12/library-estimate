@@ -2216,6 +2216,18 @@ def _frame_paths(repository: SurveyRepository, survey_id: UUID) -> list[str]:
     crops: list[str] = []
     frames: list[str] = []
     room: list[str] = []
+    yolo: list[str] = []
+    try:
+        from cv.library_vision.yolo_spines import detections_path
+
+        if repository.exists_bytes(survey_id, detections_path()):
+            payload = json.loads(repository.get_bytes(survey_id, detections_path()).decode("utf-8"))
+            for row in payload.get("crops") or []:
+                path = str(row.get("path") or "")
+                if path and repository.exists_bytes(survey_id, path):
+                    yolo.append(path)
+    except (json.JSONDecodeError, UnicodeDecodeError, FileNotFoundError, TypeError):
+        yolo = []
     for path in sorted(repository.uploads(survey_id)):
         lower = path.lower()
         if not lower.endswith((".jpg", ".jpeg")):
@@ -2226,7 +2238,7 @@ def _frame_paths(repository: SurveyRepository, survey_id: UUID) -> list[str]:
             frames.append(path)
         elif lower.startswith("roomplan/") and "/frames/" in lower:
             room.append(path)
-    return crops + frames + room[-12:]
+    return yolo + crops + frames + room[-12:]
 
 
 def _found_copy_id(category: str, title: str) -> str:
