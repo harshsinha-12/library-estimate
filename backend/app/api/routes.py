@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import mimetypes
 from typing import Annotated
@@ -22,6 +23,7 @@ from backend.app.domain.models import (
     SurveyRecord,
     SurveyStateEvent,
     UploadedFile,
+    YoloLiveRequest,
 )
 from backend.app.domain.repository import SurveyNotFoundError
 from backend.app.providers.usage import usage_for_run, usage_for_survey, usage_scope
@@ -190,6 +192,32 @@ def model_replay(request: Request, survey_id: UUID, asset_copy_id: str) -> dict:
         raise HTTPException(status_code=404, detail="survey not found") from error
     except ModelReplayError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/yolo-live")
+def yolo_live(payload: YoloLiveRequest) -> dict:
+    from cv.library_vision.yolo_spines import live_overlay
+
+    raw = (payload.image_base64 or "").strip()
+    jpeg = b""
+    if raw:
+        try:
+            jpeg = base64.b64decode(raw, validate=False)
+        except (ValueError, TypeError):
+            jpeg = b""
+    if len(jpeg) > 400_000:
+        jpeg = jpeg[:400_000]
+    return live_overlay(jpeg)
+
+
+@router.get("/yolo-live")
+def yolo_live_status() -> dict:
+    from cv.library_vision.yolo_spines import YOLO_INSTALL_HINT, live_overlay
+
+    status = live_overlay(b"")
+    if not status.get("enabled"):
+        status["install"] = status.get("install") or YOLO_INSTALL_HINT
+    return status
 
 
 @router.post("/surveys/{survey_id}/astra-live")

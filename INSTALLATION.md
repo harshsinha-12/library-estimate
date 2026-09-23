@@ -135,3 +135,18 @@ xcrun devicectl device process launch \
   --device 00008150-000244892647401C \
   dev.harshsinha.LibrarySurvey
 ```
+
+## YOLO book boxes (Mac extra)
+
+The filled green `book 0.xx` overlay from bookshelf-scanner runs on the **Mac**, not on the iPhone.
+
+```bash
+cd "/Users/harshsinha/VS Code/library-roomplan"
+pip install -e '.[yolo]'
+python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
+```
+
+Rebuild and reinstall the iOS app (the steps above). In the app, set Backend URL to `http://<Mac-Wi-Fi-IP>:8000`. Open Pass B and point at a shelf — green boxes should appear on the camera. `Start sweep` is only required to *track* copies; the overlay is a preview.
+
+The phone never installs ultralytics. If the extra is missing, the caption tells you to `pip install -e '.[yolo]'` on the Mac.
+

@@ -157,6 +157,18 @@ python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --po
 
 Phone Backend URL: `http://<Mac-Wi-Fi-IP>:8000`. Mac and iPhone must share a network that allows client-to-client traffic. Uvicorn binds `0.0.0.0`, not `127.0.0.1`.
 
+The green `book 0.xx` boxes in the [bookshelf-scanner](https://github.com/suxrobGM/bookshelf-scanner) demo are YOLO 11x-seg. They do **not** run on the iPhone. The phone draws the overlay; the Mac runs the model.
+
+```bash
+# On the Mac that runs uvicorn (not on the phone)
+pip install -e '.[yolo]'
+python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
+```
+
+First detection downloads `yolo11x-seg.pt`. Disable with `YOLO_SPINE_DISABLED=1`. Rebuild LibrarySurvey so Pass B shows the green boxes. Set the in-app Backend URL to the Mac. Point the camera at spines — boxes appear on the live camera (Start sweep is not required just to preview). OCR titles show when Apple Vision can read letters. Full identity still runs after seal.
+
+If the extra is missing, the phone still draws Apple Vision green `book` boxes after a rebuild. The filled mask look from that screenshot needs `pip install -e '.[yolo]'` on the Mac.
+
 ```bash
 make ios-project   # XcodeGen
 make ios-build     # generic iOS Simulator

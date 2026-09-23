@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		017F2B024A2411907CCCC87F /* AstraLiveAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = B476A7F0A8A04462E548C982 /* AstraLiveAssist.swift */; };
+		A11C0DE001F0B001A0B0C001 /* YoloLiveAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = B22D1EF102A1C002B1C1D002 /* YoloLiveAssist.swift */; };
 		01A5CA2C60379F128F01957A /* ShelfCameraContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458A6CD3BBDA041B75801F97 /* ShelfCameraContainer.swift */; };
 		06D676099DB7DBBB76B8C41D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389E41DB3F4CA92F31EC105B /* RootView.swift */; };
 		0B355A2F35A7DD5F9087199B /* ExceptionPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377DE562BC6AC869728262CC /* ExceptionPassView.swift */; };
@@ -106,6 +107,7 @@
 		ACA363AEF087E903C0E42ACE /* RoomCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureStore.swift; sourceTree = "<group>"; };
 		B364D56D3B0E3D204BBE73DF /* FloorPlanLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorPlanLayout.swift; sourceTree = "<group>"; };
 		B476A7F0A8A04462E548C982 /* AstraLiveAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AstraLiveAssist.swift; sourceTree = "<group>"; };
+		B22D1EF102A1C002B1C1D002 /* YoloLiveAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YoloLiveAssist.swift; sourceTree = "<group>"; };
 		B55F8EF37AA1BE2D94515D1C /* Stage3Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage3Models.swift; sourceTree = "<group>"; };
 		BB3AC545ECC81570B79CEF67 /* LibrarySurvey.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LibrarySurvey.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C40BB3E7A1589954C4D0EB87 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
@@ -141,6 +143,7 @@
 			isa = PBXGroup;
 			children = (
 				B476A7F0A8A04462E548C982 /* AstraLiveAssist.swift */,
+				B22D1EF102A1C002B1C1D002 /* YoloLiveAssist.swift */,
 				11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */,
 				843442AA8496CF71010E8750 /* DeviceCheckService.swift */,
 				DBF3BF2DEB90DE100D968CAB /* LivePriceAssist.swift */,
@@ -352,6 +355,7 @@
 				7C8FF3765A477A2E382553AA /* AccessibilitySupport.swift in Sources */,
 				7CF5E8EFDC34BCB4D02F4726 /* AppConfiguration.swift in Sources */,
 				017F2B024A2411907CCCC87F /* AstraLiveAssist.swift in Sources */,
+				A11C0DE001F0B001A0B0C001 /* YoloLiveAssist.swift in Sources */,
 				23CB2C2671405F7E460DB5A9 /* AudioNoteRecorder.swift in Sources */,
 				17FBFFDC5FE9282DFA33DFF3 /* CameraSessionCoordinator.swift in Sources */,
 				AB6A617FE9F28198F6EBBBE9 /* CaptureEvidenceView.swift in Sources */,

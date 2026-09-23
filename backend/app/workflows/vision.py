@@ -22,6 +22,8 @@ from cv.library_vision.yolo_spines import (
     detections_path,
     labeled_pass_from_spines,
     merge_yolo_into_labeled,
+    overlay_path,
+    render_overlay_jpeg,
     segment_book_spines,
     sort_spines_left_to_right,
 )
@@ -148,6 +150,14 @@ class VisionWorker:
                 if spine.jpeg:
                     repository.put_bytes(survey_id, dest, spine.jpeg, "image/jpeg")
                 stored_crops.append({**spine.meta(), "path": dest, "row_id": row_id})
+            try:
+                overlay = render_overlay_jpeg(jpeg, spines, match_source=False)
+            except Exception:
+                overlay = b""
+            if overlay:
+                repository.put_bytes(
+                    survey_id, overlay_path(path), overlay, "image/jpeg"
+                )
             yolo_passes.append(
                 labeled_pass_from_spines(
                     spines,

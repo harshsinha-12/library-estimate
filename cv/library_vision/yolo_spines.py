@@ -273,12 +273,87 @@ def _spines_from_pass(scan: dict) -> list[SpineCrop]:
     return spines
 
 
-def segment_book_spines(jpeg: bytes, *, source_path: str = "") -> list[SpineCrop]:
+def segment_book_spines(
+    jpeg: bytes, *, source_path: str = "", match_source: bool = False
+) -> list[SpineCrop]:
     """Run YOLO 11x-seg on a shelf JPEG. Returns [] if weights/runtime are unavailable."""
     if not jpeg or not yolo_enabled():
         return []
     predictor = UltralyticsBookSegmenter()
-    return predictor(jpeg, source_path=source_path)
+    return predictor(jpeg, source_path=source_path, match_source=match_source)
+
+
+YOLO_INSTALL_HINT = (
+    "On the Mac: pip install -e '.[yolo]' then restart uvicorn. "
+    "The iPhone does not run ultralytics. Rebuild LibrarySurvey after."
+)
+
+
+def live_overlay(jpeg: bytes) -> dict:
+    """Boxes for the phone camera overlay. Assist only — not inventory."""
+    if not yolo_enabled():
+        return {
+            "enabled": False,
+            "reason": "ultralytics_not_installed",
+            "install": YOLO_INSTALL_HINT,
+            "pipeline": PIPELINE_NAME,
+            "count": 0,
+            "boxes": [],
+            "moondream2": False,
+        }
+    if not jpeg:
+        return {
+            "enabled": True,
+            "reason": "no_frame",
+            "install": None,
+            "pipeline": PIPELINE_NAME,
+            "count": 0,
+            "boxes": [],
+            "moondream2": False,
+        }
+    spines = segment_book_spines(jpeg, match_source=True)
+    return {
+        "enabled": True,
+        "reason": None,
+        "install": None,
+        "pipeline": PIPELINE_NAME,
+        "count": len(spines),
+        "boxes": [_vision_box(item) for item in spines],
+        "moondream2": False,
+    }
+
+
+def render_overlay_jpeg(
+    jpeg: bytes, spines: list[SpineCrop], *, match_source: bool = False
+) -> bytes:
+    image = _load_rgb(jpeg, match_source=match_source).convert("RGBA")
+    from PIL import Image, ImageDraw
+
+    layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    width, height = image.size
+    for item in spines:
+        x1 = int((item.x - item.width / 2) * width)
+        y1 = int((item.y - item.height / 2) * height)
+        x2 = int((item.x + item.width / 2) * width)
+        y2 = int((item.y + item.height / 2) * height)
+        draw.rectangle((x1, y1, x2, y2), outline=(0, 220, 0, 255), width=3, fill=(0, 220, 0, 70))
+        draw.text((x1 + 2, max(0, y1 - 14)), f"book {item.confidence:.2f}", fill=(0, 255, 0, 255))
+    return _to_jpeg(Image.alpha_composite(image, layer))
+
+
+def _vision_box(crop: SpineCrop) -> dict:
+    left = max(0.0, crop.x - crop.width / 2)
+    top = max(0.0, crop.y - crop.height / 2)
+    return {
+        "x": round(left, 4),
+        "y": round(max(0.0, 1.0 - (top + crop.height)), 4),
+        "width": round(crop.width, 4),
+        "height": round(crop.height, 4),
+        "confidence": round(crop.confidence, 4),
+        "label": "book",
+        "title": None,
+    }
 
 
 class UltralyticsBookSegmenter:
@@ -295,8 +370,10 @@ class UltralyticsBookSegmenter:
         self.book_class = int(os.getenv("YOLO_BOOK_CLASS", str(COCO_BOOK_CLASS)))
         self.confidence = float(os.getenv("YOLO_SPINE_CONFIDENCE", str(DEFAULT_CONFIDENCE)))
 
-    def __call__(self, jpeg: bytes, *, source_path: str = "") -> list[SpineCrop]:
-        image = _load_rgb(jpeg)
+    def __call__(
+        self, jpeg: bytes, *, source_path: str = "", match_source: bool = False
+    ) -> list[SpineCrop]:
+        image = _load_rgb(jpeg, match_source=match_source)
         if image is None:
             return []
         enhanced = _preprocess(image)
@@ -356,7 +433,7 @@ class UltralyticsBookSegmenter:
         return UltralyticsBookSegmenter._model
 
 
-def _load_rgb(jpeg: bytes):
+def _load_rgb(jpeg: bytes, *, match_source: bool = False):
     from PIL import Image
 
     image = Image.open(io.BytesIO(jpeg))
@@ -366,7 +443,7 @@ def _load_rgb(jpeg: bytes):
     ImageOps.exif_transpose(image, in_place=True)
     if image.size[0] > MAX_EDGE or image.size[1] > MAX_EDGE:
         image.thumbnail((MAX_EDGE, MAX_EDGE))
-    if image.width > image.height:
+    if not match_source and image.width > image.height:
         image = image.rotate(-90, expand=True)
     return image
 

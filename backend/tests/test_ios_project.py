@@ -29,6 +29,7 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         "Views/TaggedFloorPlanView.swift",
         "Services/LocationService.swift",
         "Services/SurveyUploadService.swift",
+        "Services/YoloLiveAssist.swift",
         "Views/ShelfMapView.swift",
         "Views/ShelfPassView.swift",
         "Capture/ShelfCaptureStore.swift",
@@ -54,6 +55,7 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "minimumSize = 0.04" in analyzer
     assert "hasReadableText" in analyzer
     assert "if !readable { return nil }" in analyzer
+    assert "overlayCandidates" in analyzer
     assert "boxesOverlap" in analyzer
     shelf = (source_root / "Views/ShelfPassView.swift").read_text(encoding="utf-8")
     capturing = shelf.split("if store.capturing")[1].split("} else {")[0]
@@ -65,6 +67,8 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "self.taggedCrops[path] = crop" in store
     assert "self.taggedFrames[path] = jpeg" in store
     assert "rebuildVisibleSpines" in store
+    assert "frameOverlays" in store
+    assert "applyYoloOverlays" in store
     assert "rowBands" in store
     assert "rowBands[activeRowId] == nil" in store
     assert "observations.filter(\\.hasReadableText).map(\\.faceY)" in store
@@ -104,6 +108,9 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
     assert "astraLive" in shelf or "AstraLiveSession" in shelf
     assert "astraLive.consider" in shelf
     assert "backendURL: backendURL" in shelf
+    assert "YoloLiveSession" in shelf
+    assert "yoloLive.consider" in shelf
+    assert "book" in shelf.lower()
     exception = (source_root / "Views/ExceptionPassView.swift").read_text(encoding="utf-8")
     assert "AstraLiveSession" in exception
     assert "astra-live" in exception or "astraLive" in exception
@@ -113,6 +120,10 @@ def test_ios_stage_one_permissions_and_sources_exist() -> None:
         encoding="utf-8"
     )
     assert "AstraLiveAssist.swift" in project
+    yolo_live = (source_root / "Services/YoloLiveAssist.swift").read_text(encoding="utf-8")
+    assert "v1/yolo-live" in yolo_live
+    assert "pip install -e '.[yolo]'" in yolo_live
+    assert "YoloLiveAssist.swift" in project
 
 
 def test_ios_package_security_and_face_redaction_are_wired() -> None:

@@ -13,6 +13,7 @@ struct ShelfPassView: View {
   @AppStorage("backendURL") private var backendURLString = "http://192.168.29.178:8000"
   @StateObject private var livePrices = LivePriceSession()
   @StateObject private var astraLive = AstraLiveSession()
+  @StateObject private var yoloLive = YoloLiveSession()
 
   var body: some View {
     ZStack(alignment: .bottom) {
@@ -20,6 +21,38 @@ struct ShelfPassView: View {
         .ignoresSafeArea()
         .accessibilityLabel("Live shelf camera and augmented reality view")
         .accessibilityHint("Center the selected shelf row in the guide. Detected spine controls are listed as accessibility elements.")
+      GeometryReader { geometry in
+        ForEach(store.frameOverlays) { item in
+          let rect = store.displayRect(for: item.box, in: geometry.size)
+          let color: Color = item.source == "yolo" ? .green : (item.readable ? .green : .yellow)
+          RoundedRectangle(cornerRadius: 3)
+            .fill(color.opacity(0.28))
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(color, lineWidth: 2))
+            .overlay(alignment: .topLeading) {
+              Text(item.caption)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(color)
+                .shadow(color: .black.opacity(0.8), radius: 1)
+                .padding(2)
+                .lineLimit(2)
+            }
+            .frame(width: max(8, rect.width), height: max(8, rect.height))
+            .position(x: rect.midX, y: rect.midY)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+      }
+      .allowsHitTesting(false)
+      VStack {
+        Text(overlayStatusLine)
+          .font(.caption.bold())
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(.ultraThinMaterial, in: Capsule())
+          .padding(.top, 8)
+        Spacer()
+      }
+      .allowsHitTesting(false)
       if store.capturing {
         GeometryReader { geometry in
           RoundedRectangle(cornerRadius: 8)
@@ -191,6 +224,14 @@ struct ShelfPassView: View {
     .accessibilityStatusAnnouncements(accessibilityCaptureStatus)
     .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
       store.ingestCurrentFrame()
+      if let jpeg = store.currentJpeg() {
+        Task {
+          await yoloLive.consider(jpeg: jpeg, backendURL: backendURL)
+          if yoloLive.enabled, !yoloLive.boxes.isEmpty {
+            store.applyYoloOverlays(yoloLive.boxes)
+          }
+        }
+      }
       if store.capturing {
         if let jpeg = store.currentJpeg(), let backendURL {
           Task { await livePrices.consider(jpeg: jpeg, draft: draft, backendURL: backendURL) }
@@ -211,6 +252,19 @@ struct ShelfPassView: View {
     .onChange(of: store.capturing) { _, capturing in
       if capturing { astraLive.resetFace() }
     }
+  }
+
+  private var overlayStatusLine: String {
+    if store.overlaySource == "yolo" {
+      return "YOLO · \(store.frameOverlays.count) books · live overlay, not inventory"
+    }
+    if !yoloLive.installHint.isEmpty {
+      return yoloLive.installHint
+    }
+    if store.frameOverlays.isEmpty {
+      return "Point at spines. Green book boxes appear on this camera."
+    }
+    return "Vision · \(store.frameOverlays.count) books · OCR titles when readable"
   }
 
   private func actualCountStepper(_ row: ShelfRowCoverage) -> some View {

@@ -9,6 +9,7 @@ struct SpineRegion {
   let confidence: Float
   let isStacked: Bool
   let isLeaning: Bool
+  let label: String
 }
 
 enum LiveQualityAnalyzer {
@@ -16,7 +17,16 @@ enum LiveQualityAnalyzer {
     spineCandidates(jpeg: jpeg).map(\.box)
   }
 
+  static func overlayCandidates(jpeg: Data) -> [SpineRegion] {
+    proposals(jpeg: jpeg, mintUnread: true)
+  }
+
   static func spineCandidates(jpeg: Data) -> [SpineRegion] {
+    // Copies still gate on OCR: if !readable { return nil }
+    overlayCandidates(jpeg: jpeg).filter(\.hasReadableText)
+  }
+
+  private static func proposals(jpeg: Data, mintUnread: Bool) -> [SpineRegion] {
     guard let image = UIImage(data: jpeg)?.cgImage else { return [] }
     let request = VNDetectRectanglesRequest()
     request.minimumAspectRatio = 0.035
@@ -28,9 +38,12 @@ enum LiveQualityAnalyzer {
     textRequest.recognitionLevel = .fast
     textRequest.minimumTextHeight = 0.01
     try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request, textRequest])
-    let textBoxes = (textRequest.results ?? []).filter {
-      ($0.topCandidates(1).first?.string.filter(\.isLetter).count ?? 0) >= 3
-    }.map(\.boundingBox)
+    let texts: [(box: CGRect, string: String)] = (textRequest.results ?? []).compactMap { observation in
+      guard let candidate = observation.topCandidates(1).first else { return nil }
+      guard candidate.string.filter(\.isLetter).count >= 3 else { return nil }
+      return (observation.boundingBox, candidate.string)
+    }
+    let textBoxes = texts.map(\.box)
     let proposals: [SpineRegion] = (request.results ?? []).compactMap { observation in
       let box = observation.boundingBox
       let tall = box.height > box.width * 1.4
@@ -47,10 +60,13 @@ enum LiveQualityAnalyzer {
       let readable = textBoxes.contains { Self.boxesOverlap($0, box) }
       // Crochet / table squares and nested inner cover boxes have no unique
       // title letters. Do not mint those as copies; unread stays partial.
-      if !readable { return nil }
+      if !readable { if !mintUnread { return nil } }
+      let title = texts.first { Self.boxesOverlap($0.box, box) }?.string
+      let score = String(format: "%.2f", observation.confidence)
+      let caption = title.map { "\($0) \(score)" } ?? "book \(score)"
       return SpineRegion(
         box: box, hasReadableText: readable, confidence: observation.confidence,
-        isStacked: stacked, isLeaning: lean
+        isStacked: stacked, isLeaning: lean, label: caption
       )
     }
     var selected: [SpineRegion] = []

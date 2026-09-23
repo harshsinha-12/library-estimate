@@ -283,6 +283,10 @@ class AstraLiveRequest(StrictModel):
     recapture_rows: list[str] = Field(default_factory=list)
 
 
+class YoloLiveRequest(StrictModel):
+    image_base64: str | None = None
+
+
 class PriceQueueRequest(StrictModel):
     pass
 

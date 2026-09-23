@@ -345,16 +345,16 @@ Optional sampled Astra Extra live assist (`POST /v1/surveys/{id}/astra-live`):
 - Stored under `derived/astra-live/`
 - **Never** written as inventory or as Pipeline B
 
-It may return `provisional_count`, `unreadable_slots`, `recapture_hint`, blur/glare/readable flags. On-device Vision remains the primary live overlay.
+It may return `provisional_count`, `unreadable_slots`, `recapture_hint`, blur/glare/readable flags. On-device Vision remains the primary live overlay until YOLO extra is installed on the Mac; then Pass B prefers live YOLO boxes.
 
 ### 5.7 Who segments a spine (Apple Vision vs YOLO)
 
-**YOLO 11x-seg from [bookshelf-scanner](https://github.com/suxrobGM/bookshelf-scanner) is the initial after-seal count and crop source** when it returns books. That is not gated on finding more spines than Apple Vision. Live Pass B still draws Apple Vision rectangles. Fable, Astra Extra, and Jev are unchanged: they receive one crop per copy and still must not write count, ISBN, merge, or money. **Moondream2 is not used.**
+**YOLO 11x-seg from [bookshelf-scanner](https://github.com/suxrobGM/bookshelf-scanner) is the initial after-seal count and crop source** when it returns books. That is not gated on finding more spines than Apple Vision. Pass B draws green `book 0.xx` boxes on the iPhone camera (Vision immediately; YOLO when `pip install -e '.[yolo]'` is on the Mac). Live boxes are visualization. Fable, Astra Extra, and Jev still receive one crop per copy and must not write count, ISBN, merge, or money. **Moondream2 is not used.**
 
 | | Apple Vision (`VNDetectRectanglesRequest`) | YOLO 11x-seg (bookshelf-scanner path) |
 | --- | --- | --- |
 | Job | Tall/thin or stacked rectangles with ≥3 letters | COCO class 73 (`book`) instance masks |
-| When | Live on the iPhone during the sweep | After seal, on the server — **initial** count and crops |
+| When | Live on the iPhone during the sweep | Live overlay on the phone when the Mac extra is installed; after seal, **initial** count and crops |
 | Output | Overlay + `SpineInstance` + axis-aligned JPEG | Masked, possibly rotated JPEG + `AssetCopy` list |
 | Rows, face A/B, reverse sweep | Yes — shelf-face metres | Geometry copied from `labeled.json` when present |
 | Trained on library spines | No — geometry + OCR gate | No — generic COCO “book” |
@@ -362,7 +362,7 @@ It may return `provisional_count`, `unreadable_slots`, `recapture_hint`, blur/gl
 
 YOLO is the better **photo and initial count** for this merge. Invertis Vision crops sometimes included two or three pressed-together spines, which confused Fable. A mask that isolates one spine is the image sent to A/B and to title extraction. The switch is not “use YOLO only when N is larger.” If YOLO returns books, those detections are the copy list even when Vision tracked more or fewer.
 
-Live overlay stays Apple Vision because that path still owns reverse-sweep association, face B as a different copy, and unread boxes not minted during capture. COCO YOLO cannot see slot, face, or that the same spine appeared twice in a LiDAR sweep. That geometry is copied from `labeled.json` onto the YOLO pass when it exists. On a dense stack the same COCO model can still blob a row, miss a thin spine, or tag a binder — disable with `YOLO_SPINE_DISABLED=1` to fall back to Vision.
+Live overlay stays Apple Vision for reverse-sweep association, but **Pass B now draws green `book 0.xx` boxes on the camera** (Vision immediately; YOLO 11x-seg when the Mac extra is installed). Live YOLO boxes are visualization, not inventory. After seal, YOLO detections are the copy list. COCO YOLO cannot see slot, face, or that the same spine appeared twice in a LiDAR sweep. That geometry is copied from `labeled.json` onto the YOLO pass when it exists. On a dense stack the same COCO model can still blob a row, miss a thin spine, or tag a binder — disable with `YOLO_SPINE_DISABLED=1` to fall back to Vision.
 
 Authority after seal:
 
@@ -1038,6 +1038,8 @@ POST   /v1/surveys/{id}/live-price-search
 POST   /v1/surveys/{id}/identify-and-price
 POST   /v1/surveys/{id}/price-search-queue
 POST   /v1/assets/{id}/price-observations
+POST   /v1/yolo-live
+GET    /v1/yolo-live
 POST   /v1/surveys/{id}/astra-live
 GET    /v1/surveys/{id}/astra-live
 POST   /v1/surveys/{id}/assets/{copy}/model-replay

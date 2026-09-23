@@ -469,3 +469,51 @@ def test_yolo_module_does_not_load_moondream() -> None:
     assert "MoondreamChatHandler" not in source
     assert not any(name.startswith("moondream") or "llama_cpp" in name for name in sys.modules)
     assert yolo_enabled() in {True, False}
+
+
+def test_live_overlay_tells_you_what_to_install(monkeypatch) -> None:
+    from cv.library_vision import yolo_spines as module
+
+    monkeypatch.setattr(module, "yolo_enabled", lambda: False)
+    payload = module.live_overlay(TINY_JPEG)
+    assert payload["enabled"] is False
+    assert payload["moondream2"] is False
+    assert "pip install" in payload["install"]
+    assert payload["boxes"] == []
+
+
+def test_live_overlay_boxes_use_vision_origin(monkeypatch) -> None:
+    from cv.library_vision import yolo_spines as module
+
+    monkeypatch.setattr(module, "yolo_enabled", lambda: True)
+    monkeypatch.setattr(
+        module,
+        "segment_book_spines",
+        lambda jpeg, source_path="", match_source=False: [_spine(0, 0.5, width=0.2, height=0.4)],
+    )
+    payload = module.live_overlay(TINY_JPEG)
+    assert payload["enabled"] is True
+    assert payload["count"] == 1
+    box = payload["boxes"][0]
+    assert box["label"] == "book"
+    assert box["x"] == 0.4
+    assert abs(box["y"] - 0.3) < 0.001
+    assert box["width"] == 0.2
+    assert box["height"] == 0.4
+
+
+def test_yolo_live_endpoint_does_not_need_a_survey() -> None:
+    from fastapi.testclient import TestClient
+
+    from backend.tests.conftest import isolated_app
+
+    app, _, _ = isolated_app()
+    client = TestClient(app)
+    missing = client.get("/v1/yolo-live")
+    assert missing.status_code == 200
+    body = missing.json()
+    assert "enabled" in body
+    assert body["moondream2"] is False
+    posted = client.post("/v1/yolo-live", json={"image_base64": ""})
+    assert posted.status_code == 200
+    assert posted.json()["boxes"] == []

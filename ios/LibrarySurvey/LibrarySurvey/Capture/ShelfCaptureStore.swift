@@ -21,6 +21,8 @@ final class ShelfCaptureStore: ObservableObject {
   @Published var highlightedSpines: [CGRect] = []
   @Published var activeRowId = "row_01"
   @Published var visibleSpines: [ShelfVisibleSpine] = []
+  @Published var frameOverlays: [ShelfOverlayBox] = []
+  @Published var overlaySource = "vision"
   @Published var imageSize: CGSize = .zero
   private var tracker = SpineInstanceTracker()
   private var facePlane: simd_float4x4?
@@ -53,6 +55,9 @@ final class ShelfCaptureStore: ObservableObject {
 
   func attach(session: ARSession) {
     self.session = session
+    if !capturing {
+      sampler.start(session: session, interval: 0.4)
+    }
   }
 
   func detachSession() {
@@ -95,6 +100,8 @@ final class ShelfCaptureStore: ObservableObject {
     capturing = false
     highlightedSpines = []
     visibleSpines = []
+    frameOverlays = []
+    overlaySource = "vision"
     assistCount = 0
     quality = .idle
     rowCoverage = []
@@ -127,6 +134,7 @@ final class ShelfCaptureStore: ObservableObject {
     selectedFace = face
     highlightedSpines = []
     visibleSpines = []
+    overlaySource = overlaySource == "yolo" ? "yolo" : "vision"
     assistCount = 0
     rowCoverage = (1...max(1, unit.rowCount)).map { index in
       ShelfRowCoverage(
@@ -199,9 +207,15 @@ final class ShelfCaptureStore: ObservableObject {
   }
 
   func ingestCurrentFrame() {
-    guard capturing, let frame = sampler.samples.last else { return }
+    guard let frame = sampler.samples.last else { return }
     guard frame.id != lastProcessedFrameId else { return }
     lastProcessedFrameId = frame.id
+    let overlays = LiveQualityAnalyzer.overlayCandidates(jpeg: frame.jpegData)
+    if let image = UIImage(data: frame.jpegData) { imageSize = image.size }
+    if overlaySource != "yolo" {
+      applyVisionOverlays(overlays)
+    }
+    guard capturing else { return }
     let now = frame.monotonicSeconds
     let dt = previousTime.map { now - $0 } ?? 0.4
     let detected = LiveQualityAnalyzer.spineCandidates(jpeg: frame.jpegData)
@@ -212,12 +226,30 @@ final class ShelfCaptureStore: ObservableObject {
       dt: dt,
       provisionalCount: detected.count
     )
-    if let image = UIImage(data: frame.jpegData) { imageSize = image.size }
     mergeSpines(detected, sample: frame)
     assistCount = rowCoverage.reduce(0) { $0 + $1.copyCount }
     highlightedSpines = visibleSpines.map(\.box)
     previousTransform = frame.cameraTransform
     previousTime = now
+  }
+
+  func applyVisionOverlays(_ regions: [SpineRegion]) {
+    overlaySource = "vision"
+    frameOverlays = regions.enumerated().map { index, region in
+      ShelfOverlayBox(
+        id: "vision-\(index)",
+        box: region.box,
+        caption: region.label,
+        source: "vision",
+        readable: region.hasReadableText
+      )
+    }
+  }
+
+  func applyYoloOverlays(_ boxes: [ShelfOverlayBox]) {
+    guard !boxes.isEmpty else { return }
+    overlaySource = "yolo"
+    frameOverlays = boxes
   }
 
   func stopFace() {
@@ -226,6 +258,9 @@ final class ShelfCaptureStore: ObservableObject {
       samples.append(contentsOf: sampler.samples)
     }
     capturing = false
+    if let session {
+      sampler.start(session: session, interval: 0.4)
+    }
     guard let unit = selectedUnit else { return }
     let labeled = labeledPass(unit: unit, face: selectedFace, samples: samples)
     let data = (try? JSONCoding.encoder().encode(LabeledShelfPackage(passes: [labeled]))) ?? Data()
@@ -533,4 +568,12 @@ struct ShelfVisibleSpine: Identifiable {
   let rowId: String
   let slot: Int
   let hasReadableText: Bool
+}
+
+struct ShelfOverlayBox: Identifiable {
+  let id: String
+  let box: CGRect
+  let caption: String
+  let source: String
+  let readable: Bool
 }
