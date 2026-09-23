@@ -2,6 +2,10 @@
 
 iOS capture + FastAPI backend for a **library replacement-cost survey**. A technician scans rooms and shelves on a LiDAR iPhone; the backend turns that sealed package into geometry, physical-copy inventory, identity, local price *drafts*, model comparison, and a signed report.
 
+## YOLO spine segmentation
+
+Spine segmentation with **YOLO 11x-seg** is on [`cursor/yolo-spine-segmentation-2438`](https://github.com/harshsinha-12/library-estimate/tree/cursor/yolo-spine-segmentation-2438). The Mac runs the model. The phone draws the live shelf outlines, and the same detections are the initial book count after seal. That pass follows the spines more closely than Apple Vision boxes alone. Weights, the virtual environment, and how to run it are in that branch’s README.
+
 This is past scaffold. Stage 1–5 fixture gates passed. Invertis Library was walked on a phone: 45 physical-copy records, RoomPlan 2D/3D, web-search drafts, live Fable-role / Astra / Jev calls, and a signed PDF. Models classify and propose. They do **not** write count, ISBN, geometry, or money. Draft web prices stay drafts until an operator confirms a physical listing. Price and geography are not vision class labels. Price search is OpenAI Responses `web_search` (`user_location` from survey geography). Building value is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`, shown on the report summary next to estimated provider spend.
 
 Alignment contract: [`FINAL-PLAN.md`](FINAL-PLAN.md). Thresholds, schemas, and code map: [`docs/architecture.md`](docs/architecture.md). Build order: [`IMPLEMENTATION.md`](IMPLEMENTATION.md). USB install: [`INSTALLATION.md`](INSTALLATION.md). Clocks: [`CHECKPOINTS.md`](CHECKPOINTS.md).
