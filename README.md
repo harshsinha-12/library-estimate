@@ -140,7 +140,7 @@ curl -o ~/Downloads/library-survey.pdf \
 2. **Live spines.** Apple Vision rectangles + OCR; only boxes with readable letters become copies. Association is in shelf-face metres. Coverage is 8 cm bins along the face of readable detections.
 3. **Voice.** AAC on the RoomPlan session clock. After seal, server STT; notes bind by tap / reticle / pose / time / semantics, or stay unbound.
 4. **Astra-live Extra** during Pass B/C is assist metadata, not inventory.
-5. **After seal.** Geometry → YOLO 11x-seg spine crops (no Moondream2) → vision count → identity/notes/damage → `web_search` drafts → Fable (A) and Astra Extra (B) on the same sealed crop bytes → Jev + policy. Every decision appends an `RLTransition`.
+5. **After seal.** Geometry → Apple Vision `labeled.json` count (`shelf-count-v1`) → identity/notes/damage → `web_search` drafts → Fable (A) and Astra Extra (B) on the same sealed crop bytes → Jev + policy. Optional YOLO 11x-seg may add a tighter mask as a **second** image for that slot; it does not mint copies when iOS already tracked the row, and it does not replace Fable/Astra/Jev. Moondream2 is not used. Every decision appends an `RLTransition`.
 6. **Price search** once per unique edition + market via OpenAI Responses `web_search` (`user_location` from survey geography). ISBN first, else name. No Bing. Amazon scraping was a deliberate refusal; web_search is the shipped path.
 7. **Building value** is `floor_area × demo_rebuild_rates_v1[country]` with basis `replacement_cost`, shown on the report summary next to estimated provider spend. Not a sale price.
 
@@ -171,7 +171,7 @@ Physical install: [`INSTALLATION.md`](INSTALLATION.md).
 ```text
 backend/     FastAPI, Redis, R2, pricing, Fable/Astra Extra/Jev, RL, reports
 ios/          LibrarySurvey (SwiftUI, RoomPlan, Vision, live spine tracker)
-cv/           labeled-JSON shelf count plus YOLO 11x-seg spine crops (no Moondream2)
+cv/           shelf-count-v1 from Apple Vision labeled JSON; optional YOLO mask crops
 schemas/      Survey IR, evidence package, model assessment, RL transition
 docs/         architecture.md, gates, Invertis PDF, screenshots, LLM-trace excerpts
 eval/         holdout/preflight (templates are not device accuracy)
@@ -221,7 +221,7 @@ flowchart LR
   subgraph Backend["Python FastAPI"]
     API["/v1 surveys, upload, seal, review"]
     GEO["Geometry worker"]
-    CV["Vision worker YOLO spines + shelf-count-v1"]
+    CV["Vision worker shelf-count-v1"]
     S3W["Stage 3 identity / notes / damage"]
     PRICE["Pricing worker"]
     MOD["Fable + Astra Extra replay + Jev"]
@@ -353,6 +353,8 @@ flowchart TB
 
 Unread rectangles are **not** minted as copies. Crochet/table squares without title letters leave the row `partial`. Invertis stacks were a successful sweep (11 persistent candidates, ~87% coverage on one row). A later table-top frame boxed blanket texture as spines; that path is patched in `LiveQualityAnalyzer` + `assignRow`. Rebuild the iOS app before treating the texture filter as device-proven.
 
+Live Pass B is Apple Vision, not YOLO. Optional YOLO 11x-seg after seal may add a mask crop for Fable/Astra; it does not decide what a copy is. Split and comparison: [`docs/architecture.md` §5.7](docs/architecture.md#57-who-segments-a-spine-apple-vision-vs-yolo).
+
 ```mermaid
 flowchart TB
   OBS["New SpineFaceObservation sorted by faceX"] --> MATCH{"Overlap or X/Y gate vs existing instance?"}
@@ -367,6 +369,8 @@ flowchart TB
 Coverage is 8 cm bins along the face from readable `faceX`. A row is `ok` only if coverage ≥ 0.8, operator `actualCount` equals tracked `copyCount`, and the row is not uncertain.
 
 ### After seal — physical copies (no ISBN merge)
+
+Apple Vision tracks in `labeled.json` are the copy list. Optional YOLO masks may refine a crop; they do not replace reverse-sweep association. Fable / Astra Extra / Jev still score the frozen evidence package.
 
 ```mermaid
 flowchart TB

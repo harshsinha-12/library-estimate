@@ -205,9 +205,8 @@ def _replay_body(
     refs = {row["evidence_ref"] for row in observations if row.get("evidence_ref")}
     if asset.get("evidence_ref"):
         refs.add(str(asset["evidence_ref"]))
-    crop = _crop_ref(repository, survey_id, asset)
-    if crop:
-        refs.add(crop)
+    crop_refs = _crop_refs(repository, survey_id, asset)
+    refs.update(crop_refs)
     refs = sorted(refs, key=lambda path: (_evidence_rank(path), path))
     if not refs:
         raise ModelReplayError("asset has no evidence references")
@@ -492,22 +491,27 @@ def _target_identity(repository: SurveyRepository, survey_id: UUID, asset: dict)
 
 def _evidence_rank(path: str) -> int:
     lower = path.lower()
-    if "/yolo-spines/" in lower and lower.endswith((".jpg", ".jpeg", ".png")):
-        return 0
     if "/crops/" in lower:
+        return 0
+    if "/yolo-spines/" in lower and lower.endswith((".jpg", ".jpeg", ".png")):
         return 1
     return 2
 
 
 def _crop_ref(repository: SurveyRepository, survey_id: UUID, asset: dict) -> str | None:
+    paths = _crop_refs(repository, survey_id, asset)
+    return paths[0] if paths else None
+
+
+def _crop_refs(repository: SurveyRepository, survey_id: UUID, asset: dict) -> list[str]:
     row_id = asset.get("row_id")
     slot = asset.get("slot")
     candidates: list[str] = []
     if row_id is not None and slot is not None:
         from cv.library_vision.yolo_spines import crop_path
 
-        candidates.append(crop_path(str(row_id), int(slot)))
         candidates.append(f"shelf_scans/crops/{row_id}_slot{slot}.jpg")
+        candidates.append(crop_path(str(row_id), int(slot)))
     detections = _yolo_detections(repository, survey_id)
     asset_id = str(asset.get("asset_copy_id") or "")
     for row in detections.get("crops") or []:
@@ -516,13 +520,17 @@ def _crop_ref(repository: SurveyRepository, survey_id: UUID, asset: dict) -> str
             continue
         if row_id is not None and slot is not None:
             if str(row.get("row_id")) == str(row_id) and int(row.get("slot", -1)) == int(slot):
-                candidates.insert(0, path)
+                candidates.append(path)
         elif asset_id and str(row.get("asset_copy_id") or "") == asset_id:
             candidates.append(path)
+    found: list[str] = []
+    seen: set[str] = set()
     for path in candidates:
-        if repository.exists_bytes(survey_id, path):
-            return path
-    return None
+        if path in seen or not repository.exists_bytes(survey_id, path):
+            continue
+        seen.add(path)
+        found.append(path)
+    return found
 
 
 def _yolo_detections(repository: SurveyRepository, survey_id: UUID) -> dict:

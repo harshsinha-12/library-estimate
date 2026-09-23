@@ -1,8 +1,9 @@
-"""YOLO11 instance segmentation of book spines, then Fable / Astra / Jev.
+"""Optional YOLO11 mask crops for already-tracked spines.
 
-The crop/rotate path follows suxrobGM/bookshelf-scanner (YOLO 11x-seg, COCO
-class 73 = book). Moondream2 is not used: title, condition, and routing stay
-on the sealed Fable + Astra-replay + Jev flow.
+Apple Vision rectangles + shelf-face tracking own count and identity.
+This module follows suxrobGM/bookshelf-scanner (YOLO 11x-seg, COCO class 73)
+only to cut a tighter photo. Moondream2 is not used. Title, condition, and
+routing stay on the sealed Fable + Astra-replay + Jev flow.
 """
 
 from __future__ import annotations

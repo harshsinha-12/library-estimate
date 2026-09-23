@@ -294,6 +294,57 @@ def test_yolo_crops_go_to_fable_astra_then_jev() -> None:
     assert result["decision"]["action"] == "accept_candidate"
 
 
+def test_replay_prefers_apple_vision_crop_over_yolo_mask() -> None:
+    repository, survey_id = _repository()
+    repository.save_json(
+        survey_id,
+        "inventory",
+        {
+            "asset_copies": [{
+                "asset_copy_id": "copy-1", "category": "book",
+                "observation_refs": ["obs-1"], "requires_appraisal": False,
+                "row_id": "row_01", "slot": 0,
+            }],
+            "observations": [{
+                "observation_id": "obs-1",
+                "evidence_ref": "shelf_scans/crops/row_01_slot0.jpg",
+            }],
+        },
+    )
+    vision = TINY_JPEG + b"vision"
+    yolo = TINY_JPEG + b"yolo"
+    repository.put_bytes(survey_id, "shelf_scans/crops/row_01_slot0.jpg", vision, "image/jpeg")
+    repository.put_bytes(survey_id, "derived/yolo-spines/row_01_slot0.jpg", yolo, "image/jpeg")
+    packages = []
+
+    def provider(evidence):
+        packages.append(json.loads(evidence))
+        refs = json.loads(evidence)["evidence_refs"]
+        return {"model": "test-model"}, json.dumps({
+            "category": "book", "condition": "good",
+            "damage": {"present": False, "types": [], "description": None},
+            "identity_candidates": [], "recommended_action": "accept_candidate",
+            "confidence": 0.95, "evidence_refs": refs[:1],
+        })
+
+    replay_asset(
+        repository, survey_id, "copy-1", fable_call=provider, astra_call=provider,
+        jev_call=lambda _: {
+            "model": "jev-1.13.0",
+            "answers": {"route": {
+                "choice": "accept_candidate", "confidence": 0.96,
+                "probabilities": {
+                    "accept_candidate": 0.96, "recapture": 0.01,
+                    "alternate_resolver": 0.01, "human_review": 0.02,
+                },
+            }},
+        },
+    )
+    assert packages[0]["evidence_refs"][0] == "shelf_scans/crops/row_01_slot0.jpg"
+    assert "derived/yolo-spines/row_01_slot0.jpg" in packages[0]["evidence_refs"]
+    assert packages[0]["media"][0]["evidence_ref"] == "shelf_scans/crops/row_01_slot0.jpg"
+
+
 def test_yolo_module_does_not_load_moondream() -> None:
     import sys
 
