@@ -147,4 +147,28 @@ def create_app(
 
 
 def production_app() -> FastAPI:
-    return create_app(migrate_sqlite=True)
+    app = create_app(migrate_sqlite=True)
+    _warm_yolo_live()
+    return app
+
+
+def _warm_yolo_live() -> None:
+    """Load YOLO once so the first phone frame is not stuck on a cold start."""
+    import threading
+
+    from backend.app.providers.pricing import log as pricing_log
+
+    def _load() -> None:
+        try:
+            from cv.library_vision.yolo_spines import UltralyticsBookSegmenter, yolo_enabled
+
+            if not yolo_enabled():
+                pricing_log.info("yolo_warm_skipped", reason="ultralytics_not_installed")
+                return
+            pricing_log.info("yolo_warm_start")
+            UltralyticsBookSegmenter()._load_model()
+            pricing_log.info("yolo_warm_ready")
+        except Exception as error:
+            pricing_log.info("yolo_warm_failed", error=type(error).__name__, detail=str(error))
+
+    threading.Thread(target=_load, name="yolo-warm", daemon=True).start()

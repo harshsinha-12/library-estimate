@@ -482,6 +482,24 @@ def test_live_overlay_tells_you_what_to_install(monkeypatch) -> None:
     assert payload["boxes"] == []
 
 
+def test_live_overlay_uses_fast_path(monkeypatch) -> None:
+    from cv.library_vision import yolo_spines as module
+
+    seen: dict[str, bool] = {}
+
+    def fake(jpeg, source_path="", match_source=False, live=False):
+        seen["match_source"] = match_source
+        seen["live"] = live
+        return []
+
+    monkeypatch.setattr(module, "yolo_enabled", lambda: True)
+    monkeypatch.setattr(module, "segment_book_spines", fake)
+    payload = module.live_overlay(TINY_JPEG)
+    assert payload["enabled"] is True
+    assert payload["boxes"] == []
+    assert seen == {"match_source": True, "live": True}
+
+
 def test_live_overlay_boxes_use_vision_origin(monkeypatch) -> None:
     from cv.library_vision import yolo_spines as module
 
@@ -489,7 +507,9 @@ def test_live_overlay_boxes_use_vision_origin(monkeypatch) -> None:
     monkeypatch.setattr(
         module,
         "segment_book_spines",
-        lambda jpeg, source_path="", match_source=False: [_spine(0, 0.5, width=0.2, height=0.4)],
+        lambda jpeg, source_path="", match_source=False, live=False: [
+            _spine(0, 0.5, width=0.2, height=0.4)
+        ],
     )
     payload = module.live_overlay(TINY_JPEG)
     assert payload["enabled"] is True

@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		017F2B024A2411907CCCC87F /* AstraLiveAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = B476A7F0A8A04462E548C982 /* AstraLiveAssist.swift */; };
-		A11C0DE001F0B001A0B0C001 /* YoloLiveAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = B22D1EF102A1C002B1C1D002 /* YoloLiveAssist.swift */; };
 		01A5CA2C60379F128F01957A /* ShelfCameraContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458A6CD3BBDA041B75801F97 /* ShelfCameraContainer.swift */; };
 		06D676099DB7DBBB76B8C41D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389E41DB3F4CA92F31EC105B /* RootView.swift */; };
 		0B355A2F35A7DD5F9087199B /* ExceptionPassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377DE562BC6AC869728262CC /* ExceptionPassView.swift */; };
@@ -58,6 +57,7 @@
 		DB63B7B55715ED98823D8A22 /* SurveyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1090F51E026F6CF4745FE7 /* SurveyModels.swift */; };
 		E1010DFB88F1C9144C01B9BE /* RoomCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA363AEF087E903C0E42ACE /* RoomCaptureStore.swift */; };
 		E42397EA59F1F142AFEA71A3 /* LiveQualityAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAEA0BFA0E112ED27C0548F2 /* LiveQualityAnalyzer.swift */; };
+		E96F428F278C8B9FCA6020EF /* YoloLiveAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A330ACB8DFAB61274DF9D59 /* YoloLiveAssist.swift */; };
 		E9CE58286FB6A8879AB553BB /* FloorPlanLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B364D56D3B0E3D204BBE73DF /* FloorPlanLayout.swift */; };
 		EC0723DC0C4646D3C8843570 /* Stage4Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E416208F10154494EA1F0E50 /* Stage4Models.swift */; };
 		F0A8F396265D3BE93E50F318 /* SurveyUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8618C4199B088D97355D25A8 /* SurveyUploadService.swift */; };
@@ -67,6 +67,7 @@
 		03AF8665FD9C224ECEB90E21 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
 		0679AB62A14FA7F626E9C301 /* DeviceCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCheckView.swift; sourceTree = "<group>"; };
 		082CC6F89646262287DB3B7A /* JSONCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONCoding.swift; sourceTree = "<group>"; };
+		0A330ACB8DFAB61274DF9D59 /* YoloLiveAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YoloLiveAssist.swift; sourceTree = "<group>"; };
 		0B95FD9563F7338132A91FC3 /* CameraSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSessionCoordinator.swift; sourceTree = "<group>"; };
 		10D267CACD1ED23A8AA22182 /* ShelfMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfMapView.swift; sourceTree = "<group>"; };
 		11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioNoteRecorder.swift; sourceTree = "<group>"; };
@@ -107,7 +108,6 @@
 		ACA363AEF087E903C0E42ACE /* RoomCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureStore.swift; sourceTree = "<group>"; };
 		B364D56D3B0E3D204BBE73DF /* FloorPlanLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloorPlanLayout.swift; sourceTree = "<group>"; };
 		B476A7F0A8A04462E548C982 /* AstraLiveAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AstraLiveAssist.swift; sourceTree = "<group>"; };
-		B22D1EF102A1C002B1C1D002 /* YoloLiveAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YoloLiveAssist.swift; sourceTree = "<group>"; };
 		B55F8EF37AA1BE2D94515D1C /* Stage3Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage3Models.swift; sourceTree = "<group>"; };
 		BB3AC545ECC81570B79CEF67 /* LibrarySurvey.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LibrarySurvey.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C40BB3E7A1589954C4D0EB87 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
@@ -143,7 +143,6 @@
 			isa = PBXGroup;
 			children = (
 				B476A7F0A8A04462E548C982 /* AstraLiveAssist.swift */,
-				B22D1EF102A1C002B1C1D002 /* YoloLiveAssist.swift */,
 				11FE8BC54349F2BDC33F6351 /* AudioNoteRecorder.swift */,
 				843442AA8496CF71010E8750 /* DeviceCheckService.swift */,
 				DBF3BF2DEB90DE100D968CAB /* LivePriceAssist.swift */,
@@ -152,6 +151,7 @@
 				43349E7F91B889372B4308B1 /* OperatorSession.swift */,
 				4F42100972258D04116CB6B3 /* SurveyDraftStore.swift */,
 				8618C4199B088D97355D25A8 /* SurveyUploadService.swift */,
+				0A330ACB8DFAB61274DF9D59 /* YoloLiveAssist.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -355,7 +355,6 @@
 				7C8FF3765A477A2E382553AA /* AccessibilitySupport.swift in Sources */,
 				7CF5E8EFDC34BCB4D02F4726 /* AppConfiguration.swift in Sources */,
 				017F2B024A2411907CCCC87F /* AstraLiveAssist.swift in Sources */,
-				A11C0DE001F0B001A0B0C001 /* YoloLiveAssist.swift in Sources */,
 				23CB2C2671405F7E460DB5A9 /* AudioNoteRecorder.swift in Sources */,
 				17FBFFDC5FE9282DFA33DFF3 /* CameraSessionCoordinator.swift in Sources */,
 				AB6A617FE9F28198F6EBBBE9 /* CaptureEvidenceView.swift in Sources */,
@@ -405,6 +404,7 @@
 				35D4A0D0478AF16A739744FD /* SurveySpatialEvidenceView.swift in Sources */,
 				F0A8F396265D3BE93E50F318 /* SurveyUploadService.swift in Sources */,
 				CA31483B63673D5A56819A54 /* TaggedFloorPlanView.swift in Sources */,
+				E96F428F278C8B9FCA6020EF /* YoloLiveAssist.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

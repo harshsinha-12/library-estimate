@@ -20,161 +20,90 @@ struct ShelfPassView: View {
       ShelfCameraContainer(store: store, camera: camera)
         .ignoresSafeArea()
         .accessibilityLabel("Live shelf camera and augmented reality view")
-        .accessibilityHint("Center the selected shelf row in the guide. Detected spine controls are listed as accessibility elements.")
-      GeometryReader { geometry in
-        ForEach(store.frameOverlays) { item in
-          let rect = store.displayRect(for: item.box, in: geometry.size)
-          let color: Color = item.source == "yolo" ? .green : (item.readable ? .green : .yellow)
-          RoundedRectangle(cornerRadius: 3)
-            .fill(color.opacity(0.28))
-            .overlay(RoundedRectangle(cornerRadius: 3).stroke(color, lineWidth: 2))
-            .overlay(alignment: .topLeading) {
-              Text(item.caption)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(color)
-                .shadow(color: .black.opacity(0.8), radius: 1)
-                .padding(2)
-                .lineLimit(2)
-            }
-            .frame(width: max(8, rect.width), height: max(8, rect.height))
-            .position(x: rect.midX, y: rect.midY)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
-      }
-      .allowsHitTesting(false)
-      VStack {
-        Text(overlayStatusLine)
-          .font(.caption.bold())
-          .padding(.horizontal, 10)
-          .padding(.vertical, 6)
-          .background(.ultraThinMaterial, in: Capsule())
-          .padding(.top, 8)
-        Spacer()
-      }
-      .allowsHitTesting(false)
-      if store.capturing {
+        .accessibilityHint("Detected book outlines stay on the spines. Controls stay on the bottom edge.")
+      if store.visibleSpines.isEmpty || !store.capturing {
         GeometryReader { geometry in
-          RoundedRectangle(cornerRadius: 8)
-            .stroke(.cyan.opacity(0.6), style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
-            .frame(width: geometry.size.width * 0.94, height: geometry.size.height * 0.44)
-            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            .allowsHitTesting(false)
+          ForEach(store.frameOverlays) { item in
+            let rect = store.displayRect(for: item.box, in: geometry.size)
+            RoundedRectangle(cornerRadius: 2)
+              .stroke(item.source == "yolo" ? Color.green : Color.yellow, lineWidth: 1)
+              .frame(width: max(8, rect.width), height: max(8, rect.height))
+              .position(x: rect.midX, y: rect.midY)
+              .allowsHitTesting(false)
+              .accessibilityHidden(true)
+          }
+        }
+        .allowsHitTesting(false)
+      }
+      if store.capturing {
+        let finishFace = Button("Finish face", systemImage: "stop.fill") {
+          store.stopFace()
+          onFinished()
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .labelStyle(.iconOnly)
+        .accessibilityLabel("Finish face")
+        GeometryReader { geometry in
           ForEach(store.visibleSpines) { spine in
             let rect = store.displayRect(for: spine.box, in: geometry.size)
-            let highlight = livePrices.highlight(for: spine.box)
-            let color: Color = {
-              switch highlight?.status {
-              case "draft": .green
-              case "unresolved": .orange
-              default: .yellow
-              }
-            }()
             Button {
               guard let image = store.focusedImage(for: spine.box) else { return }
               onFocus(image, spine.box, face == .a ? unit.faceAId : unit.faceBId,
                       Int(spine.rowId.replacingOccurrences(of: "row_", with: "")) ?? 1,
                       spine.slot)
             } label: {
-              RoundedRectangle(cornerRadius: 4)
-                .stroke(color, lineWidth: highlight == nil ? 2 : 3)
-                .background(color.opacity(0.12))
-                .overlay(alignment: .top) {
-                  Text(highlight?.caption ?? "Slot \(spine.slot + 1)")
-                    .font(.caption2.bold())
-                    .lineLimit(2)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(color)
-                    .foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-                }
+              RoundedRectangle(cornerRadius: 2)
+                .stroke(.yellow, lineWidth: 1)
             }
-            .frame(width: max(44, rect.width), height: max(44, rect.height))
+            .frame(width: max(8, rect.width), height: max(8, rect.height))
             .position(x: rect.midX, y: rect.midY)
             .accessibilityLabel("\(spine.rowId) slot \(spine.slot + 1)")
-            .accessibilityValue(highlight?.caption ?? "Needs review")
+            .accessibilityValue("Needs Exception Pass C")
             .accessibilityHint("Opens this spine in Exception Pass C")
           }
         }
-        VStack(spacing: 8) {
-          Text("Center the selected row in the guide. Reverse over the same row to add evidence.")
-            .font(.caption)
-          HStack {
+        VStack(spacing: 4) {
+          if !yoloLive.installHint.isEmpty {
+            Text(yoloLive.installHint)
+              .font(.caption2)
+              .lineLimit(1)
+              .truncationMode(.tail)
+              .foregroundStyle(.white)
+          }
+          HStack(spacing: 8) {
             ForEach(store.rowCoverage) { row in
               Button(row.rowId.replacingOccurrences(of: "row_", with: "R")) {
                 store.selectRow(row.rowId)
               }
               .buttonStyle(.bordered)
+              .controlSize(.mini)
               .tint(store.activeRowId == row.rowId ? .blue : .gray)
-              .minimumScaledTouchTarget()
               .accessibilityLabel("Select \(row.rowId)")
               .accessibilityValue(store.activeRowId == row.rowId ? "Selected" : "Not selected")
             }
-          }
-          .frame(maxWidth: .infinity)
-          Text("\(store.activeRowId): \(store.instances(for: store.activeRowId).count) persistent candidates")
-            .font(.caption.bold())
-          if let row = store.rowCoverage.first(where: { $0.rowId == store.activeRowId }) {
-            Text("Readable coverage \(Int(row.coverage * 100))% · \(row.status). Count \(row.copyCount) / actual \(row.actualCount.map(String.init) ?? "unconfirmed").")
-              .font(.caption2)
-            ViewThatFits {
-              HStack {
-                actualCountStepper(row)
-                confirmCountButton(row)
+            if let row = store.rowCoverage.first(where: { $0.rowId == store.activeRowId }) {
+              Text("\(store.instances(for: row.rowId).count)")
+                .font(.caption2.bold())
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .accessibilityLabel("\(store.instances(for: row.rowId).count) candidates")
+              Button("Confirm \(row.copyCount)", systemImage: "checkmark") {
+                store.confirmActualCount(for: row.rowId)
               }
-              VStack(alignment: .leading) {
-                actualCountStepper(row)
-                confirmCountButton(row)
-              }
+              .labelStyle(.iconOnly)
+              .buttonStyle(.bordered)
+              .controlSize(.mini)
+              .accessibilityLabel("Confirm \(row.copyCount)")
             }
+            finishFace
           }
-          if let warning = store.quality.messages.first {
-            AccessibleStatusLabel(text: warning, kind: .warning)
-              .font(.caption)
-          }
-          ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-              ForEach(Array(store.instances(for: store.activeRowId).enumerated()), id: \.element.id) { slot, instance in
-                Button {
-                  guard let image = store.evidenceImage(for: instance) ?? store.currentImage() else { return }
-                  onFocus(image, instance.box, face == .a ? unit.faceAId : unit.faceBId,
-                          Int(instance.rowId.replacingOccurrences(of: "row_", with: "")) ?? 1,
-                          slot)
-                } label: {
-                  VStack {
-                    if let image = store.evidenceImage(for: instance) {
-                      Image(uiImage: image).resizable().scaledToFit().frame(width: 42, height: 56)
-                    }
-                    Text("\(slot + 1)\(instance.hasReadableText ? "" : " ?")")
-                      .font(.caption2)
-                  }
-                }
-                .minimumScaledTouchTarget()
-                .accessibilityLabel("Saved spine slot \(slot + 1)")
-                .accessibilityValue(instance.hasReadableText ? "Readable" : "Needs Exception Pass C")
-                .accessibilityHint("Opens evidence for this spine")
-              }
-            }
-          }
-          Button("Finish face", systemImage: "stop.fill") {
-            store.stopFace()
-            onFinished()
-          }
-          .buttonStyle(.borderedProminent)
-          .minimumScaledTouchTarget()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .padding()
-        if store.capturing {
-          AccessibleStatusLabel(text: astraLive.caption, kind: .progress)
-            .font(.caption2)
-            .padding(8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .padding(.bottom, 72)
-        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.black.opacity(0.35), in: Capsule())
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
       } else {
         VStack(alignment: .leading, spacing: 10) {
           Text("\(unit.name) · face \(face.rawValue)")
@@ -221,6 +150,7 @@ struct ShelfPassView: View {
       }
     }
     .navigationBarTitleDisplayMode(.inline)
+    .toolbar(store.capturing ? .hidden : .automatic, for: .navigationBar)
     .accessibilityStatusAnnouncements(accessibilityCaptureStatus)
     .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
       store.ingestCurrentFrame()
@@ -252,37 +182,6 @@ struct ShelfPassView: View {
     .onChange(of: store.capturing) { _, capturing in
       if capturing { astraLive.resetFace() }
     }
-  }
-
-  private var overlayStatusLine: String {
-    if store.overlaySource == "yolo" {
-      return "YOLO · \(store.frameOverlays.count) books · live overlay, not inventory"
-    }
-    if !yoloLive.installHint.isEmpty {
-      return yoloLive.installHint
-    }
-    if store.frameOverlays.isEmpty {
-      return "Point at spines. Green book boxes appear on this camera."
-    }
-    return "Vision · \(store.frameOverlays.count) books · OCR titles when readable"
-  }
-
-  private func actualCountStepper(_ row: ShelfRowCoverage) -> some View {
-    Stepper("Actual \(row.actualCount ?? row.copyCount)", value: Binding(
-      get: { row.actualCount ?? row.copyCount },
-      set: { store.setActualCount($0, for: row.rowId) }
-    ), in: 0...40)
-    .minimumScaledTouchTarget()
-    .accessibilityHint("Adjust the verified number of physical copies on this row")
-  }
-
-  private func confirmCountButton(_ row: ShelfRowCoverage) -> some View {
-    Button("Confirm \(row.copyCount)") {
-      store.confirmActualCount(for: row.rowId)
-    }
-    .buttonStyle(.bordered)
-    .minimumScaledTouchTarget()
-    .accessibilityHint("Confirms the detected count as the actual count")
   }
 
   private var pointOutButton: some View {

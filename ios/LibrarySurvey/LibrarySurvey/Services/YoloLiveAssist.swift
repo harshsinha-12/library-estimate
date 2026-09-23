@@ -50,7 +50,7 @@ final class YoloLiveSession: ObservableObject {
       let url = try OperatorSession.apiURL(backendURL, path: "v1/yolo-live")
       var request = URLRequest(url: url)
       request.httpMethod = "POST"
-      request.timeoutInterval = 30
+      request.timeoutInterval = 45
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
       request.httpBody = try JSONCoding.encoder(pretty: false).encode(
         YoloLivePayload(imageBase64: compact.base64EncodedString())
@@ -83,7 +83,11 @@ final class YoloLiveSession: ObservableObject {
           ?? "On the Mac: pip install -e '.[yolo]' then restart uvicorn. Rebuild this app."
       }
     } catch {
-      installHint = "YOLO-live failed: \(error.localizedDescription). pip install -e '.[yolo]' on the Mac."
+      if let urlError = error as? URLError, urlError.code == .timedOut {
+        installHint = "YOLO timed out. The Mac is still running the model."
+      } else {
+        installHint = "YOLO-live failed: \(error.localizedDescription)."
+      }
       Self.logger.error("YOLO-live \(error.localizedDescription, privacy: .public)")
     }
   }

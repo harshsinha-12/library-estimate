@@ -148,33 +148,86 @@ curl -o ~/Downloads/library-survey.pdf \
 
 ## Run
 
-Copy [`.env.example`](.env.example) to `.env.local` (untracked). Never put keys in the iOS app.
+The phone captures. The Mac runs the API and YOLO. Keys stay in `.env.local` on the Mac. The iOS app never gets them.
+
+### 1. Backend environment
+
+From the repo root:
 
 ```bash
-make check         # Ruff, compileall, backend/schema tests
-python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e '.[yolo]'
 ```
 
-Phone Backend URL: `http://<Mac-Wi-Fi-IP>:8000`. Mac and iPhone must share a network that allows client-to-client traffic. Uvicorn binds `0.0.0.0`, not `127.0.0.1`.
+Use this virtual environment. Installing `.[yolo]` into the system Python upgrades NumPy and Pillow and breaks other tools on the machine (TensorFlow, SciPy, Streamlit). `.venv/` is gitignored.
 
-The green `book 0.xx` boxes in the [bookshelf-scanner](https://github.com/suxrobGM/bookshelf-scanner) demo are YOLO 11x-seg. They do **not** run on the iPhone. The phone draws the overlay; the Mac runs the model.
+Copy [`.env.example`](.env.example) to `.env.local` and fill Redis, the object store, and the provider keys. The process loads `.env.local` from the repo root. `YOLO_SPINE_MODEL` defaults to `yolo11x-seg.pt`.
+
+Dev tools (pytest, ruff) are a separate extra:
 
 ```bash
-# On the Mac that runs uvicorn (not on the phone)
-pip install -e '.[yolo]'
-python3 -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
+python -m pip install -e '.[dev]'
 ```
 
-First detection downloads `yolo11x-seg.pt`. Disable with `YOLO_SPINE_DISABLED=1`. Rebuild LibrarySurvey so Pass B shows the green boxes. Set the in-app Backend URL to the Mac. Point the camera at spines — boxes appear on the live camera (Start sweep is not required just to preview). OCR titles show when Apple Vision can read letters. Full identity still runs after seal.
+### 2. Model weights
 
-If the extra is missing, the phone still draws Apple Vision green `book` boxes after a rebuild. The filled mask look from that screenshot needs `pip install -e '.[yolo]'` on the Mac.
+`yolo11x-seg.pt` is the Ultralytics YOLO11x-seg checkpoint (COCO class 73 is book). It is about **119 MB**. GitHub rejects files over 100 MB, so the file is listed in `.gitignore` and is not in this repository.
+
+Put the weights in the repo root, next to this README, under the name `yolo11x-seg.pt`. Either:
+
+- copy a checkpoint you already have to that path, or
+- leave the file absent and start the server once. The first load downloads the official checkpoint from Ultralytics into the current working directory. Start uvicorn from the repo root so it lands in the right place.
+
+A different path is fine if `.env.local` sets it:
 
 ```bash
-make ios-project   # XcodeGen
-make ios-build     # generic iOS Simulator
+YOLO_SPINE_MODEL=/absolute/path/to/yolo11x-seg.pt
 ```
 
-Physical install: [`INSTALLATION.md`](INSTALLATION.md).
+`YOLO_SPINE_DISABLED=1` turns the model off. Pass B then keeps Apple Vision boxes only. After-seal count falls back to `labeled.json` when YOLO returns nothing.
+
+The server loads the checkpoint once at startup (`yolo_warm_ready` in the log). Live Pass B runs it at 640 px so a frame returns in a few seconds. After-seal crops still use the larger edge.
+
+### 3. Start the API
+
+Mac and iPhone must be on a network that allows client-to-client traffic. Uvicorn binds `0.0.0.0`, not `127.0.0.1`.
+
+```bash
+source .venv/bin/activate
+python -m uvicorn backend.app.main:production_app --factory --host 0.0.0.0 --port 8000
+```
+
+`make run-backend` is the same command via `python3` on `PATH`. Prefer the venv command above so YOLO imports from `.venv`.
+
+On the phone, set Backend URL to `http://<Mac-Wi-Fi-IP>:8000`.
+
+```bash
+ipconfig getifaddr en0
+```
+
+### 4. Install the iPhone app
+
+Simulator:
+
+```bash
+make ios-project
+make ios-build
+```
+
+A physical LiDAR iPhone over USB: [`INSTALLATION.md`](INSTALLATION.md). After a UI change, rebuild and reinstall. Capture can seal on the phone with no server. Upload, live price search, and YOLO boxes need the API from step 3.
+
+### What you should see
+
+Point Pass B at spines. Outlines are drawn on the camera; the Mac runs the model. If the weights or the `yolo` extra are missing, the phone reports that instead of drawing YOLO boxes. Apple Vision can still mark readable spines. Identity, price drafts, and the PDF run after seal. Download a finished report while uvicorn is up:
+
+```bash
+curl -o ~/Downloads/library-survey.pdf \
+  http://127.0.0.1:8000/v1/surveys/<SURVEY-ID>/report.pdf
+```
+
+Home scan **2026-09-23** (Bareilly, 88 recorded copies): [`docs/library-survey-17C8DCDC-26B1-458B-9D8A-6443309A5F26.pdf`](docs/library-survey-17C8DCDC-26B1-458B-9D8A-6443309A5F26.pdf). Survey `17c8dcdc-26b1-458b-9d8a-6443309a5f26`.
 
 ---
 

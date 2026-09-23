@@ -16,6 +16,7 @@ from typing import Protocol
 PIPELINE_NAME = "yolo11x-seg-book-spines"
 COCO_BOOK_CLASS = 73
 MAX_EDGE = 2560
+LIVE_MAX_EDGE = 640
 SPINE_ASPECT_THRESHOLD = 2.0
 DEFAULT_CONFIDENCE = 0.25
 DEFAULT_MODEL = "yolo11x-seg.pt"
@@ -274,13 +275,19 @@ def _spines_from_pass(scan: dict) -> list[SpineCrop]:
 
 
 def segment_book_spines(
-    jpeg: bytes, *, source_path: str = "", match_source: bool = False
+    jpeg: bytes,
+    *,
+    source_path: str = "",
+    match_source: bool = False,
+    live: bool = False,
 ) -> list[SpineCrop]:
     """Run YOLO 11x-seg on a shelf JPEG. Returns [] if weights/runtime are unavailable."""
     if not jpeg or not yolo_enabled():
         return []
     predictor = UltralyticsBookSegmenter()
-    return predictor(jpeg, source_path=source_path, match_source=match_source)
+    return predictor(
+        jpeg, source_path=source_path, match_source=match_source, live=live
+    )
 
 
 YOLO_INSTALL_HINT = (
@@ -311,7 +318,7 @@ def live_overlay(jpeg: bytes) -> dict:
             "boxes": [],
             "moondream2": False,
         }
-    spines = segment_book_spines(jpeg, match_source=True)
+    spines = segment_book_spines(jpeg, match_source=True, live=True)
     return {
         "enabled": True,
         "reason": None,
@@ -371,17 +378,23 @@ class UltralyticsBookSegmenter:
         self.confidence = float(os.getenv("YOLO_SPINE_CONFIDENCE", str(DEFAULT_CONFIDENCE)))
 
     def __call__(
-        self, jpeg: bytes, *, source_path: str = "", match_source: bool = False
+        self,
+        jpeg: bytes,
+        *,
+        source_path: str = "",
+        match_source: bool = False,
+        live: bool = False,
     ) -> list[SpineCrop]:
-        image = _load_rgb(jpeg, match_source=match_source)
+        edge = LIVE_MAX_EDGE if live else MAX_EDGE
+        image = _load_rgb(jpeg, match_source=match_source, max_edge=edge)
         if image is None:
             return []
-        enhanced = _preprocess(image)
+        enhanced = _preprocess(image, denoise=not live)
         model = self._load_model()
         kwargs = {
-            "imgsz": max(32, int(enhanced.size[0])),
+            "imgsz": LIVE_MAX_EDGE if live else max(32, int(enhanced.size[0])),
             "classes": [self.book_class],
-            "retina_masks": True,
+            "retina_masks": not live,
             "conf": self.confidence,
             "verbose": False,
         }
@@ -401,12 +414,16 @@ class UltralyticsBookSegmenter:
             xyxy = _xyxy(box)
             conf = _confidence(box)
             mask = mask_data[index] if mask_data is not None else None
-            crop = _mask_and_crop(enhanced, mask, xyxy)
             width = max(1.0, xyxy[2] - xyxy[0])
             height = max(1.0, xyxy[3] - xyxy[1])
             rotated = should_rotate_spine(width, height)
-            if rotated:
-                crop = crop.rotate(90, expand=True)
+            if live:
+                crop_jpeg = b""
+            else:
+                crop = _mask_and_crop(enhanced, mask, xyxy)
+                if rotated:
+                    crop = crop.rotate(90, expand=True)
+                crop_jpeg = _to_jpeg(crop)
             image_width, image_height = enhanced.size
             spines.append(
                 SpineCrop(
@@ -416,7 +433,7 @@ class UltralyticsBookSegmenter:
                     width=_clamp(width / image_width),
                     height=_clamp(height / image_height),
                     confidence=conf,
-                    jpeg=_to_jpeg(crop),
+                    jpeg=crop_jpeg,
                     rotated=rotated,
                     stacked=width > height * 1.4,
                     xyxy=xyxy,
@@ -433,7 +450,7 @@ class UltralyticsBookSegmenter:
         return UltralyticsBookSegmenter._model
 
 
-def _load_rgb(jpeg: bytes, *, match_source: bool = False):
+def _load_rgb(jpeg: bytes, *, match_source: bool = False, max_edge: int = MAX_EDGE):
     from PIL import Image
 
     image = Image.open(io.BytesIO(jpeg))
@@ -441,18 +458,20 @@ def _load_rgb(jpeg: bytes, *, match_source: bool = False):
     from PIL import ImageOps
 
     ImageOps.exif_transpose(image, in_place=True)
-    if image.size[0] > MAX_EDGE or image.size[1] > MAX_EDGE:
-        image.thumbnail((MAX_EDGE, MAX_EDGE))
+    if image.size[0] > max_edge or image.size[1] > max_edge:
+        image.thumbnail((max_edge, max_edge))
     if not match_source and image.width > image.height:
         image = image.rotate(-90, expand=True)
     return image
 
 
-def _preprocess(image):
+def _preprocess(image, *, denoise: bool = True):
     from PIL import ImageEnhance
 
     enhanced = ImageEnhance.Contrast(image).enhance(1.5)
     enhanced = ImageEnhance.Brightness(enhanced).enhance(1.1)
+    if not denoise:
+        return enhanced
     try:
         import cv2
         import numpy as np
