@@ -10,6 +10,28 @@ Alignment contract: [`FINAL-PLAN.md`](FINAL-PLAN.md). Thresholds, schemas, and c
 
 Governing rule: never trust one frame, one model, or one signal. Combine geometry, tracking, visual evidence, OCR, speech, and metadata, and keep confidence and provenance at every step.
 
+## Shelf photo scan
+
+The phone does not shoot on a timer. RoomPlan still walks the room and saves a frame about once a second for the floor plan. Those frames are not priced. After the room scan you take one still per shelf, or attach photos already on the phone. **Finish and seal** needs at least one photo.
+
+After seal, each JPEG is one request. The model estimates how many books are visible, names the titles it can read, counts copies of each title in that photo, and uses web search for a current physical paperback or hardcover price in the survey city. Kindle, ebooks, and rentals are excluded. `shelf_total` is the sum of count times unit price for the titles that got a price. Unnamed books stay in the unidentified count with no price. Each photo is totaled on its own, so the same books in a second photo are counted again.
+
+Fable, Astra Extra, and Jev do not run on this path. The older sweep calls them after seal to judge a sealed copy. A shelf-photo seal stops after the photo call and the price overview. Astra-live is the Pass B camera assist, and this capture has no live sweep. A report that says `not_run` for those four rows is that skip, not a failed call.
+
+Home scan **2026-09-24**, Bareilly (`en-IN`). Pipeline `shelf-photo-llm-v1`. Survey `bc4104bb-f5fd-4a78-a274-72fb69b68e6f`. PDF: [`docs/library-survey-BC4104BB-F5FD-4A78-A274-72FB69B68E6F.pdf`](docs/library-survey-BC4104BB-F5FD-4A78-A274-72FB69B68E6F.pdf).
+
+| | Home shelf photos |
+| --- | ---: |
+| Recorded copies | **42** |
+| Unique titles / copies | **20 / 42** |
+| Confirmed / eligible books | **14 / 42** |
+| Contents (estimated) | **53,118 INR** |
+| Building reconstruction | **833,620.63 INR** for **12.82 m²** |
+| Estimated provider spend | **$0.15** |
+| Inventory | **needs_review** |
+
+Twenty books on Shelf 1 stayed unidentified and unpriced. Titles with a listing are marked confirmed. Titles the model named but could not price, including Physics, Fuzzy Logic, Classic Data Structures, and Introduction to Soft Computing, stay awaiting confirmation.
+
 ![Library Survey / Insurance Valuation — simplified architecture](docs/library-architecture-simple.jpg)
 
 ---

@@ -40,7 +40,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access records technician notes on the survey timeline.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Photo access lets you attach pictures of each shelf.</string>
+	<string>Photo access lets you choose an exception close-up when a camera is unavailable.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

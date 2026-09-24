@@ -118,7 +118,9 @@ class CapturePackageManifest(StrictModel):
     consent: CaptureConsent
     timing: CaptureTiming
     capture_state: Literal["complete", "interrupted", "resumed", "manually_sealed"]
-    capture_modes: list[Literal["room", "shelf", "exception"]] = Field(default_factory=list)
+    capture_modes: list[Literal["room", "shelf", "shelf_photos", "exception"]] = Field(
+        default_factory=list
+    )
     files: list[CaptureFile] = Field(min_length=1)
 
     @model_validator(mode="after")

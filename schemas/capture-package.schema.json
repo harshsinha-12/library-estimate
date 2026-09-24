@@ -72,7 +72,7 @@
     "capture_modes": {
       "type": "array",
       "uniqueItems": true,
-      "items": {"enum": ["room", "shelf", "exception"]}
+      "items": {"enum": ["room", "shelf", "shelf_photos", "exception"]}
     },
     "files": {
       "type": "array",

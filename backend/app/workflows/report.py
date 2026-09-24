@@ -78,6 +78,7 @@ def build_report_snapshot(repository: SurveyRepository, survey_id: UUID) -> dict
         if not str(row.get("asset_copy_id") or "").startswith("found_")
     ]
     astra_live = list_astra_live(repository, survey_id)
+    shelf_photo = stage3.get("source") == "llm_shelf_photo"
     report = {
         "schema_version": "1.0.0", "survey_id": str(survey_id),
         "generated_at": utc_now().isoformat(), "package_hash": survey.package_hash,
@@ -93,7 +94,9 @@ def build_report_snapshot(repository: SurveyRepository, survey_id: UUID) -> dict
         "review": stage3,
         "valuation": overview,
         "model_runs": model_runs,
-        "model_pipelines": _model_pipelines(model_runs, astra_live),
+        "model_pipelines": _model_pipelines(
+            model_runs, astra_live, shelf_photo=shelf_photo
+        ),
         "astra_live": astra_live,
         "spend": usage_for_survey(repository, survey_id),
         "limitations": [
@@ -101,9 +104,15 @@ def build_report_snapshot(repository: SurveyRepository, survey_id: UUID) -> dict
             "Web prices are draft evidence until confirmed; eBooks and rentals are excluded.",
             "Building figures use demo replacement-cost rates, not market sale value.",
             "Model agreement is not independent ground truth.",
-            "After seal, Fable (A) and Astra replay (B) run on every AssetCopy independently. "
-            "Jev scores A vs B and does not write count or price. "
-            "Astra-live during Pass B/C is sampled assist metadata, not Pipeline B.",
+            (
+                "This shelf-photo survey names books and looks up prices in one model call "
+                "per photo. Fable, Astra Extra, and Jev are not scheduled on that path."
+                if shelf_photo
+                else
+                "After seal, Fable (A) and Astra replay (B) run on every AssetCopy independently. "
+                "Jev scores A vs B and does not write count or price. "
+                "Astra-live during Pass B/C is sampled assist metadata, not Pipeline B."
+            ),
             "Invertis live model IDs (logs/llm_calls.json): Pipeline A claude-fable-5.1 "
             "(Fable role), Pipeline B gpt-6-astra, Jev jev-latest / jev-1.13.0. "
             "Code defaults are still FABLE_MODEL/ASTRA_MODEL/JEV_MODEL.",
@@ -123,7 +132,12 @@ def build_report(repository: SurveyRepository, survey_id: UUID) -> tuple[dict, b
     return report, pdf
 
 
-def _model_pipelines(model_runs: list[dict], astra_live: dict | None = None) -> dict:
+def _model_pipelines(
+    model_runs: list[dict],
+    astra_live: dict | None = None,
+    *,
+    shelf_photo: bool = False,
+) -> dict:
     live_rows = (astra_live or {}).get("assists") or []
     live_ran = any(row.get("status") == "assist" for row in live_rows)
     if not model_runs:
@@ -145,6 +159,11 @@ def _model_pipelines(model_runs: list[dict], astra_live: dict | None = None) -> 
                 "role": "Capture UX assist on Pass B/C. Not Pipeline B and not inventory.",
             },
             "note": (
+                "This survey priced each shelf photo in one language-model call. "
+                "Fable, Astra Extra, and Jev were not scheduled. "
+                "Astra-live is the Pass B/C camera assist, and this capture has no live sweep."
+                if shelf_photo
+                else
                 "After seal, Fable and Astra replay run automatically on every AssetCopy. "
                 "The inventory button is optional replay of the same sealed bytes. "
                 "This survey has no sealed replay yet."
